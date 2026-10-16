@@ -22,9 +22,9 @@ anDrop 是一个常驻 macOS 菜单栏的文件共享应用，面向 **互传联
 
 发送时，蓝色圆环和百分比显示文件发送进度。准备、等待接收、连接时显示对应状态；收到对方的完成确认后才显示“已发送”。
 
-<img src="docs/images/sending-zh.png" alt="模拟发送进度：工作手机正在发送，蓝色进度环显示 42%，底部可取消传输或关闭窗口" width="600">
+<img src="docs/images/sending-zh.png" alt="模拟发送进度：工作手机正在发送，蓝色进度环显示 42%，底部可取消传输" width="600">
 
-发送中点击其他窗口，anDrop 会退到后面，传输继续。也可以点“关闭”，之后从菜单栏查看进度。发送成功后，点击窗口外即可收起。
+发送中点击其他窗口，anDrop 会退到后面，传输继续。窗口中只有一个操作按钮：发送前“取消”收起窗口，发送中“取消”停止传输。发送成功后，点击窗口外即可收起。
 
 ### 3. 按自己的习惯设置
 
@@ -84,13 +84,7 @@ anDrop 是一个常驻 macOS 菜单栏的文件共享应用，面向 **互传联
 
 ![anDrop trusted devices from mock history](docs/images/trusted-zh.png)
 
-## 控制中心（macOS 26 及以上）
-
-打开 anDrop 后，在控制中心 →“编辑控制项”中搜索 **anDrop**，可添加唯一的“anDrop”控制项。面板上方为 anDrop 和接收开关，下方为“仅限信任设备／所有人”。关闭开关即退出应用；点击控制项会启动应用，但不打开设置主窗口。蓝牙或 Wi-Fi 不可用时开关显示关闭，请在 macOS 控制中心开启相应无线功能。公开 API 不支持第三方在控制中心内嵌 AirDrop 式详情面板，因此面板在菜单栏附近打开。若升级后仍有旧“切换共享”控制项，请在编辑控制项时移除。此功能使用 [Apple 官方 Controls API](https://developer.apple.com/documentation/widgetkit/controls-collection)。
-
-将控制项设为**中号**，即可显示当前接收范围（仅限信任设备／所有人）；应用退出或无线功能不可用时显示“已关闭”。小号只显示图标。标准控制项跟随系统强调色与外观。点击后打开接收选项，关闭面板上方的开关即可退出。控制项使用标准切换组件显示状态，点击后会重新同步，因此按下时外观可能短暂变化。激活背景由 macOS 决定，与 Apple 的 AirDrop 模块并不完全相同。
-
-![anDrop receive controls](docs/images/receive-zh.png)
+控制中心入口已移除。信任设备与接收范围请使用菜单栏或设置；原接收面板的源码和独立预览保留在[接收面板原型](Prototypes/ReceivePanel/README.md)，供将来复用。
 
 ## 哪些设备可以用？
 

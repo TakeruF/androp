@@ -7,7 +7,6 @@ import CoreBluetooth
 import UserNotifications
 import ServiceManagement
 import CoreWLAN
-import WidgetKit
 
 struct Transfer: Identifiable, Codable {
     var id: String
@@ -68,12 +67,6 @@ final class RecipientPanel: NSPanel {
 }
 
 @MainActor
-final class ReceivePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
-@MainActor
 final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
     @Published private(set) var forgottenDeviceIdentifiers = Set(UserDefaults.standard.stringArray(forKey: "forgottenDeviceIdentifiers") ?? [])
     @Published private(set) var trustedOnly = UserDefaults.standard.bool(forKey: "trustedOnly")
@@ -113,8 +106,6 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private var window: NSWindow?
     private var item: NSStatusItem?
     private var recipientPanel: RecipientPanel?
-    private var receivePanel: ReceivePanel?
-    private var receiveClickMonitors: [Any] = []
     private var completedClickMonitors: [Any] = []
     private var menuTracking = false
     private var activity: NSObjectProtocol?
@@ -158,7 +149,6 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         setupNotifications()
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: L("Receive files from nearby devices", "接收附近设备的文件"))
         startAtLogin = SMAppService.mainApp.status == .enabled
-        publishReceiveControlState()
         startEngine()
         peripheral = CBPeripheralManager(delegate: self, queue: nil)
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -166,21 +156,18 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
     }
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { if receivePanel?.isVisible != true { showSettings() }; return false }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return false }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
-        stopCompletedRecipientDismissal(); closeReceiveControls()
-        publishReceiveControlState(running: false)
+        stopCompletedRecipientDismissal()
         terminating = true; peripheral?.stopAdvertising(); input?.closeFile(); process?.terminate(); saveHistory()
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             if url.isFileURL { addFiles([url]) }
             else if url.scheme == "androp", url.host == "control" {
-                switch url.path {
-                case "/receive", "/send", "/toggle": showReceiveControls()
-                default: showSettings()
-                }
+                // Legacy control URLs now open the ordinary settings window.
+                showSettings()
                 return
             }
             else if url.scheme == "androp", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), parts.host == "share" {
@@ -227,7 +214,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @objc func selectTrustedOnly() { changeTrustedOnly(true) }
     @objc func selectEveryone() { changeTrustedOnly(false) }
     func changeTrustedOnly(_ value: Bool) {
-        trustedOnly = value; UserDefaults.standard.set(value, forKey: "trustedOnly"); configureEngine(); rebuildMenu(); publishReceiveControlState()
+        trustedOnly = value; UserDefaults.standard.set(value, forKey: "trustedOnly"); configureEngine(); rebuildMenu()
     }
     var knownDevices: [RememberedDevice] {
         var seen = Set<String>()
@@ -335,58 +322,14 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
         }
     }
-    private func publishReceiveControlState(running: Bool = true) {
-        ReceiveControlStore.write(ReceiveControlState(isOn: running && receiveSwitchIsOn, trustedOnly: trustedOnly, language: appLanguage()))
-        if #available(macOS 26.0, *) { ControlCenter.shared.reloadControls(ofKind: ReceiveControlStore.kind) }
-    }
-    func setReceiveSwitch(_ enabled: Bool) {
-        if !enabled { quit() }
-    }
     private func refreshRadioAvailability() {
         let available = peripheral?.state == .poweredOn && (CWWiFiClient.shared().interface()?.powerOn() ?? false)
         if radiosAvailable != available {
             radiosAvailable = available
             configureEngine(); advertise()
             if !available { clearPeers() }
-            publishReceiveControlState()
         }
     }
-    @objc func showReceiveControls() {
-        if receivePanel == nil {
-            let content = makeReceiveControlsContent(model: self)
-            let panel = ReceivePanel(contentRect: content.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
-            panel.title = L("anDrop Receive", "anDrop 接收")
-            panel.isReleasedWhenClosed = false; panel.isOpaque = false; panel.backgroundColor = .clear
-            panel.hasShadow = true; panel.hidesOnDeactivate = false; panel.level = .floating; panel.delegate = self
-            panel.contentView = content
-            receivePanel = panel
-        }
-        guard let panel = receivePanel else { return }
-        let screen = item?.button?.window?.screen ?? NSScreen.main
-        if let frame = screen?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 12, y: frame.maxY - panel.frame.height - 8))
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
-        for monitor in receiveClickMonitors { NSEvent.removeMonitor(monitor) }
-        receiveClickMonitors.removeAll()
-        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        if let monitor = NSEvent.addLocalMonitorForEvents(matching: clicks, handler: { [weak self] event in
-            MainActor.assumeIsolated {
-                if let self, event.window !== self.receivePanel { self.closeReceiveControls() }
-            }
-            return event
-        }) { receiveClickMonitors.append(monitor) }
-        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
-            MainActor.assumeIsolated { self?.closeReceiveControls() }
-        }) { receiveClickMonitors.append(monitor) }
-    }
-    func closeReceiveControls() {
-        receivePanel?.orderOut(nil)
-        for monitor in receiveClickMonitors { NSEvent.removeMonitor(monitor) }
-        receiveClickMonitors.removeAll()
-    }
-    @objc func openSettingsFromReceiveControls() { closeReceiveControls(); showSettings() }
     @objc func showSettings() {
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: min(640, (NSScreen.main?.visibleFrame.height ?? 740) - 100)), styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -396,6 +339,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
     func closeRecipients() { recipientPanel?.close() }
+    func cancelOrCloseRecipients() {
+        if let transfer = outgoingTransfer, transfer.active { cancel(transfer) }
+        else { closeRecipients() }
+    }
     func showRecipients() {
         if recipientPanel?.isVisible != true { clearPeers() }
         command(["command": "scan", "value": outgoing == nil])
@@ -671,7 +618,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         return true
     }
     func changeLanguage(_ value: String) {
-        language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu(); publishReceiveControlState()
+        language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu()
         if let appMenu = NSApp.mainMenu?.items.first?.submenu {
             appMenu.items[0].title = L("About anDrop", "关于 anDrop")
             appMenu.items[1].title = L("Transfers", "传输")
@@ -875,24 +822,20 @@ struct RecipientView: View {
             HStack(alignment: .center, spacing: 16) {
                 if let transfer = model.outgoingTransfer {
                     Text(transfer.state == "failed" ? transfer.detail : transfer.active
-                         ? L("You can close this window. Sending continues.", "关闭窗口后仍会继续发送。")
+                         ? L("Click another window to keep sending in the background.", "点击其他窗口可在后台继续发送。")
                          : transfer.progress.label(chinese: appLanguage() == "zh"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                     Spacer(minLength: 0)
-                    if transfer.active {
-                        Button(L("Cancel Transfer", "取消传输")) { model.cancel(transfer) }
-                    }
-                    Button(transfer.active ? L("Close", "关闭") : L("Done", "完成")) { model.closeRecipients() }
-                        .keyboardShortcut(.cancelAction).controlSize(.large)
                 } else {
                     Text(model.peers.contains(where: model.peerIsAmbiguous)
                          ? L("Same name? Make one device visible, then name it with the pencil.", "设备重名？请先只让一台可被发现，再点铅笔命名。")
                          : L("Choose a device to send.", "选择要发送到的设备。"))
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
-                    Button(L("Cancel", "取消")) { model.closeRecipients() }
-                        .keyboardShortcut(.cancelAction).controlSize(.large)
                 }
+                Button(model.outgoingTransfer.map { $0.active ? L("Cancel", "取消") : L("Done", "完成") } ?? L("Cancel", "取消")) {
+                    model.cancelOrCloseRecipients()
+                }.keyboardShortcut(.cancelAction).controlSize(.large)
             }.padding(.top, 12)
         }.padding(20).frame(width: 460)
             .fixedSize(horizontal: false, vertical: true)
@@ -1150,82 +1093,6 @@ struct SettingsView: View {
                 SharingNameView(model: model)
             }
             .sheet(isPresented: $managingTrustedDevices) { TrustedDevicesView(model: model) }
-    }
-}
-
-// One system glass surface; avoid stacking translucent effects behind each row.
-@MainActor
-func makeReceiveControlsContent(model: AppModel) -> NSView {
-    let host = NSHostingView(rootView: ReceiveControlsView(model: model))
-    let bounds = NSRect(origin: .zero, size: host.fittingSize)
-    host.frame = bounds
-    host.autoresizingMask = [.width, .height]
-    if #available(macOS 26.0, *) {
-        let glass = NSGlassEffectView(frame: bounds)
-        glass.style = .regular
-        glass.cornerRadius = 16
-        glass.contentView = host
-        return glass
-    }
-    let material = NSVisualEffectView(frame: bounds)
-    material.material = .popover
-    material.blendingMode = .behindWindow
-    material.state = .active
-    material.wantsLayer = true
-    material.layer?.cornerRadius = 16
-    material.layer?.masksToBounds = true
-    material.addSubview(host)
-    return material
-}
-
-struct ReceiveControlsView: View {
-    @ObservedObject var model: AppModel
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("anDrop").font(.system(size: 14, weight: .bold))
-                Spacer()
-                Toggle(L("Receive", "接收"), isOn: Binding(get: { model.receiveSwitchIsOn }, set: model.setReceiveSwitch))
-                    .labelsHidden().toggleStyle(.switch).controlSize(.regular)
-                    .accessibilityLabel(L("Receive", "接收"))
-                    .disabled(!model.radiosAvailable)
-                    .help(model.radiosAvailable ? L("Turn off to quit anDrop", "关闭后退出 anDrop") : L("Turn on Bluetooth and Wi-Fi in Control Center", "请在控制中心开启蓝牙和 Wi-Fi"))
-            }.padding(.horizontal, 14).frame(height: 42)
-            Divider().padding(.horizontal, 14)
-            VStack(spacing: 0) {
-                ReceiveScopeRow(title: L("Trusted Devices Only", "仅限信任设备"), symbol: "person.crop.circle", selected: model.trustedOnly, enabled: model.receiveSwitchIsOn) { model.changeTrustedOnly(true) }
-                    .help(L("Other devices can still see this Mac, but their transfer requests are rejected.", "未受信任的设备仍可发现此 Mac，但其传输请求会被拒绝。"))
-                ReceiveScopeRow(title: L("Everyone", "所有人"), symbol: "person.2.fill", selected: !model.trustedOnly, enabled: model.receiveSwitchIsOn) { model.changeTrustedOnly(false) }
-            }.padding(.horizontal, 7).padding(.top, 5).padding(.bottom, 6)
-        }.frame(width: 308).onExitCommand(perform: model.closeReceiveControls)
-    }
-}
-
-struct ReceiveScopeRow: View {
-    let title: String
-    let symbol: String
-    let selected: Bool
-    let enabled: Bool
-    let action: () -> Void
-    @Environment(\.colorSchemeContrast) private var contrast
-    @State private var hovering = false
-    private var selectionOpacity: Double { contrast == .increased ? 0.24 : 0.12 }
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol).resizable().scaledToFit()
-                    .fontWeight(.medium).symbolRenderingMode(.monochrome)
-                    .frame(width: symbol == "person.2.fill" ? 18 : 16, height: 16)
-                    .foregroundStyle(selected && enabled ? Color(nsColor: .systemBlue) : Color.primary)
-                    .frame(width: 26, height: 26)
-                    .background(selected && enabled ? Color.white : Color.primary.opacity(0.12), in: Circle())
-                Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1)
-                Spacer(minLength: 0)
-            }.padding(.horizontal, 7).frame(height: 32).contentShape(Rectangle())
-                .background(Color.primary.opacity(enabled ? (selected ? selectionOpacity : hovering ? 0.06 : 0) : 0), in: RoundedRectangle(cornerRadius: 9))
-        }.buttonStyle(.plain).disabled(!enabled).onHover { hovering = $0 }
-            .accessibilityValue(selected ? L("Selected", "已选择") : L("Not selected", "未选择"))
-            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

@@ -56,11 +56,11 @@ After choosing a recipient, the share window stays open. A blue ring grows clock
 
 Preparing, Waiting and Connecting use an indeterminate ring without a fabricated percentage. After all response bytes have been sent, the ring is full and the status is Finishing until the peer confirms completion. Only then does it say Sent. Failure and cancellation are separate terminal states.
 
-Cancel Transfer stops the operation. Close dismisses the window while sending continues; reopen it through Show Progress in the menu bar. The chosen recipient remains in this transfer view even if it stops advertising. It is a snapshot of the active transfer, not a discoverable recipient available for a new send. Normal discovery still expires independently.
+The single Cancel button dismisses the picker before a send starts and stops the transfer while it is active. Clicking another window keeps sending in the background; use Show Progress in the menu bar to return. The chosen recipient remains in this transfer view even if it stops advertising. It is a snapshot of the active transfer, not a discoverable recipient available for a new send. Normal discovery still expires independently.
 
 ## Share popup behavior
 
-The recipient popup has no title bar or traffic-light window buttons. It uses the existing Cancel, Close and Done controls. While a transfer is active, clicking another window moves the popup into the background and the transfer continues. After a successful send, clicking outside the popup or switching focus to another window dismisses it. Failed and cancelled transfers retain their result until dismissed.
+The recipient popup has no title bar or traffic-light window buttons. It has one footer button: Cancel before/during sending, or Done after a terminal result. Escape performs the same action. While a transfer is active, clicking another window moves the popup into the background and the transfer continues. After a successful send, clicking outside the popup or switching focus to another window dismisses it. Failed and cancelled transfers retain their result until dismissed.
 
 ## Receive connection errors
 
@@ -82,9 +82,4 @@ Open Settings → **Trusted Devices…** to add devices from previous transfers 
 
 This filter uses Bluetooth identifiers remembered by this Mac, not account or device names. It is not cryptographic pairing or authenticated identity. Add a device again if its identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or connecting over Wi-Fi to download files. Removing trust does not interrupt an already-started transfer.
 
-## Control Center (macOS 26 and later)
-
-Open anDrop, then choose Control Center → **Edit Controls** and search for **anDrop**. Add the single **anDrop** control. It opens a compact panel with anDrop and its receive switch in the header, followed by Trusted Devices Only / Everyone. Turning the switch off quits the app. Opening the control starts the app without opening its main Settings window. If Bluetooth or Wi-Fi is unavailable, the switch shows off; enable the radios in macOS Control Center. Public Controls API does not allow a third-party app to embed an AirDrop-style detail panel inside Control Center itself, so this panel opens near the menu bar. If an older Toggle Sharing tile remains after an update, remove that obsolete tile in Edit Controls. This feature uses [Apple’s official Controls API](https://developer.apple.com/documentation/widgetkit/controls-collection).
-
-
-Set the control to **Medium** size to show the selected receive scope (Trusted Devices Only / Everyone), or **Off** when anDrop is closed or its radios are unavailable. The small size shows only the symbol. The native control follows the system accent color and appearance. Clicking it opens receiving options; use the switch in that panel to quit. The control uses a native toggle as a state indicator and resynchronizes after opening the panel, so its appearance may briefly change during the click. macOS controls the active tile background; it does not exactly reproduce Apple’s AirDrop module.
+Control Center integration is no longer included. Use the menu bar or Settings for receiving options. The former panel is preserved as an [independent UI prototype](../Prototypes/ReceivePanel/README.md), outside the installed app. If an old control remains after upgrading, remove that anDrop item in Edit Controls.

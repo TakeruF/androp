@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- macOS with Xcode 26 or later, including the macOS 26 SDK and App Intents metadata tools and a Swift compiler supporting Swift 6 and `-default-isolation MainActor` (Swift 6.2+).
+- macOS with Xcode 26 or later, including a Swift compiler supporting Swift 6 and `-default-isolation MainActor` (Swift 6.2+).
 - Python 3.14 with the packages pinned in `requirements.txt`.
 - A build machine matching the desired CPU architecture. The development build was arm64; Intel has not been tested.
 
@@ -14,7 +14,7 @@ python3.14 -m venv .venv
 .venv/bin/python build.py
 ```
 
-Build output: `build/anDrop.app`. The script builds the Swift host, Finder extension and macOS 26+ Control Center extension, freezes the Python engine with PyInstaller, copies licenses, signs the result, and verifies its signature. Temporary staging keeps extended filesystem attributes from invalidating signatures.
+Build output: `build/anDrop.app`. The script builds the Swift host and Finder Share extension, freezes the Python engine with PyInstaller, copies licenses, signs the result, and verifies its signature. Temporary staging keeps extended filesystem attributes from invalidating signatures.
 
 After a full build, `.venv/bin/python build.py --ui-only` reuses its engine for a UI-only change. Rebuild fully whenever the engine or dependencies change.
 
@@ -39,4 +39,4 @@ codesign --verify --deep --strict build/anDrop.app
 
 The collector reads installed package metadata, Python's license and available Homebrew native-library licenses. It preserves the protocol-reference licenses already checked in. Review the inventory against the actual bundle before distributing a new build. See [licensing](licensing.md) and [publication privacy](publication.md).
 
-Control Center status sharing uses an App Group between the host and the controls extension. For a Developer ID build, `build.py` derives its macOS-style group from the signing team; provide `ANDROP_TEAM_ID` locally if the identity is specified as a certificate hash rather than a full identity name. Both signatures receive the same group entitlement. Keep the team ID and generated entitlements out of the repository. No provisioning profile is needed for this macOS-style group. Ad-hoc builds without a team keep the basic panel action, but cannot share the receive scope with the extension; the tile displays “Open to choose” instead of inventing a scope.
+The normal build excludes the archived [receive-panel prototype](../Prototypes/ReceivePanel/README.md). It creates no WidgetKit control extension, App Intents metadata or control-state App Group entitlement. When upgrading an older local build, replace the app bundle rather than merging it; otherwise the removed control extension may remain inside the installed bundle. Remove any old anDrop control from Control Center.

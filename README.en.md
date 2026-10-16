@@ -22,9 +22,9 @@ Select files in Finder, then **Share → anDrop**. A small badge identifies the 
 
 A blue ring and percentage show sending progress. Preparing, waiting for acceptance and connecting have their own states. The app says “Sent” only after the other device confirms completion.
 
-<img src="docs/images/sending-en.png" alt="Mock transfer to Work phone showing a blue progress ring at 42%, Cancel Transfer and Close" width="600">
+<img src="docs/images/sending-en.png" alt="Mock transfer to Work phone showing a blue progress ring at 42%, a single Cancel button" width="600">
 
-Clicking another window during sending moves anDrop into the background while the transfer continues. You can also close the popup and reopen progress from the menu bar. After a successful send, clicking outside dismisses it.
+Clicking another window during sending moves anDrop into the background while the transfer continues. The single Cancel button dismisses the picker before sending and cancels the transfer while sending. After a successful send, clicking outside dismisses it.
 
 ### 3. Set it up your way
 
@@ -84,13 +84,7 @@ This filter uses Bluetooth identifiers remembered by this Mac, not account or de
 
 ![anDrop trusted devices from mock history](docs/images/trusted-en.png)
 
-## Control Center (macOS 26 and later)
-
-Open anDrop, then choose Control Center → **Edit Controls** and search for **anDrop**. Add the single **anDrop** control. It opens a compact panel with anDrop and its receive switch in the header, followed by Trusted Devices Only / Everyone. Turning the switch off quits the app. Opening the control starts the app without opening its main Settings window. If Bluetooth or Wi-Fi is unavailable, the switch shows off; enable the radios in macOS Control Center. Public Controls API does not allow a third-party app to embed an AirDrop-style detail panel inside Control Center itself, so this panel opens near the menu bar. If an older Toggle Sharing tile remains after an update, remove that obsolete tile in Edit Controls. This feature uses [Apple’s official Controls API](https://developer.apple.com/documentation/widgetkit/controls-collection).
-
-Set the control to **Medium** size to show the selected receive scope (Trusted Devices Only / Everyone), or **Off** when anDrop is closed or its radios are unavailable. The small size shows only the symbol. The native control follows the system accent color and appearance. Clicking it opens receiving options; use the switch in that panel to quit. The control uses a native toggle as a state indicator and resynchronizes after opening the panel, so its appearance may briefly change during the click. macOS controls the active tile background; it does not exactly reproduce Apple’s AirDrop module.
-
-![anDrop receive controls](docs/images/receive-en.png)
+Control Center integration has been removed. Use the menu bar or Settings for receiving options. The compact panel’s source and standalone preview are preserved in the [receive-panel prototype](Prototypes/ReceivePanel/README.md) for possible reuse.
 
 ## Which devices work?
 

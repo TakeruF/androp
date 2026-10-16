@@ -67,7 +67,6 @@ for language in ["zh", "en"] {
     try renderDocumentation(RecipientView(model: model), to: imageDirectory.appendingPathComponent("sending-\(language).png"))
     model.outgoing = nil
     model.transfers = []
-    try renderDocumentation(ReceiveControlsView(model: model), to: imageDirectory.appendingPathComponent("receive-\(language).png"))
     try renderDocumentation(SettingsView(model: model), to: imageDirectory.appendingPathComponent("settings-\(language).png"))
     model.transfers = [
         Transfer(id: "mock-received", direction: "receive", peer: names[0], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000001", deviceKind: "phone", deviceBrand: "OPPO"),
@@ -77,4 +76,4 @@ for language in ["zh", "en"] {
     model.peers = []
     try renderDocumentation(TrustedDevicesView(model: model), to: imageDirectory.appendingPathComponent("trusted-\(language).png"))
 }
-print("Rendered ten mock documentation images.")
+print("Rendered eight mock documentation images.")

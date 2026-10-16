@@ -113,7 +113,7 @@ A native preview using the production views checked a one-line “Example” lab
 - Swift identity/progress suite: 10 tests pass.
 - Native model smoke checks ran in a fresh UUID-named UserDefaults test suite, without modifying the installed app’s settings. Offline history candidates, same-name device separation, Add/Remove/Forget, persisted trust, running=receiving, endpoint metadata, and the one-time legacy-history cleanup passed.
 - The installed build’s deep strict signature check passed. The one-time removal of history records without endpoint identifiers was independently read back by count; identified history was retained.
-- macOS registered the control extension. A user confirmed gallery visibility and the initial control-to-file-picker invocation during development. The final design offers one Receive control opening the host-owned receive-scope panel; its public API boundary is documented in usage.
+- macOS registered the control extension. A user confirmed gallery visibility and the initial control-to-file-picker invocation during development. At that development stage, one Receive control opened the host-owned receive-scope panel. This integration was subsequently removed in build 36; its UI is preserved in the standalone prototype.
 - Production UI renders with fictional data cover English/Chinese receive scope and trusted-device history. Manufacturer artwork and phone/tablet badges are reused from the recipient chooser; OPPO/vivo use white logos on green/blue, and Xiaomi retains official orange artwork.
 - These checks do not establish physical-device coverage for other manufacturers or cryptographic peer authentication.
 
@@ -135,3 +135,12 @@ A native preview using the production views checked a one-line “Example” lab
   path adds a candidate directly from advertising data before any GATT read.
   These changes therefore do **not** implement selective visibility. See the
   [investigation and remaining limitation](trusted-discovery.md).
+
+## Control Center removal and single Cancel action (build 36)
+
+- The installed app contains only the Finder Share extension. The old WidgetKit extension was unregistered and its existing anDrop tile removed. The host has no control-state App Group entitlement or App Intents metadata. The signed bundle passed deep/strict verification.
+- The compact receive panel is preserved outside the production build in `Prototypes/ReceivePanel`, with English/Chinese fictional captures and an independent interactive preview. Native preview checks verified scope selection, the switch disabling scope rows, Escape dismissal and the titleless system-glass wrapper. No production preferences or device trust records were changed by the preview.
+- The recipient popup now has one footer action: Cancel closes an unsent picker, targets the active transfer while preparing/waiting/connecting/sending/confirming, and becomes Done after a terminal result. Escape uses the same action. Outside clicks during sending still allow background transfer.
+- A disposable native-model check exercised the production cancel action with a local JSON-lines sink and no transfer engine: unsent closure, cancellation of the correct ID in all five active phases, and closure after a cancelled result passed.
+- Existing Python tests: **54 passed**. Swift identity/progress/policy tests: **15 passed**. The English and Chinese sending screenshots were regenerated from production views with mock data and show one Cancel button.
+- This UI/integration update did not repeat a physical-device file transfer.
