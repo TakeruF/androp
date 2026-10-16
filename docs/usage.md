@@ -2,7 +2,7 @@
 
 ## Send and receive
 
-Enable Bluetooth and Wi-Fi on both devices and join the same local network. Keep anDrop On in the menu bar.
+Enable Bluetooth and Wi-Fi on both devices and join the same local network. Receiving is enabled whenever anDrop is running. Quit anDrop to stop receiving.
 
 To send from the Mac, select files in Finder → Share → anDrop, choose the receiving device and approve there. If the extension is not visible, open anDrop once and enable its Share extension in macOS settings. The menu bar's Send Files action is also available.
 
@@ -71,3 +71,15 @@ If receiving still fails, keep the sender's sharing screen open and verify both 
 The rename control uses the SF Symbols `pencil` beside the recipient name, including names wrapping onto two lines. Clicking the icon or name sends files; clicking the pencil opens the local-name editor.
 
 The name itself is centered below the avatar, with the pencil immediately to its right. Short names such as “Example” fit on one line; longer names use up to two lines. The popup grows with the grid up to a bounded height, then scrolls only the recipient list while keeping the header and actions visible. The local-name editor is a compact sheet without an app-icon header.
+
+## Receive scope and trusted devices
+
+Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Every transfer still requires approval in both modes; trusting a device never enables automatic acceptance.
+
+Open Settings → **Trusted Devices…** to add devices from previous transfers even when they are offline. New devices need one transfer in Everyone mode first. Device rows use manufacturer artwork with a phone/tablet badge. Verify the requesting device yourself. Different local identifier suffixes distinguish devices with identical names. Remove trust or forget a remembered device at any time.
+
+This filter uses Bluetooth identifiers remembered by this Mac, not account or device names. It is not cryptographic pairing or authenticated identity. Add a device again if its identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or connecting over Wi-Fi to download files. Removing trust does not interrupt an already-started transfer.
+
+## Control Center (macOS 26 and later)
+
+Open anDrop, then choose Control Center → **Edit Controls** and search for **anDrop**. Add the single **Receive** control. It opens anDrop’s compact receive panel with Trusted Devices Only / Everyone choices. Public Controls API does not allow a third-party app to embed an AirDrop-style detail panel inside Control Center itself, so this panel opens near the menu bar. If an older Toggle Sharing tile remains after an update, remove that obsolete tile in Edit Controls. This feature uses [Apple’s official Controls API](https://developer.apple.com/documentation/widgetkit/controls-collection).

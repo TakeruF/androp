@@ -106,3 +106,13 @@ A native preview with the same recipient grid verified the SF Symbols pencil bes
 ## Adaptive recipient layout (build 9)
 
 A native preview using the production views checked a one-line “Example” label, centered independently of the pencil; compact one-row height; and the compact name-edit sheet. A 40-device fixture scrolled to the final recipients while retaining the fixed header and footer. Ten bundled manufacturer logos were also displayed with phone/tablet badges. Fixtures used synthetic peers and no Bluetooth or file transfer. The UI build passed compilation and deep/strict signature verification.
+
+## Receive scope, Control Center and identity history update
+
+- Python suite: 51 tests pass, including rejection before key exchange for unlisted devices, mandatory approval for listed devices, revocation while approval is pending, and name-independent filtering.
+- Swift identity/progress suite: 10 tests pass.
+- Native model smoke checks ran in a fresh UUID-named UserDefaults test suite, without modifying the installed app’s settings. Offline history candidates, same-name device separation, Add/Remove/Forget, persisted trust, running=receiving, endpoint metadata, and the one-time legacy-history cleanup passed.
+- The installed build’s deep strict signature check passed. The one-time removal of history records without endpoint identifiers was independently read back by count; identified history was retained.
+- macOS registered the control extension. A user confirmed gallery visibility and the initial control-to-file-picker invocation during development. The final design offers one Receive control opening the host-owned receive-scope panel; its public API boundary is documented in usage.
+- Production UI renders with fictional data cover English/Chinese receive scope and trusted-device history. Manufacturer artwork and phone/tablet badges are reused from the recipient chooser; OPPO/vivo use white logos on green/blue, and Xiaomi retains official orange artwork.
+- These checks do not establish physical-device coverage for other manufacturers or cryptographic peer authentication.

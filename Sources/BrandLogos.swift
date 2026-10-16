@@ -15,5 +15,21 @@ import AppKit
               let image = NSImage(contentsOf: root.appendingPathComponent("BrandLogos").appendingPathComponent(item.value)) else { return }
         result[item.key] = image
     }
+    private static let backgrounds: [String: NSColor] = {
+        var colors = [
+            "OPPO": NSColor(srgbRed: 4/255, green: 106/255, blue: 56/255, alpha: 1),
+            "vivo": NSColor(srgbRed: 65/255, green: 95/255, blue: 1, alpha: 1)
+        ]
+        // Match the orange embedded in the unchanged official Xiaomi artwork.
+        if let url = Bundle.main.resourceURL?.appendingPathComponent("BrandLogos/xiaomi.png"),
+           let data = try? Data(contentsOf: url),
+           let bitmap = NSBitmapImageRep(data: data),
+           let color = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 8)?.usingColorSpace(.sRGB) {
+            colors["Xiaomi"] = color
+        }
+        return colors
+    }()
+    static func background(for brand: String) -> NSColor? { backgrounds[brand] }
+    static func usesWhiteLogo(for brand: String) -> Bool { brand == "OPPO" || brand == "vivo" }
     static func image(for brand: String) -> NSImage? { images[brand] }
 }

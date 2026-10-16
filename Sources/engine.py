@@ -189,6 +189,7 @@ async def stream_archive(response,archive,progress):
 
 class Engine:
     def __init__(self):
+        self.trusted_only=False;self.trusted_ids=set()
         self.destination=str(Path.home()/'Downloads');self.name='anDrop Mac';self.keys=Keys();self.session=None
         self.scanner=None;self.scan_token=None;self.devices={};self.peers={};self.decisions={};self.scan_enabled=True;self.discovering=False;self.jobs=set()
     def launch(self,coro):
@@ -200,7 +201,7 @@ class Engine:
         emit('ble_notify',uuid='9895',data=base64.b64encode(data.encode()).decode(),central=central)
     def update(self,session,state,**kwargs):
         session['state']=state
-        emit('transfer',id=session['id'],direction=session['direction'],peer=session.get('peer','Android'),state=state,**kwargs)
+        emit('transfer',id=session['id'],direction=session['direction'],peer=session.get('peer','Android'),state=state,device_identifier=session.get('central') or session.get('device_identifier'),**kwargs)
     def progress(self,s,n,total):
         now=time.monotonic()
         if now-s.get('last_progress',0)>.2 or n>=total:
@@ -208,6 +209,8 @@ class Engine:
     async def reset(self,s):
         if self.session is s:
             self.session=None;self.keys=Keys();self.read_state()
+    def may_receive(self,central):
+        return not self.trusted_only or bool(central and central.upper() in self.trusted_ids)
     async def receive_write(self,obj):
         central=obj.get('central','')
         if obj.get('uuid')!='9896': return
@@ -216,7 +219,7 @@ class Engine:
         payload=json.loads(raw)
         if not isinstance(payload,dict): return
         if 'key' in payload:
-            if not self.scan_enabled: self.notify('3',central);return
+            if not self.scan_enabled or not self.may_receive(central): self.notify('3',central);return
             if self.session: self.notify('3',central);return
             keys=self.keys;keys.derive(payload['key']);count=int(keys.decrypt(payload['number']))
             if not 1<=count<=10000: self.notify('3',central);return
@@ -227,7 +230,7 @@ class Engine:
             except TimeoutError: accepted=False
             finally: self.decisions.pop(s['id'],None)
             if self.session is not s:return
-            if accepted:
+            if accepted and self.may_receive(central) and self.scan_enabled:
                 self.update(s,'connecting');self.notify('6',central)
                 self.launch(self.expire_receive_offer(s,central))
             else:
@@ -367,6 +370,7 @@ class Engine:
         if not self.scan_enabled or not self.discovering or peer_id not in self.devices:
             self.publish_peers();self.update(s,'failed',detail=t('This device is no longer discoverable. Enable sharing on it and choose it again.','此设备已无法被发现。请在对方设备上开启互传后重新选择。'));return
         device=self.devices[peer_id]  # Keep the selected route while the chooser closes.
+        s['device_identifier']=device.address
         self.session=s;s['task']=asyncio.current_task();self.read_state()
         runner=None;client=None;ws=None
         try:
@@ -518,6 +522,8 @@ class Engine:
             command=obj.get('command')
             if command=='configure':
                 LANG=obj.get('language','en')
+                self.trusted_only=bool(obj.get('trusted_only',False))
+                self.trusted_ids={str(uuid.UUID(value)).upper() for value in obj.get('trusted_ids',[]) if isinstance(value,str) and len(value)==36}
                 self.destination=obj.get('destination',self.destination);self.name=obj.get('name',self.name);self.read_state()
             elif command=='enabled':
                 self.scan_enabled=bool(obj.get('value'))

@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- macOS with the Xcode command line tools and a Swift compiler supporting Swift 6 and `-default-isolation MainActor` (Swift 6.2+).
+- macOS with Xcode 26 or later, including the macOS 26 SDK and App Intents metadata tools and a Swift compiler supporting Swift 6 and `-default-isolation MainActor` (Swift 6.2+).
 - Python 3.14 with the packages pinned in `requirements.txt`.
 - A build machine matching the desired CPU architecture. The development build was arm64; Intel has not been tested.
 
@@ -14,7 +14,7 @@ python3.14 -m venv .venv
 .venv/bin/python build.py
 ```
 
-Build output: `build/anDrop.app`. The script builds the Swift host and Finder extension, freezes the Python engine with PyInstaller, copies licenses, signs the result, and verifies its signature. Temporary staging keeps extended filesystem attributes from invalidating signatures.
+Build output: `build/anDrop.app`. The script builds the Swift host, Finder extension and macOS 26+ Control Center extension, freezes the Python engine with PyInstaller, copies licenses, signs the result, and verifies its signature. Temporary staging keeps extended filesystem attributes from invalidating signatures.
 
 After a full build, `.venv/bin/python build.py --ui-only` reuses its engine for a UI-only change. Rebuild fully whenever the engine or dependencies change.
 

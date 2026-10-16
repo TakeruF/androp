@@ -18,6 +18,9 @@ struct Transfer: Identifiable, Codable {
     var completed: Int64 = 0
     var detail = ""
     var paths: [String] = []
+    var deviceIdentifier: String?
+    var deviceKind: String?
+    var deviceBrand: String?
     var date = Date()
     var active: Bool { !["complete", "failed", "declined", "cancelled"].contains(state) }
     var progress: TransferProgress { TransferProgress(state: state, completed: completed, total: total) }
@@ -49,13 +52,37 @@ struct Transfer: Identifiable, Codable {
     }
 }
 
+struct RememberedDevice: Codable, Identifiable {
+    var id: String
+    var name: String
+    var kind: String?
+    var brand: String?
+    var peer: Peer { Peer(id: id, name: name, brand: brand ?? "", kind: Peer.Kind(rawValue: kind ?? "") ?? .unknown) }
+}
+
 @MainActor
 final class RecipientPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
 @MainActor
+final class ReceivePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+@MainActor
 final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
+    @Published private(set) var forgottenDeviceIdentifiers = Set(UserDefaults.standard.stringArray(forKey: "forgottenDeviceIdentifiers") ?? [])
+    @Published private(set) var trustedOnly = UserDefaults.standard.bool(forKey: "trustedOnly")
+    @Published private(set) var trustedDevices: [RememberedDevice] = {
+        guard let data = UserDefaults.standard.data(forKey: "trustedDevices") else { return [] }
+        return (try? JSONDecoder().decode([RememberedDevice].self, from: data)) ?? []
+    }()
+    @Published private(set) var rememberedDevices: [RememberedDevice] = {
+        guard let data = UserDefaults.standard.data(forKey: "rememberedDevices") else { return [] }
+        return (try? JSONDecoder().decode([RememberedDevice].self, from: data)) ?? []
+    }()
     @Published private(set) var customSharingName = UserDefaults.standard.string(forKey: "customSharingName") ?? ""
     @Published var language = UserDefaults.standard.string(forKey: "language") ?? "system"
     @Published var peers: [Peer] = []
@@ -74,7 +101,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @Published var petalRunning = false
     @Published var petalRepairing = false
     private var compactName = false
-    @Published var receiving = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true
+    let receiving = true
     @Published var engineReady = false
     @Published var notificationsAllowed = false
     @Published var destination = UserDefaults.standard.string(forKey: "destination") ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
@@ -82,6 +109,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private var window: NSWindow?
     private var item: NSStatusItem?
     private var recipientPanel: RecipientPanel?
+    private var receivePanel: ReceivePanel?
+    private var receiveClickMonitors: [Any] = []
     private var completedClickMonitors: [Any] = []
     private var menuTracking = false
     private var activity: NSObjectProtocol?
@@ -120,6 +149,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let data = UserDefaults.standard.data(forKey: "history"), let history = try? JSONDecoder().decode([Transfer].self, from: data) { transfers = history }
+        removeLegacyHistoryOnce()
         setupMenus()
         setupNotifications()
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: L("Receive files from nearby devices", "接收附近设备的文件"))
@@ -131,21 +161,28 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
     }
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return false }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { if receivePanel?.isVisible != true { showSettings() }; return false }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
-        stopCompletedRecipientDismissal()
+        stopCompletedRecipientDismissal(); closeReceiveControls()
         terminating = true; peripheral?.stopAdvertising(); input?.closeFile(); process?.terminate(); saveHistory()
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             if url.isFileURL { addFiles([url]) }
+            else if url.scheme == "androp", url.host == "control" {
+                switch url.path {
+                case "/receive", "/send", "/toggle": showReceiveControls()
+                default: showSettings()
+                }
+                return
+            }
             else if url.scheme == "androp", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), parts.host == "share" {
                 let paths = parts.queryItems?.filter { $0.name == "file" }.compactMap(\.value) ?? []
                 addFiles(paths.filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) })
             }
         }
-        showRecipients()
+        if !selectedFiles.isEmpty { showRecipients() }
     }
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         addFiles(filenames.map { URL(fileURLWithPath: $0) }); showRecipients(); sender.reply(toOpenOrPrint: .success)
@@ -164,7 +201,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         editMenu.addItem(withTitle: L("Paste", "粘贴"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         NSApp.mainMenu = menu
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item?.button?.image = NSImage(systemSymbolName: "arrow.up.arrow.down.circle", accessibilityDescription: "anDrop")
+        item?.button?.image = NSImage(systemSymbolName: "paperplane", accessibilityDescription: "anDrop")
+        item?.button?.image?.isTemplate = true
         item?.button?.toolTip = L("anDrop — Share with Android", "anDrop — 与安卓设备共享文件")
         let statusMenu = NSMenu(); statusMenu.autoenablesItems = false; statusMenu.delegate = self; item?.menu = statusMenu
         rebuildMenu()
@@ -180,7 +218,40 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
     }
     @objc func quit() { NSApp.terminate(nil) }
-    @objc func toggleEnabled() { changeReceiving(!receiving) }
+    @objc func selectTrustedOnly() { changeTrustedOnly(true) }
+    @objc func selectEveryone() { changeTrustedOnly(false) }
+    func changeTrustedOnly(_ value: Bool) {
+        trustedOnly = value; UserDefaults.standard.set(value, forKey: "trustedOnly"); configureEngine(); rebuildMenu()
+    }
+    var knownDevices: [RememberedDevice] {
+        var seen = Set<String>()
+        let history = transfers.compactMap { transfer -> RememberedDevice? in
+            guard let id = transfer.deviceIdentifier, let uuid = UUID(uuidString: id) else { return nil }
+            return RememberedDevice(id: uuid.uuidString, name: transfer.peer, kind: transfer.deviceKind, brand: transfer.deviceBrand)
+        }
+        return (rememberedDevices + history).filter { !forgottenDeviceIdentifiers.contains($0.id) && seen.insert($0.id).inserted }.map { device in
+            var result = device
+            let detailed = history.first { $0.id == device.id && $0.kind != nil }
+            result.kind = result.kind ?? detailed?.kind
+            result.brand = result.brand ?? detailed?.brand
+            return result
+        }
+    }
+    func setTrusted(_ device: RememberedDevice, trusted: Bool) {
+        if trusted {
+            guard knownDevices.contains(where: { $0.id == device.id }) else { return }
+            if !trustedDevices.contains(where: { $0.id == device.id }) { trustedDevices.append(device) }
+        } else { trustedDevices.removeAll { $0.id == device.id } }
+        if let data = try? JSONEncoder().encode(trustedDevices) { UserDefaults.standard.set(data, forKey: "trustedDevices") }
+        configureEngine()
+    }
+    func forgetDevice(_ device: RememberedDevice) {
+        setTrusted(device, trusted: false)
+        rememberedDevices.removeAll { $0.id == device.id }
+        forgottenDeviceIdentifiers.insert(device.id)
+        UserDefaults.standard.set(Array(forgottenDeviceIdentifiers), forKey: "forgottenDeviceIdentifiers")
+        if let data = try? JSONEncoder().encode(rememberedDevices) { UserDefaults.standard.set(data, forKey: "rememberedDevices") }
+    }
     @objc func pickAndSend() { chooseFiles(); if !selectedFiles.isEmpty { showRecipients() } }
     @objc func showSendProgress() { showRecipients() }
     @objc func cancelMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { cancel(t) } }
@@ -195,7 +266,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         func add(_ title: String, _ selector: Selector? = nil, id: String? = nil) {
             let row = NSMenuItem(title: title, action: selector, keyEquivalent: ""); row.target = self; row.representedObject = id; row.isEnabled = selector != nil; menu.addItem(row)
         }
-        add(receiving ? L("anDrop On", "anDrop 已开启") : L("anDrop Off", "anDrop 已关闭"), #selector(toggleEnabled)); menu.items.last?.state = receiving ? .on : .off
+        add(L("Trusted Devices Only", "仅限信任设备"), #selector(selectTrustedOnly)); menu.items.last?.state = trustedOnly ? .on : .off
+        add(L("Everyone", "所有人"), #selector(selectEveryone)); menu.items.last?.state = trustedOnly ? .off : .on
         add(receiving ? L("Discoverable as: \(displayName)", "显示名称：\(displayName)") : L("Sharing is off", "文件共享已关闭"))
         if petalRunning { add(L("Petal coexistence · Experimental", "与 Petal 共存 · 实验性支持")); add(L("Repair Discovery with Petal…", "修复与 Petal 的设备发现…"), #selector(repairPetal)); menu.items.last?.isEnabled = !busy && !petalRepairing }
         menu.addItem(.separator()); add(L("Send Files…", "发送文件…"), #selector(pickAndSend)); menu.items.last?.isEnabled = receiving && !busy
@@ -257,9 +329,50 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
         }
     }
+    @objc func showReceiveControls() {
+        if receivePanel == nil {
+            let host = NSHostingView(rootView: ReceiveControlsView(model: self))
+            let size = host.fittingSize
+            let panel = ReceivePanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+            panel.title = L("anDrop Receive", "anDrop 接收")
+            panel.isReleasedWhenClosed = false; panel.isOpaque = false; panel.backgroundColor = .clear
+            panel.hasShadow = true; panel.hidesOnDeactivate = false; panel.level = .floating; panel.delegate = self
+            let material = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
+            material.material = .popover; material.blendingMode = .behindWindow; material.state = .active
+            material.wantsLayer = true; material.layer?.cornerRadius = 16; material.layer?.masksToBounds = true
+            host.frame = material.bounds; host.autoresizingMask = [.width, .height]; material.addSubview(host)
+            panel.contentView = material
+            receivePanel = panel
+        }
+        guard let panel = receivePanel else { return }
+        let screen = item?.button?.window?.screen ?? NSScreen.main
+        if let frame = screen?.visibleFrame {
+            panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 12, y: frame.maxY - panel.frame.height - 8))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        for monitor in receiveClickMonitors { NSEvent.removeMonitor(monitor) }
+        receiveClickMonitors.removeAll()
+        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: clicks, handler: { [weak self] event in
+            MainActor.assumeIsolated {
+                if let self, event.window !== self.receivePanel { self.closeReceiveControls() }
+            }
+            return event
+        }) { receiveClickMonitors.append(monitor) }
+        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.closeReceiveControls() }
+        }) { receiveClickMonitors.append(monitor) }
+    }
+    func closeReceiveControls() {
+        receivePanel?.orderOut(nil)
+        for monitor in receiveClickMonitors { NSEvent.removeMonitor(monitor) }
+        receiveClickMonitors.removeAll()
+    }
+    @objc func openSettingsFromReceiveControls() { closeReceiveControls(); showSettings() }
     @objc func showSettings() {
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 510), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: min(640, (NSScreen.main?.visibleFrame.height ?? 740) - 100)), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             w.title = L("anDrop Settings", "anDrop 设置"); w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: SettingsView(model: self)); w.center(); window = w
         }
@@ -395,7 +508,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         do { try input.write(contentsOf: bytes + Data([10])); return true }
         catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。"); return false }
     }
-    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage()]); command(["command": "enabled", "value": receiving]) }
+    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "trusted_ids": trustedDevices.map(\.id)]); command(["command": "enabled", "value": receiving]) }
     private func consume(_ data: Data) {
         outputBuffer.append(data)
         if outputBuffer.count > 4_194_304 { outputBuffer.removeAll(); error = L("The sharing service returned an invalid response.", "共享服务返回了无效响应。"); return }
@@ -456,7 +569,18 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if let v = obj["completed"] as? Int64 { transfers[index].completed = v }
         if let v = obj["detail"] as? String { transfers[index].detail = v }
         if let files = obj["files"] as? [[String: Any]] { transfers[index].paths = files.compactMap { $0["path"] as? String } }
+        if let identifier = obj["device_identifier"] as? String, let uuid = UUID(uuidString: identifier) {
+            transfers[index].deviceIdentifier = uuid.uuidString
+        }
         let t = transfers[index]
+        if t.direction == "receive", t.state == "request", let identifier = t.deviceIdentifier {
+            forgottenDeviceIdentifiers.remove(identifier)
+            UserDefaults.standard.set(Array(forgottenDeviceIdentifiers), forKey: "forgottenDeviceIdentifiers")
+            rememberedDevices.removeAll { $0.id == identifier }
+            rememberedDevices.insert(RememberedDevice(id: identifier, name: t.peer, kind: t.deviceKind, brand: t.deviceBrand), at: 0)
+            rememberedDevices = Array(rememberedDevices.prefix(50))
+            if let data = try? JSONEncoder().encode(rememberedDevices) { UserDefaults.standard.set(data, forKey: "rememberedDevices") }
+        }
         if t.state != previous || t.state == "request" {
             if t.state == "request" {
                 sendNotification(t, category: "receive", title: L("Files from \(t.peer)", "来自 \(t.peer) 的文件"), body: L("Accept \(fileCountLabel(t.count))?", "接收 \(t.count) 个文件？"))
@@ -476,8 +600,13 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         updateCompletedRecipientDismissal()
         if !t.active { saveHistory() }
-        if let window { window.setContentSize(NSSize(width: 460, height: transfers.contains { $0.state == "request" } ? 585 : 510)) }
         rebuildMenu()
+    }
+    func removeLegacyHistoryOnce() {
+        guard !UserDefaults.standard.bool(forKey: "endpointHistoryMigrationComplete") else { return }
+        transfers.removeAll { $0.deviceIdentifier == nil }
+        saveHistory()
+        UserDefaults.standard.set(true, forKey: "endpointHistoryMigrationComplete")
     }
     private func saveHistory() {
         let history = Array(transfers.filter { !$0.active }.prefix(100))
@@ -503,7 +632,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if peerIsAmbiguous(peer) { label += " · " + peer.distinguishingCode(among: peers) }
         let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         outgoing = OutgoingPresentation(id: id, peer: peer, files: selectedFiles)
-        transfers.insert(Transfer(id: id, direction: "send", peer: label, state: "preparing", name: selectedFiles[0].lastPathComponent, count: selectedFiles.count), at: 0)
+        transfers.insert(Transfer(id: id, direction: "send", peer: label, state: "preparing", name: selectedFiles[0].lastPathComponent, count: selectedFiles.count, deviceKind: peer.kind.rawValue, deviceBrand: peer.brand), at: 0)
         error = ""
         if !command(["command": "send", "request_id": id, "peer": selectedPeer, "peer_label": label, "paths": selectedFiles.map(\.path)]) {
             updateTransfer(["id": id, "state": "failed", "detail": L("Could not connect to the sharing service.", "无法连接到共享服务。")])
@@ -515,7 +644,6 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func cancel(_ transfer: Transfer) { command(["command": "cancel", "id": transfer.id]) }
     func reveal(_ transfer: Transfer) { NSWorkspace.shared.activateFileViewerSelecting(transfer.paths.map { URL(fileURLWithPath: $0) }) }
-    func changeReceiving(_ value: Bool) { receiving = value; if !value { clearPeers() }; UserDefaults.standard.set(value, forKey: "enabled"); command(["command":"enabled", "value": value]); advertise(); rebuildMenu() }
     @discardableResult
     func changeSharingName(_ value: String) -> Bool {
         let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -870,11 +998,16 @@ private struct RecipientAvatar: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Circle().fill(BrandLogos.image(for: peer.brand) == nil ? Color(nsColor: .quaternaryLabelColor) : .white)
+        Circle().fill(BrandLogos.background(for: peer.brand).map { Color(nsColor: $0) } ?? (BrandLogos.image(for: peer.brand) == nil ? Color(nsColor: .quaternaryLabelColor) : .white))
             .overlay {
                 if let logo = BrandLogos.image(for: peer.brand) {
-                    Image(nsImage: logo).resizable().scaledToFit()
-                        .frame(width: peer.brand == "Xiaomi" ? 44 : 50, height: 44)
+                    if peer.brand == "Xiaomi" {
+                        Image(nsImage: logo).resizable().scaledToFill()
+                            .frame(width: 62, height: 62).clipShape(Circle())
+                    } else {
+                        Image(nsImage: logo).renderingMode(BrandLogos.usesWhiteLogo(for: peer.brand) ? .template : .original).resizable().scaledToFit()
+                            .foregroundStyle(.white).frame(width: 50, height: 44)
+                    }
                 } else {
                     Image(systemName: "rectangle.on.rectangle").font(.system(size: 25)).foregroundStyle(.secondary)
                 }
@@ -897,9 +1030,11 @@ private struct RecipientAvatar: View {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var editingSharingName = false
+    @State private var managingTrustedDevices = false
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-            HStack { Text("anDrop").font(.title2.bold()); Spacer(); Toggle(L("On", "开启"), isOn: Binding(get: { model.receiving }, set: model.changeReceiving)).toggleStyle(.switch).fixedSize() }
+            HStack { Text("anDrop").font(.title2.bold()); Spacer() }
             if let incoming = model.transfers.first(where: { $0.state == "request" }) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L("\(fileCountLabel(incoming.count)) from \(incoming.peer)", "来自 \(incoming.peer) 的 \(incoming.count) 个文件")).font(.headline)
@@ -907,6 +1042,19 @@ struct SettingsView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 8) { Text(L("Save received files to", "接收文件保存位置")).font(.headline); HStack { Text(model.destination).font(.callout).lineLimit(1).truncationMode(.middle); Spacer(); Button(L("Change…", "更改…"), action: model.chooseDestination) }; Text(L("Each transfer needs your approval. Existing files are never overwritten.", "每次接收都需确认。同名文件不会被覆盖。")).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 8) {
+                Picker(L("Allow Requests From", "允许接收请求"), selection: Binding(get: { model.trustedOnly }, set: model.changeTrustedOnly)) {
+                    Text(L("Trusted Devices Only", "仅限信任设备")).tag(true)
+                    Text(L("Everyone", "所有人")).tag(false)
+                }
+                HStack {
+                    Text(L("\(model.trustedDevices.count) trusted devices", "\(model.trustedDevices.count) 台信任设备")).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(L("Trusted Devices…", "信任设备…")) { managingTrustedDevices = true }
+                }
+                Text(L("Every transfer still needs approval. Nearby devices can still discover this Mac.", "每次接收仍需确认。附近设备仍可发现此 Mac。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Picker(L("Language", "语言"), selection: Binding(get: { model.language }, set: model.changeLanguage)) {
                 Text(L("System Default", "跟随系统")).tag("system")
                 Text("English").tag("en")
@@ -935,10 +1083,87 @@ struct SettingsView: View {
             if model.petalRunning { Button(model.petalRepairing ? L("Restarting Petal…", "正在重启 Petal…") : L("Repair Discovery with Petal", "修复与 Petal 的设备发现"), action: model.repairPetal).disabled(model.busy || model.petalRepairing) }
             HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text("0.1.1").font(.caption).foregroundStyle(.secondary) }
             Text(L("Mutual Transfer Alliance (互传联盟) · Same Wi-Fi required.", "互传联盟 · 需连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
-        }.padding(24).frame(width: 460)
+        }.padding(24)
+        }.frame(width: 460, height: min(640, (NSScreen.main?.visibleFrame.height ?? 740) - 100))
             .sheet(isPresented: $editingSharingName) {
                 SharingNameView(model: model)
             }
+            .sheet(isPresented: $managingTrustedDevices) { TrustedDevicesView(model: model) }
+    }
+}
+
+struct ReceiveControlsView: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("anDrop").font(.headline)
+                Spacer()
+            }.padding(.horizontal, 6).padding(.bottom, 4)
+            Divider()
+            ReceiveScopeRow(title: L("Trusted Devices Only", "仅限信任设备"), symbol: "checkmark.shield", selected: model.trustedOnly, enabled: model.receiving) { model.changeTrustedOnly(true) }
+            ReceiveScopeRow(title: L("Everyone", "所有人"), symbol: "person.2.fill", selected: !model.trustedOnly, enabled: model.receiving) { model.changeTrustedOnly(false) }
+            Divider()
+            HStack { Spacer(); Button(L("Settings…", "设置…"), action: model.openSettingsFromReceiveControls).buttonStyle(.link).font(.caption) }
+        }.padding(12).frame(width: 300).onExitCommand(perform: model.closeReceiveControls)
+    }
+}
+
+struct ReceiveScopeRow: View {
+    let title: String
+    let symbol: String
+    let selected: Bool
+    let enabled: Bool
+    let action: () -> Void
+    @State private var hovering = false
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: symbol).font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(selected && enabled ? Color.accentColor : Color.secondary)
+                    .frame(width: 32, height: 32)
+                    .background(selected && enabled ? Color.white : Color.secondary.opacity(0.16), in: Circle())
+                Text(title).font(.system(size: 14, weight: .medium))
+                Spacer(minLength: 0)
+            }.padding(6).contentShape(Rectangle())
+                .background(hovering && enabled ? Color.primary.opacity(0.07) : Color.clear, in: RoundedRectangle(cornerRadius: 9))
+        }.buttonStyle(.plain).disabled(!enabled).onHover { hovering = $0 }
+            .accessibilityValue(selected ? L("Selected", "已选择") : L("Not selected", "未选择"))
+    }
+}
+
+struct TrustedDevicesView: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L("Trusted Devices", "信任设备")).font(.headline)
+            Text(L("Add a device from previous transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it.", "可从下方的传输历史添加设备，无需当前可见。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。"))
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(model.trustedDevices) { device in deviceRow(device, trusted: true) }
+                    ForEach(model.knownDevices.filter { device in !model.trustedDevices.contains { $0.id == device.id } }) { device in deviceRow(device, trusted: false) }
+                    if model.trustedDevices.isEmpty && model.knownDevices.isEmpty { Text(L("No devices yet", "暂无设备")).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 80) }
+                }
+            }.frame(height: 230)
+            Text(L("Remembered Bluetooth identifiers are used, not names or accounts. This is not cryptographic pairing. If an identifier changes, add the device again.", "按本机记住的蓝牙标识符识别，不按名称或账号识别。这不是加密配对；标识符变更后需重新添加。"))
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack { Spacer(); Button(L("Done", "完成")) { dismiss() }.keyboardShortcut(.defaultAction) }
+        }.padding(20).frame(width: 420)
+    }
+    private func deviceRow(_ device: RememberedDevice, trusted: Bool) -> some View {
+        HStack {
+            RecipientAvatar(peer: device.peer)
+                .scaleEffect(0.64).frame(width: 44, height: 44).padding(.trailing, 6)
+            VStack(alignment: .leading) {
+                Text(device.name).lineLimit(2)
+                Text(String(device.id.suffix(8))).font(.caption.monospaced()).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(trusted ? L("Remove", "移除") : L("Add", "添加")) { model.setTrusted(device, trusted: !trusted) }
+            if !trusted { Button { model.forgetDevice(device) } label: { Image(systemName: "trash") }.help(L("Forget Device", "忘记设备")) }
+        }
     }
 }
 

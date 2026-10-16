@@ -1,13 +1,15 @@
 # Documentation images / 文档画面
 
-These PNGs are rendered from the production `RecipientView` and `SettingsView` with fictional data. They are illustrative UI captures, **not evidence of device compatibility or an actual transfer**.
+These PNGs are rendered from the production recipient, receive-scope, settings and trusted-device SwiftUI views with fictional data. They are illustrative UI captures, **not evidence of device compatibility or an actual transfer**.
 
-这些 PNG 使用实际应用的设备选择、发送进度和设置界面，填入虚构数据生成。它们用于说明操作，**不代表真实设备连接、传输或品牌兼容性验证**。
+这些 PNG 使用实际应用的设备选择、发送进度、接收范围、设置及信任设备界面，填入虚构数据生成。它们用于说明操作，**不代表真实设备连接、传输或品牌兼容性验证**。
 
 | Filename | Scene |
 | --- | --- |
 | `recipients-zh.png`, `recipients-en.png` | Four fictional phones/tablets with brand badges and local-name controls |
 | `sending-zh.png`, `sending-en.png` | Synthetic 42% outgoing transfer of `Project.pdf` |
+| `trusted-zh.png`, `trusted-en.png` | Two offline devices from fictional transfer history, with Add buttons |
+| `receive-zh.png`, `receive-en.png` | Everyone / Trusted Devices Only receive-scope panel |
 | `settings-zh.png`, `settings-en.png` | Mock `Studio Mac`, `~/Downloads`, languages and notification settings |
 
 ## Regenerate on macOS

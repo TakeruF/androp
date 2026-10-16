@@ -28,7 +28,7 @@ Clicking another window during sending moves anDrop into the background while th
 
 ### 3. Set it up your way
 
-Received files go directly into **Downloads** by default. The menu bar provides On/Off, Send Files, progress, recent transfers and Settings; no main window needs to stay open.
+Received files go directly into **Downloads** by default. The menu bar provides Send Files, progress, recent transfers and Settings; no main window needs to stay open.
 
 <details>
 <summary>View Settings (mock data)</summary>
@@ -43,7 +43,7 @@ Received files go directly into **Downloads** by default. The menu bar provides 
 
 - Use a Mac running anDrop and a phone or tablet with a **compatible Mutual Transfer Alliance sharing feature**.
 - Enable Bluetooth on both and join the same local Wi-Fi network. Guest networks or networks that isolate devices may prevent transfers.
-- On first launch, allow Bluetooth, Local Network, notifications and destination-folder access when needed. Keep anDrop On in the menu bar.
+- On first launch, allow Bluetooth, Local Network, notifications and destination-folder access when needed. Receiving is enabled whenever anDrop is running. Quit anDrop to stop receiving.
 
 ### Mac → phone or tablet
 
@@ -72,6 +72,22 @@ One transfer runs at a time. Compress folders first. Send files with identical b
 
 Names and privacy: local device names allow **40 characters** and do not rename the phone or account. The Mac uses its system Computer Name by default. Click the pencil beside the nearby name in Settings to set a custom sharing name (up to 15 UTF-8 bytes); leave it blank to restore the default. This does not rename your Mac. Nearby advertisements allow **15 UTF-8 bytes**—15 ASCII characters or typically 5 Chinese characters—while transfer confirmations use the full name. Nearby devices can see the advertised name. Transfer history stays on this Mac and can be cleared in Settings. While Petal runs, anDrop temporarily uses `A` nearby and keeps a Dock icon to improve coexistence.
 
+## Receive scope and trusted devices
+
+Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Every transfer still requires approval in both modes; trusting a device never enables automatic acceptance.
+
+Open Settings → **Trusted Devices…** to add devices from previous transfers even when they are offline. New devices need one transfer in Everyone mode first. Device rows use manufacturer artwork with a phone/tablet badge. Verify the requesting device yourself. Different local identifier suffixes distinguish devices with identical names. Remove trust or forget a remembered device at any time.
+
+This filter uses Bluetooth identifiers remembered by this Mac, not account or device names. It is not cryptographic pairing or authenticated identity. Add a device again if its identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or connecting over Wi-Fi to download files. Removing trust does not interrupt an already-started transfer.
+
+![anDrop trusted devices from mock history](docs/images/trusted-en.png)
+
+## Control Center (macOS 26 and later)
+
+Open anDrop, then choose Control Center → **Edit Controls** and search for **anDrop**. Add the single **Receive** control. It opens anDrop’s compact receive panel with Trusted Devices Only / Everyone choices. Public Controls API does not allow a third-party app to embed an AirDrop-style detail panel inside Control Center itself, so this panel opens near the menu bar. If an older Toggle Sharing tile remains after an update, remove that obsolete tile in Edit Controls. This feature uses [Apple’s official Controls API](https://developer.apple.com/documentation/widgetkit/controls-collection).
+
+![anDrop receive controls](docs/images/receive-en.png)
+
 ## Which devices work?
 
 The Mutual Transfer Alliance is a cross-brand ecosystem used by manufacturers including Xiaomi, HONOR, OPPO and vivo. **It is separate from Google Quick Share and is not an Android-wide standard.** See [HONOR’s official overview](https://www.honor.com/cn/support/content/zh-cn15883773/). Compatibility depends on model, region and software version. Alliance membership or a displayed logo does not mean that anDrop has been tested with that device.
@@ -91,7 +107,7 @@ See the [compatibility matrix](docs/compatibility.md) and [test report](docs/tes
 
 For developers and users comfortable installing build tools. **There is no one-click installer in this repository yet.** If you are unfamiliar with the terminal, you can review the usage and compatibility information above and wait for a future packaged release.
 
-You need macOS, Xcode command line tools, Swift 6.2+ and Python 3.14. The recorded environment used Apple Silicon, macOS 27.0.1, Swift 6.4 and Python 3.14.7.
+You need macOS, Xcode 26 or later (including the macOS 26 SDK and App Intents tools), Swift 6.2+ and Python 3.14. The recorded environment used Apple Silicon, macOS 27.0.1, Swift 6.4 and Python 3.14.7.
 
 After downloading or cloning this repository, run these commands in its directory:
 

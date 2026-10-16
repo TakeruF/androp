@@ -41,7 +41,7 @@ if let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns").fla
 let imageDirectory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 for language in ["zh", "en"] {
     UserDefaults.standard.setVolatileDomain([
-        "language": language, "customSharingName": "", "peerAliases": [String: String](),
+        "language": language, "trustedOnly": false, "trustedDevices": Data(), "rememberedDevices": Data(), "customSharingName": "", "peerAliases": [String: String](),
         "destination": "~/Downloads", "enabled": true,
     ], forName: UserDefaults.argumentDomain)
     let model = AppModel()
@@ -64,6 +64,13 @@ for language in ["zh", "en"] {
     try renderDocumentation(RecipientView(model: model), to: imageDirectory.appendingPathComponent("sending-\(language).png"))
     model.outgoing = nil
     model.transfers = []
+    try renderDocumentation(ReceiveControlsView(model: model), to: imageDirectory.appendingPathComponent("receive-\(language).png"))
     try renderDocumentation(SettingsView(model: model), to: imageDirectory.appendingPathComponent("settings-\(language).png"))
+    model.transfers = [
+        Transfer(id: "mock-received", direction: "receive", peer: names[0], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000001", deviceKind: "phone", deviceBrand: "OPPO"),
+        Transfer(id: "mock-sent", direction: "send", peer: names[1], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000002", deviceKind: "tablet", deviceBrand: "OPPO"),
+    ]
+    model.peers = []
+    try renderDocumentation(TrustedDevicesView(model: model), to: imageDirectory.appendingPathComponent("trusted-\(language).png"))
 }
-print("Rendered six mock documentation images.")
+print("Rendered ten mock documentation images.")
