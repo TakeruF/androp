@@ -98,3 +98,7 @@ Build 7 adds a bounded retry only while establishing the initial WebSocket, befo
 In a subsequent physical tablet-to-Mac test, the first connection attempt encountered the macOS host-unreachable error. Attempt two connected, and one 83,249-byte file completed download, saving and the completion exchange. The user confirmed success; local checks confirmed one saved file of that size directly in Downloads. A sender-side hash comparison was not performed. This demonstrates recovery in that attempt, not a guarantee that every connection reset is recoverable.
 
 Notifications now use localized, actionable messages for transfer errors rather than raw exception strings containing endpoints, object addresses or filenames. Local diagnostic summaries record phase, error class, numeric error code and attempt number; raw captures are excluded from the repository.
+
+## Inline rename control (build 8)
+
+A native preview with the same recipient grid verified the SF Symbols pencil beside a short name and a two-line name. Clicking the tablet pencil opened that device's name editor without starting a transfer; the editor was cancelled. The UI-only build passed compilation and deep/strict signature verification. No additional physical transfer was performed for this layout change.

@@ -67,3 +67,5 @@ The recipient popup has no title bar or traffic-light window buttons. It uses th
 A compatible sender may label the recipient as having rejected a transfer when anDrop aborts after a connection failure. That message alone does not mean the Mac user pressed Decline. anDrop now briefly retries transient failures while opening the initial connection. It does not retry certificate/protocol failures or resume partial files automatically.
 
 If receiving still fails, keep the sender's sharing screen open and verify both devices use the same Wi-Fi, then send again. Notifications show an actionable explanation; local diagnostics identify the failing stage without putting IP addresses or internal Python objects into the notification.
+
+The rename control uses the SF Symbols `pencil` beside the recipient name, including names wrapping onto two lines. Clicking the icon or name sends files; clicking the pencil opens the local-name editor.

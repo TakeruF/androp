@@ -679,40 +679,55 @@ private struct RecipientTile: View {
         [model.peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh"), model.peerIsAmbiguous(peer) ? peer.distinguishingCode(among: model.peers) : ""]
             .filter { !$0.isEmpty }.joined(separator: ", ")
     }
-    private var recipientContent: some View {
-        VStack(spacing: 9) {
-            RecipientAvatar(peer: peer)
-                .background { if let transfer { RecipientProgressRing(progress: transfer.progress) } }
-                .padding(6)
-            Text(model.peerTitle(peer)).font(.system(size: 12, weight: .medium))
-                .multilineTextAlignment(.center).lineLimit(2).frame(height: 30, alignment: .top)
-            if model.peerIsAmbiguous(peer) {
-                Text(peer.distinguishingCode(among: model.peers)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-            }
-        }.frame(maxWidth: .infinity).padding(.vertical, 5).contentShape(Rectangle())
+    private var avatar: some View {
+        RecipientAvatar(peer: peer)
+            .background { if let transfer { RecipientProgressRing(progress: transfer.progress) } }
+            .padding(6)
     }
+    private var name: some View {
+        Text(model.peerTitle(peer)).font(.system(size: 12, weight: .medium))
+            .multilineTextAlignment(.center).lineLimit(2)
+    }
+    private func send() { model.selectedPeer = peer.id; model.send() }
     var body: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 9) {
             if let transfer {
-                recipientContent.accessibilityElement(children: .ignore).accessibilityLabel(accessibleName)
+                avatar.accessibilityHidden(true)
+                name.frame(height: 30, alignment: .top).accessibilityLabel(accessibleName)
                 Text(transfer.progress.label(chinese: appLanguage() == "zh"))
                     .font(.system(size: 11)).monospacedDigit()
                     .foregroundStyle(transfer.state == "failed" ? Color.red : Color.blue)
                     .lineLimit(2).multilineTextAlignment(.center)
                     .accessibilityLabel(transfer.progress.label(chinese: appLanguage() == "zh"))
             } else {
-                Button { model.selectedPeer = peer.id; model.send() } label: { recipientContent }
+                Button(action: send) { avatar }
                     .buttonStyle(.plain).disabled(model.busy || !model.receiving)
-                    .help([model.peerTitle(peer), model.peerSubtitle(peer)].filter { !$0.isEmpty }.joined(separator: " · "))
                     .accessibilityLabel(accessibleName)
-                    .contextMenu { Button(L("Name on This Mac…", "设置本机名称…")) { model.renamePeer(peer) } }
-                Button { model.renamePeer(peer) } label: { Image(systemName: "pencil").font(.system(size: 10)).frame(width: 24, height: 16) }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).opacity(hovered ? 1 : 0.45)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Button(action: send) { name }
+                        .buttonStyle(.plain).disabled(model.busy || !model.receiving)
+                        .layoutPriority(1)
+                        .accessibilityLabel(accessibleName)
+                    Button { model.renamePeer(peer) } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 10, weight: .medium))
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).opacity(hovered ? 1 : 0.65)
                     .help(L("Name on This Mac", "在此 Mac 上的名称"))
                     .accessibilityLabel(L("Name \(model.peerTitle(peer)) on this Mac", "为 \(model.peerTitle(peer)) 设置本机名称"))
                     .disabled(model.busy)
+                }.frame(height: 30, alignment: .top)
             }
-        }.onHover { hovered = $0 }
+            if model.peerIsAmbiguous(peer) {
+                Text(peer.distinguishingCode(among: model.peers)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 5)
+        .help([model.peerTitle(peer), model.peerSubtitle(peer)].filter { !$0.isEmpty }.joined(separator: " · "))
+        .contextMenu { if transfer == nil { Button(L("Name on This Mac…", "设置本机名称…")) { model.renamePeer(peer) } } }
+        .onHover { hovered = $0 }
     }
 }
 
