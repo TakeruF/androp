@@ -18,7 +18,7 @@ From the repository root, with the Swift build tools described in [building](../
 python3 scripts/render-docs.py
 ```
 
-The script compiles a disposable copy of the production UI and appends `scripts/DocumentationPreview.swift`. It uses a separate bundle identifier and a volatile preferences domain. The system Computer Name getter is replaced with a fixed mock value in that disposable build only. No app delegate is installed, no window is shown, and Bluetooth, notifications, the transfer engine and login items are not started. It renders the views directly to 2× PNGs. It does not read real history, connect to devices or change the installed app.
+The script compiles a disposable copy of the production UI and appends `scripts/DocumentationPreview.swift`. It uses a separate bundle identifier and a volatile preferences domain. The system Computer Name getter is replaced with a fixed mock value in that disposable build only. No app delegate is installed, no window is shown, and Bluetooth, notifications, the transfer engine and login items are not started. It renders the views directly to 2× PNGs and removes EXIF, text and timestamp metadata. It does not read real history, connect to devices or change the installed app.
 
 Review all six images after changing UI or localization. The capture of a SwiftUI view does not include macOS window shadows, the menu bar, permission dialogs or system notification banners; those are not simulated here. Build/runtime logs belong outside this folder.
 

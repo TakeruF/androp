@@ -44,3 +44,19 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
     # This renders views to PNGs without starting the app delegate, Bluetooth,
     # transfer engine, notifications, status item, login item or an actual transfer.
     subprocess.run([str(executable), str(OUTPUT)], check=True)
+
+# AppKit may add EXIF resolution data. Keep only image/color chunks so no
+# incidental text or EXIF metadata reaches the documentation repository.
+for image in OUTPUT.glob('*.png'):
+    data = image.read_bytes()
+    assert data[:8] == b'\x89PNG\r\n\x1a\n'
+    clean = bytearray(data[:8])
+    offset = 8
+    while offset < len(data):
+        size = int.from_bytes(data[offset:offset + 4], 'big')
+        end = offset + size + 12
+        assert end <= len(data), f'Truncated PNG: {image.name}'
+        if data[offset + 4:offset + 8] not in (b'tEXt', b'iTXt', b'zTXt', b'eXIf', b'tIME'):
+            clean.extend(data[offset:end])
+        offset = end
+    image.write_bytes(clean)
