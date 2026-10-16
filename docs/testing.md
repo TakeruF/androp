@@ -244,3 +244,11 @@ TLS 控制连接一旦建立，就不再允许后续消息改换端点。重复�
 此修复处理的是同一协议会话中的端点更新，不保证所有厂商的热点服务均能通过 WLAN 访问。仍只宣称已记录的实机与模拟协议覆盖。
 
 正式生产构建 **1.0.1（10002）** 已安装并启动。在 OPPO Connect 保持手机已连接的状态下，通过正常应用的接收确认完成了手机 → Mac 的 **8 MiB** 传输，历史状态为完成，保存文件的 SHA-256 与源文件一致。生产包通过 Developer ID 深度／严格签名验证；80 个 Mach-O 文件通过 arm64／最低 macOS 14 检查，未引用构建机库路径。此构建尚未发布为新的 GitHub Release，也未重新提交公证。
+
+## 1.0.1（10003）：Finder 共享窗口的焦点交接
+
+Finder 共享扩展原先先打开 anDrop，再结束扩展请求。共享面板关闭时，宿主应用可能重新获得焦点，遮住刚打开的接收设备窗口，让用户感觉窗口一闪即逝。现在先完成扩展请求，再在完成回调中打开 anDrop；没有使用定时抢回焦点或将窗口始终置顶的方式。
+
+安装正式签名构建后，使用合成文本文件从 Finder 的共享菜单验证了：应用已运行时打开、取消后再次共享、应用退出后由共享扩展启动。三次均显示正确文件和接收设备列表，窗口保持可操作。此次验证针对共享入口与窗口交接，没有发送用户文件，也不计为新的端到端文件传输测试。编译、严格签名校验和 80 个 Mach-O 的 macOS 14／arm64 检查通过。
+
+回调遵循 Apple 的 [completeRequest(returningItems:completionHandler:) 文档](https://developer.apple.com/documentation/foundation/nsextensioncontext/completerequest(returningitems:completionhandler:))，在扩展完成请求后交接；过期回调不会再次打开应用。

@@ -37,8 +37,17 @@ import UniformTypeIdentifiers
         guard !urls.isEmpty else { titleLabel.stringValue = L("Could not open these files. Use Send Files in anDrop.", "无法获取这些文件。请使用 anDrop 的发送文件功能。"); return }
         var components = URLComponents(); components.scheme = "androp"; components.host = "share"
         components.queryItems = urls.map { URLQueryItem(name: "file", value: $0.path) }
-        guard let url = components.url, NSWorkspace.shared.open(url) else { titleLabel.stringValue = L("Open anDrop once, then try sharing again.", "请先启动 anDrop，然后重试共享。"); return }
-        finish()
+        guard let url = components.url, NSWorkspace.shared.urlForApplication(toOpen: url) != nil,
+              let context = extensionContext else { titleLabel.stringValue = L("Open anDrop once, then try sharing again.", "请先启动 anDrop，然后重试共享。"); return }
+        // Dismissing the host's share sheet restores its focus. Finish that
+        // handoff before opening our recipient window, otherwise Finder can
+        // immediately cover the window we just activated.
+        context.completeRequest(returningItems: nil) { expired in
+            guard !expired else { return }
+            Task { @MainActor in
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
     @objc private func finish() { extensionContext?.completeRequest(returningItems: nil, completionHandler: nil) }
 }
