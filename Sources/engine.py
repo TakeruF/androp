@@ -286,23 +286,59 @@ class Engine:
             s=self.session;k=s['keys']
             if 'reuse' in payload and 'port' in payload and 'ip' not in payload and s.get('network_hint') and k.decrypt(payload['reuse'])=='true':
                 payload={**payload,'ip':k.encrypt(s['network_hint'])}
-            if 'ip' in payload and 'port' in payload and 'task' not in s:
-                host=k.decrypt(payload['ip']);port=int(k.decrypt(payload['port']));local=local_endpoint(host,port)
-                emit('diagnostic',detail='receive_network_offer',mode='lan' if 'wlan' in payload else 'direct')
-                udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-                try:
-                    bind_interface(udp,interface_for_address(local));udp.bind((local,port+1));udp.setblocking(False)
-                except BaseException:udp.close();raise
-                if 'wlan' in payload:self.notify({'wlan':'wlan','wlan_accept':True,'ip':k.encrypt(local)},central)
-                s['task']=self.launch(self.receive(s,host,port,udp))
+            if 'ip' in payload and 'port' in payload:
+                host=k.decrypt(payload['ip']);port=int(k.decrypt(payload['port']))
+                # A peer may abandon its first WLAN listener and announce a new
+                # hotspot port. Its LAN address from THIS BLE exchange remains a
+                # candidate for that port; never borrow another device's history.
+                if 'wlan' in payload and private_ipv4(host):s['lan_hint']=host
+                if 'ssid' in payload:
+                    lan=s.get('lan_hint') or s.get('network_hint')
+                    if lan and private_ipv4(lan) and direct_local_address(lan):
+                        host=lan
+                await self.replace_receive_route(s,host,port,'wlan' in payload)
             elif 'ssid' in payload and 'task' not in s:
                 self.notify('cancel',central);self.update(s,'failed',detail=t('The other device requested a direct Wi-Fi connection that is not reachable from this Mac. Disconnect its other interconnect session and try again.','对方请求的 Wi-Fi 直连网络无法从此 Mac 访问。请断开对方与其他设备的互联后重试。'));await self.reset(s)
+    async def replace_receive_route(self,s,host,port,is_lan):
+        async with s.setdefault('route_lock',asyncio.Lock()):
+            if self.session is not s or s.get('channel_established'):return
+            route=(host,port)
+            if s.get('route')==route:return
+            local=local_endpoint(host,port)
+            if s.get('route_changes',0)>=4:
+                raise TransferError(t('The other device keeps changing its connection. Please try again.','对方设备反复切换连接，请重试。'))
+            previous=s.get('task')
+            if previous:
+                # Cancel only the obsolete connect attempt. Do not cancel the
+                # protocol transfer, reset its keys, or emit a terminal result.
+                s.setdefault('superseded_tasks',set()).add(previous)
+                previous.cancel();await asyncio.gather(previous,return_exceptions=True)
+                s['superseded_tasks'].discard(previous)
+                old_udp=s.pop('route_udp',None)
+                if old_udp:old_udp.close()  # Also covers a task cancelled before it starts.
+                emit('diagnostic',detail='receive_endpoint_replaced')
+            if self.session is not s or s.get('cancel_requested'):return
+            s['route']=route;s['route_changes']=s.get('route_changes',0)+1;s['local_address']=local
+            emit('diagnostic',detail='receive_network_offer',mode='lan' if is_lan else 'direct')
+            udp=None
+            try:
+                udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+                bind_interface(udp,interface_for_address(local));udp.bind((local,port+1));udp.setblocking(False)
+            except OSError as error:
+                if udp:udp.close()
+                udp=None
+                emit('diagnostic',detail='receive_udp_probe_unavailable',phase='bind',error_type=type(error).__name__,errno=error.errno)
+            s['route_udp']=udp
+            if is_lan:self.notify({'wlan':'wlan','wlan_accept':True,'ip':s['keys'].encrypt(local)},s['central'])
+            s['task']=self.launch(self.receive(s,host,port,udp))
+
     async def expire_receive_offer(self,s,central):
         await asyncio.sleep(15)
         if self.session is s and s.get('state') in ('verifying','connecting') and 'task' not in s:
             self.notify('cancel',central);self.update(s,'failed',detail=t('The other device did not finish network negotiation. Keep sharing open and check whether another interconnect session is using the connection.','对方未完成网络协商。请保持互传页面打开，并检查是否有其他设备互联正在占用连接。'));await self.reset(s)
     async def receive(self,s,host,port,udp):
         async def bandwidth():
+            if udp is None:return 0.0
             total=0;start=None;loop=asyncio.get_running_loop()
             while total<262144:
                 packet,addr=await loop.sock_recvfrom(udp,4096)
@@ -315,10 +351,11 @@ class Engine:
             self.update(s,'verifying')
             context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);context.check_hostname=False;context.verify_mode=ssl.CERT_NONE
             timeout=ClientTimeout(total=None,sock_connect=8,sock_read=35)
-            local=udp.getsockname()[0]
+            local=udp.getsockname()[0] if udp else s['local_address']
             connector=TCPConnector(local_addr=(local,0),socket_factory=client_socket_factory(local))
             async with ClientSession(timeout=timeout,trust_env=False,connector=connector) as client:
                 async with await connect_receive_channel(lambda: client.ws_connect(f'https://{host}:{port}/websocket',ssl=context,max_msg_size=131072),diagnostic) as ws:
+                    s['channel_established']=True
                     phase='bandwidth';diagnostic('receive_connected')
                     connection=ws._response.connection
                     sslobject=connection.transport.get_extra_info('ssl_object')
@@ -362,6 +399,7 @@ class Engine:
                     except TimeoutError:pass
                     self.update(s,'complete',files=saved,count=count,total=size,completed=size)
         except asyncio.CancelledError:
+            if asyncio.current_task() in s.get('superseded_tasks',()):return
             if ws and not ws.closed:
                 try:await ws.send_str(wire('action',101,'status',{'taskId':taskid,'type':3,'reason':'user interrupt'}))
                 except Exception:pass
@@ -370,7 +408,9 @@ class Engine:
             diagnostic('receive_failed',error_type=type(e).__name__,errno=getattr(e,'errno',None))
             self.notify('cancel',s['central']);self.update(s,'failed',detail=transfer_error_detail(e))
         finally:
-            bw.cancel();udp.close();await self.reset(s)
+            bw.cancel()
+            if udp:udp.close()
+            if asyncio.current_task() not in s.get('superseded_tasks',()):await self.reset(s)
     def clear_peers(self):
         self.peers.clear();self.devices.clear();emit('peers',peers=[])
     def prune_peers(self):
@@ -615,8 +655,13 @@ class Engine:
                 if future and not future.done():future.set_result(bool(obj.get('accept')))
             elif command=='send':await self.send(obj['peer'],obj['paths'],obj.get('peer_label'),obj.get('request_id'))
             elif command=='cancel' and self.session and self.session['id']==obj.get('id'):
-                s=self.session
-                if s.get('task'):s['task'].cancel()
+                s=self.session;s['cancel_requested']=True
+                if s.get('task'):
+                    task=s['task'];task.cancel();await asyncio.gather(task,return_exceptions=True)
+                    if self.session is s:
+                        udp=s.pop('route_udp',None)
+                        if udp:udp.close()
+                        self.notify('cancel',s.get('central'));self.update(s,'cancelled');await self.reset(s)
                 else:
                     future=self.decisions.get(s['id'])
                     if future and not future.done():future.set_result(False)

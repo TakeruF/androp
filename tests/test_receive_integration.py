@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 anDrop contributors
 """Actual TLS/WebSocket/HTTP transfers; only the BLE transport is substituted."""
-import asyncio,datetime,hashlib,io,json,socket,ssl,sys,tempfile,unittest,uuid,zipfile
+import base64,asyncio,datetime,hashlib,io,json,socket,ssl,sys,tempfile,unittest,uuid,zipfile
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'Sources'))
@@ -10,10 +10,10 @@ from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes,serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from engine import Engine,wire,parse_wire,sender_identifier
+from engine import Engine,wire,parse_wire,sender_identifier,Keys
 
 class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False):
+    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False):
         files=files or {'日本語.txt':b'synthetic file\n','empty.bin':b''}
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);destination=root/'received';destination.mkdir()
@@ -58,7 +58,28 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     asyncio.current_task().cancel()
             try:
                 with patch('engine.emit',side_effect=observe):
-                    await asyncio.wait_for(engine.receive(session,'127.0.0.1',port,udp),8)
+                    if replace_route or udp_conflict:
+                        session['keys']=Keys();session['keys'].derive(Keys().public);session['lan_hint']='127.0.0.1'
+                        udp.close();udp_port=port+1
+                        with socket.socket() as stale, socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as occupied:
+                            stale.bind(('127.0.0.1',0));stale_port=stale.getsockname()[1];stale.close()
+                            if udp_conflict:occupied.bind(('127.0.0.1',port+1))
+                            with patch('engine.local_endpoint',return_value='127.0.0.1'),patch('engine.direct_local_address',side_effect=lambda h:'127.0.0.1' if h=='127.0.0.1' else None),patch('engine.private_ipv4',return_value=True):
+                                if replace_route:
+                                    await engine.replace_receive_route(session,'127.0.0.1',stale_port,False)
+                                    for _ in range(900):
+                                        if any(e.get('detail')=='receive_connect_interrupted' for e in events):break
+                                        await asyncio.sleep(.01)
+                                    else:self.fail('Old listener did not refuse the connection')
+                                payload={'ssid':'synthetic','ip':session['keys'].encrypt('192.168.49.1'),'port':session['keys'].encrypt(str(port))}
+                                await engine.receive_write({'uuid':'9896','central':session['central'],'data':base64.b64encode(json.dumps(payload).encode()).decode()})
+                                await asyncio.wait_for(session['task'],8)
+                        if replace_route:self.assertTrue(any(e.get('detail')=='receive_endpoint_replaced' for e in events))
+                        if udp_conflict:self.assertTrue(any(e.get('detail')=='receive_udp_probe_unavailable' and e.get('phase')=='bind' for e in events))
+                        terminals=[e['state'] for e in events if e.get('state') in ('failed','cancelled','complete','declined')]
+                        self.assertEqual(len(terminals),1,'Superseded connect attempt must not end the transfer')
+                    else:
+                        await asyncio.wait_for(engine.receive(session,'127.0.0.1',port,udp),8)
                 should_succeed=(not trusted or (allowed and sender=='test-sender-unique-device' and not revoked)) and decision and not disabled and not malformed_count
                 if cancel_midstream:
                     self.assertEqual(session['state'],'cancelled')
@@ -99,3 +120,12 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancel_mid_download_cleans_partial_files(self):
         await self.transfer(files={'cancel.bin':bytes(range(256))*32768},cancel_midstream=True)
+
+    async def test_new_hotspot_port_replaces_refused_lan_listener(self):
+        await self.transfer(replace_route=True,trusted=True)
+
+    async def test_untrusted_sender_still_rejected_after_route_replacement(self):
+        await self.transfer(replace_route=True,trusted=True,allowed=False)
+
+    async def test_busy_udp_port_does_not_block_tls_download(self):
+        await self.transfer(udp_conflict=True,udp_probes=False)
