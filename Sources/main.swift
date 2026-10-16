@@ -378,7 +378,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 var summary: [String: Any] = ["event": event, "time": Date().ISO8601Format(), "bluetooth": bluetooth, "advertising": peripheral?.isAdvertising ?? false, "advertisedName": advertisedName, "error": error]
                 if event == "peers" { summary["count"] = (value["peers"] as? [Any])?.count ?? 0 }
                 else if event == "transfer" { summary["id"] = value["id"]; summary["state"] = value["state"]; summary["detail"] = value["detail"]; summary["completed"] = value["completed"]; summary["total"] = value["total"] }
-                else { summary["detail"] = value["detail"] }
+                else { summary["detail"] = value["detail"]; for key in ["phase", "attempt", "error_type", "errno"] { summary[key] = value[key] } }
                 if let data = try? JSONSerialization.data(withJSONObject: summary) {
                     let url = folder.appendingPathComponent("status.json")
                     try? data.write(to: url, options: .atomic)

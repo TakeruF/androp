@@ -24,14 +24,15 @@ Tests checked that the nearby name obeys the byte limit and transfer confirmatio
 swift test
 ```
 
-Thirty-four Python tests and ten Swift tests passed for version 0.1.1 (build 5). They cover:
+Forty-six Python tests and ten Swift tests passed for version 0.1.1 (build 7). They cover:
 
 - Key exchange, encryption round trip and protocol parsing.
 - Japanese filenames, empty files and collision handling.
 - Rejection of traversal, absolute paths and symlinks.
 - Declared-size mismatch without saved output.
 - Transient local-route recovery, including aiohttp-wrapped errors.
-- Bounded retry for persistent route failure.
+- Bounded retry for persistent route failure and transient initial receive resets/refusals.
+- TLS/HTTP rejection without retry, active receiver protection from the offer timer, and safe localized error messages.
 - Permission errors and cancellation without retry.
 - Same-account phone/tablet metadata and separate recipients.
 - Unknown/conflicting metadata and future-version fallback.
@@ -50,7 +51,7 @@ After moving the source into this repository, all nine automated tests passed an
 
 ## Recipient discovery follow-up
 
-The phone and a second OPPO device advertising the tablet flag were visible simultaneously with the same account name. Their brand/type flags and separate protocol IDs were observed without a preconnection. Bluetooth endpoint IDs changed during testing; protocol IDs remained stable within the observation. The tablet's model was not established, and tablet file transfer was not tested.
+The phone and a second OPPO device advertising the tablet flag were visible simultaneously with the same account name. Their brand/type flags and separate protocol IDs were observed without a preconnection. Bluetooth endpoint IDs changed during testing; protocol IDs remained stable within the observation. The tablet's model was not established. File transfer was not tested during this discovery probe; a later tablet-to-Mac result is recorded below.
 
 The first native chooser revision was opened through Finder Share and showed the phone and tablet as distinct entries. A temporary tablet alias changed only that entry. The final version uses an official brand logo in a circle, phone/tablet badge and sharing name, with the same identity and alias handling.
 
@@ -87,3 +88,13 @@ For the recipient follow-up, the user manually enabled temporary visibility on b
 ## Titleless popup follow-up (build 6)
 
 The UI-only build passed compilation and deep/strict signature verification. Native previews using the same AppModel and RecipientPanel checked title-bar removal, rounded corners and the original window background color. With a synthetic sending state, focusing an outside window and closing that window revealed the still-open progress popup. With a synthetic successful state, the same focus change dismissed the popup; closing the outside window left no recipient popup. The preview used no Bluetooth or file transfer. The earlier build-5 physical-device transfer result is unchanged; no new file transfer was performed for this UI-only change.
+
+## Tablet receive recovery (build 7)
+
+The user reported a failed tablet-to-Mac receive: the Mac had a connection-reset error before receiving file data, while the tablet displayed a recipient-rejected message. The original reset's precise cause was not established.
+
+Build 7 adds a bounded retry only while establishing the initial WebSocket, before transfer metadata or file bytes are exchanged. Retryable startup errors include temporary route unavailability, connection reset, refusal and abort. The whole connection retry window is at most ten seconds with up to four attempts; TLS/certificate failures, HTTP rejection, permission failure and cancellation are not retried. There is no TLS downgrade or replay of partial downloads. The earlier fifteen-second offer timer now expires only before a receive task starts, avoiding cancellation of an already-active connection attempt. The timer flaw was verified by tests, not identified as the definitive cause of the user's original reset.
+
+In a subsequent physical tablet-to-Mac test, the first connection attempt encountered the macOS host-unreachable error. Attempt two connected, and one 83,249-byte file completed download, saving and the completion exchange. The user confirmed success; local checks confirmed one saved file of that size directly in Downloads. A sender-side hash comparison was not performed. This demonstrates recovery in that attempt, not a guarantee that every connection reset is recoverable.
+
+Notifications now use localized, actionable messages for transfer errors rather than raw exception strings containing endpoints, object addresses or filenames. Local diagnostic summaries record phase, error class, numeric error code and attempt number; raw captures are excluded from the repository.

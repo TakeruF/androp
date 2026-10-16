@@ -20,7 +20,7 @@ Use a device's built-in compatible sharing feature, without first connecting to 
 
 ## Compatibility and current status
 
-**Development version 0.1.1.** Physical-device send/receive verification: **OPPO Find X9 Pro**. An additional OPPO tablet was verified for discovery and type display only; its file transfers remain untested. **Other brands and models: untested.** This is the tested device, not a restriction to OPPO. Alliance membership does not establish compatibility with this implementation.
+**Development version 0.1.1.** Physical-device send/receive verification: **OPPO Find X9 Pro**. An additional OPPO tablet was verified for discovery/type display and one tablet-to-Mac file receipt; Mac-to-tablet remains untested. **Other brands and models: untested.** This is the tested device, not a restriction to OPPO. Alliance membership does not establish compatibility with this implementation.
 
 Petal Interconnect coexistence is **experimental**. Transfers have succeeded with both apps running, but discovery conflicts can recur; the manual repair is not a guaranteed fix. Same-Wi-Fi transfer is implemented; Wi-Fi Direct and Huawei Share are not implemented.
 

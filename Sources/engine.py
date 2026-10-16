@@ -7,7 +7,7 @@ No cloud, saved peer credentials, or USB transport. One transfer at a time.
 import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, socket, ssl, stat, sys, tempfile, time, uuid, zipfile
 from pathlib import Path, PurePosixPath
 from peer_metadata import parse_peer_metadata, peer_identifier
-from aiohttp import web, ClientSession, ClientTimeout, Fingerprint, WSMsgType
+from aiohttp import web, ClientSession, ClientTimeout, Fingerprint, WSMsgType, ClientConnectionError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
 from bleak import BleakClient, BleakScanner
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -71,6 +71,47 @@ async def retry_local_route(operation):
             if error.errno!=errno.EHOSTUNREACH or attempt==len(delays):raise
             await asyncio.sleep(delays[attempt])
 
+class TransferError(ValueError):
+    """A deliberate, localized message that is safe to show in a notification."""
+
+
+def transfer_error_detail(error,receiving=True):
+    if isinstance(error,TransferError):return str(error)
+    if isinstance(error,(ssl.SSLError,ClientSSLError,ServerFingerprintMismatch)):
+        return t('Could not establish a secure connection with the other device. Keep its sharing screen open and try again.','无法与对方设备建立安全连接。请保持对方互传页面打开后重试。')
+    if isinstance(error,PermissionError):
+        return t('File access was denied. Check the selected folder and file permissions.','文件访问被拒绝。请检查所选文件夹和文件的访问权限。')
+    if isinstance(error,OSError) and error.errno==errno.ENOSPC:
+        return t('Not enough free disk space.','磁盘空间不足。')
+    if isinstance(error,(FileNotFoundError,NotADirectoryError,IsADirectoryError)):
+        return t('The save folder is unavailable. Choose a folder in Settings and try again.','保存文件夹不可用。请在设置中重新选择文件夹后重试。') if receiving else t('A selected file is no longer available. Choose the files again.','所选文件已不可用。请重新选择文件。')
+    if isinstance(error,TimeoutError):
+        return t('The connection timed out. Keep sharing open on the other device and try again.','连接超时。请保持对方互传页面打开后重试。')
+    if isinstance(error,(ConnectionResetError,ConnectionAbortedError)) or getattr(error,'errno',None) in (errno.ECONNRESET,errno.ECONNABORTED):
+        return t('The other device closed the connection. Keep its sharing screen open and try again.','对方设备断开了连接。请保持对方互传页面打开后重试。')
+    if isinstance(error,(ClientConnectionError,ConnectionError,OSError)):
+        return t('Could not connect to the other device. Check that both devices use the same Wi-Fi and try again.','无法连接到对方设备。请确认两台设备连接同一 Wi-Fi 后重试。')
+    if isinstance(error,(ValueError,zipfile.BadZipFile)):
+        return t('The other device sent invalid or unsupported file information. Please try a different file.','对方发送的文件信息无效或暂不支持。请尝试其他文件。') if receiving else t('Could not prepare the selected files. Please choose different files.','无法准备所选文件。请尝试其他文件。')
+    return t('Could not receive the files. Keep sharing open on the other device and try again.','无法接收文件。请保持对方互传页面打开后重试。') if receiving else t('Could not send the files. Keep sharing open on the other device and try again.','无法发送文件。请保持对方互传页面打开后重试。')
+
+
+async def connect_receive_channel(operation,diagnostic):
+    # Retry only before a WebSocket is established: no transfer metadata or file
+    # bytes are replayed. Keep certificate/protocol failures fatal.
+    delays=(.2,.4,.8)
+    transient={errno.EHOSTUNREACH,errno.ECONNRESET,errno.ECONNREFUSED,errno.ECONNABORTED}
+    async with asyncio.timeout(10):
+        for attempt in range(len(delays)+1):
+            diagnostic('receive_connect_attempt',attempt=attempt+1)
+            try:return await operation()
+            except (ClientSSLError,ssl.SSLError,ServerFingerprintMismatch,WSServerHandshakeError):raise
+            except OSError as error:
+                diagnostic('receive_connect_interrupted',error_type=type(error).__name__,errno=error.errno)
+                if error.errno not in transient or attempt==len(delays):raise
+                await asyncio.sleep(delays[attempt])
+
+
 def safe_name(raw):
     # Never honor a network-provided path or create a symlink.
     name=raw.replace('\\','/'); p=PurePosixPath(name)
@@ -95,7 +136,7 @@ def validate_archive(archive, expected_count, expected_size):
 async def unpack(archive_path, destination, count, total, progress):
     destination=Path(destination).resolve(strict=True)
     if not destination.is_dir(): raise ValueError('Save folder is unavailable')
-    if shutil.disk_usage(destination).free < total+16*1024*1024: raise ValueError(t('Not enough free disk space.','磁盘空间不足。'))
+    if shutil.disk_usage(destination).free < total+16*1024*1024: raise TransferError(t('Not enough free disk space.','磁盘空间不足。'))
     saved=[]; written=0
     # Place complete files by an exclusive hard link; never replace an existing file.
     try:
@@ -125,7 +166,7 @@ async def unpack(archive_path, destination, count, total, progress):
                         final=destination/(name if not attempt else f'{stem} ({attempt}){suffix}')
                         try: os.link(tmp,final);break
                         except FileExistsError: continue
-                    else: raise ValueError(t('Too many files with the same name.','同名文件过多。'))
+                    else: raise TransferError(t('Too many files with the same name.','同名文件过多。'))
                     saved.append({'path':str(final),'bytes':n,'sha256':digest.hexdigest()})
                 finally:
                     try: os.unlink(tmp)
@@ -188,11 +229,7 @@ class Engine:
             if self.session is not s:return
             if accepted:
                 self.update(s,'connecting');self.notify('6',central)
-                async def expire():
-                    await asyncio.sleep(15)
-                    if self.session is s and s.get('state')=='connecting':
-                        self.notify('cancel',central);self.update(s,'failed',detail=t('Use the same Wi-Fi and try again.','请连接同一 Wi-Fi 后重试。'));await self.reset(s)
-                self.launch(expire())
+                self.launch(self.expire_receive_offer(s,central))
             else:
                 self.notify('3',central);self.update(s,'declined');await self.reset(s)
         elif self.session and self.session.get('central')==central:
@@ -204,6 +241,10 @@ class Engine:
                 s['task']=self.launch(self.receive(s,host,port,udp))
             elif 'ssid' in payload:
                 self.notify('cancel',central);self.update(s,'failed',detail=t('Connect this Mac and your phone to the same Wi-Fi.','请将 Mac 和手机连接到同一 Wi-Fi。'));await self.reset(s)
+    async def expire_receive_offer(self,s,central):
+        await asyncio.sleep(15)
+        if self.session is s and s.get('state')=='connecting' and 'task' not in s:
+            self.notify('cancel',central);self.update(s,'failed',detail=t('Use the same Wi-Fi and try again.','请连接同一 Wi-Fi 后重试。'));await self.reset(s)
     async def receive(self,s,host,port,udp):
         async def bandwidth():
             total=0;start=None;loop=asyncio.get_running_loop()
@@ -212,17 +253,20 @@ class Engine:
                 if addr[0]!=host:continue
                 start=start or time.monotonic();total+=len(packet)
             return total/1048576/max(time.monotonic()-start,.001)
-        bw=asyncio.create_task(bandwidth());ws=None;taskid=''
+        bw=asyncio.create_task(bandwidth());ws=None;taskid='';phase='connect'
+        def diagnostic(code,**fields):emit('diagnostic',detail=code,transfer_id=s['id'],phase=phase,**fields)
         try:
             self.update(s,'connecting')
             context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);context.check_hostname=False;context.verify_mode=ssl.CERT_NONE
             timeout=ClientTimeout(total=None,sock_connect=8,sock_read=35)
             async with ClientSession(timeout=timeout,trust_env=False) as client:
-                async with await retry_local_route(lambda: client.ws_connect(f'https://{host}:{port}/websocket',ssl=context,max_msg_size=131072)) as ws:
+                async with await connect_receive_channel(lambda: client.ws_connect(f'https://{host}:{port}/websocket',ssl=context,max_msg_size=131072),diagnostic) as ws:
+                    phase='bandwidth';diagnostic('receive_connected')
                     connection=ws._response.connection
                     sslobject=connection.transport.get_extra_info('ssl_object')
                     fingerprint=hashlib.sha256(sslobject.getpeercert(binary_form=True)).digest()
                     speed=await asyncio.wait_for(bw,2)
+                    phase='negotiate';diagnostic('receive_negotiating')
                     await ws.send_str(wire('ack',0,'wlanBandwidth',{'speed':f'{speed:.2f}'}))
                     async with asyncio.timeout(45):
                         while True:
@@ -234,17 +278,19 @@ class Engine:
                             else:await ws.send_str(wire('ack',index,name))
                     count=int(p.get('fileCount',0));size=int(p.get('totalSize',-1));taskid=str(p.get('id',''))
                     if count!=s['count'] or size<0 or len(taskid)>256 or not taskid:raise ValueError('Invalid transfer metadata')
-                    if shutil.disk_usage(self.destination).free<size*2+16*1024*1024:raise ValueError(t('Not enough free disk space.','磁盘空间不足。'))
+                    if shutil.disk_usage(self.destination).free<size*2+16*1024*1024:raise TransferError(t('Not enough free disk space.','磁盘空间不足。'))
                     await ws.send_str(wire('ack',index,name));self.update(s,'transferring',name=str(p.get('fileName',t('Files','文件')))[:240],count=count,total=size,completed=0)
+                    phase='download';diagnostic('receive_download_start')
                     with tempfile.TemporaryDirectory(prefix='anDrop-',dir=self.destination) as td:
                         archive=Path(td)/'incoming.zip';limit=size+max(1048576,count*65536);downloaded=0
                         async with client.get(f'https://{host}:{port}/download',params={'taskId':taskid},ssl=Fingerprint(fingerprint)) as response:
-                            if response.status!=200:raise ValueError(t('Could not download files from the phone.','无法从手机获取文件。'))
+                            if response.status!=200:raise TransferError(t('Could not download files from the phone.','无法从手机获取文件。'))
                             with archive.open('wb') as out:
                                 async for chunk in response.content.iter_chunked(1024*1024):
                                     downloaded+=len(chunk)
                                     if downloaded>limit:raise ValueError('Transfer exceeds declared size')
                                     out.write(chunk);self.progress(s,min(downloaded,size),size)
+                        phase='save';diagnostic('receive_save_start')
                         saved=await unpack(archive,self.destination,count,size,lambda n,t:self.progress(s,n,t))
                     await ws.send_str(wire('action',100,'status',{'taskId':taskid,'id':taskid,'type':1,'reason':'ok'}))
                     try:await asyncio.wait_for(ws.receive(),2)
@@ -252,10 +298,12 @@ class Engine:
                     self.update(s,'complete',files=saved,count=count,total=size,completed=size)
         except asyncio.CancelledError:
             if ws and not ws.closed:
-                await ws.send_str(wire('action',101,'status',{'taskId':taskid,'type':3,'reason':'user interrupt'}))
+                try:await ws.send_str(wire('action',101,'status',{'taskId':taskid,'type':3,'reason':'user interrupt'}))
+                except Exception:pass
             self.notify('cancel',s['central']);self.update(s,'cancelled')
         except Exception as e:
-            self.notify('cancel',s['central']);self.update(s,'failed',detail=t(f'Receive failed: {e or type(e).__name__}',f'接收失败：{e or type(e).__name__}'))
+            diagnostic('receive_failed',error_type=type(e).__name__,errno=getattr(e,'errno',None))
+            self.notify('cancel',s['central']);self.update(s,'failed',detail=transfer_error_detail(e))
         finally:
             bw.cancel();udp.close();await self.reset(s)
     def clear_peers(self):
@@ -323,17 +371,17 @@ class Engine:
         runner=None;client=None;ws=None
         try:
             self.update(s,'preparing',name=Path(paths[0]).name if paths else '',count=len(paths))
-            if not 1<=len(paths)<=10000:raise ValueError(t('Choose files to send.','请选择要发送的文件。'))
+            if not 1<=len(paths)<=10000:raise TransferError(t('Choose files to send.','请选择要发送的文件。'))
             files=[];names=set();total=0
             for raw in paths:
                 p=Path(raw).resolve(strict=True)
-                if not p.is_file():raise ValueError(t('Compress folders into ZIP files before sending.','请将文件夹压缩为 ZIP 后发送。'))
+                if not p.is_file():raise TransferError(t('Compress folders into ZIP files before sending.','请将文件夹压缩为 ZIP 后发送。'))
                 name=safe_name(p.name)
-                if name.casefold() in names:raise ValueError(t('Send files with identical names separately.','请分开发送同名文件。'))
+                if name.casefold() in names:raise TransferError(t('Send files with identical names separately.','请分开发送同名文件。'))
                 names.add(name.casefold());total+=p.stat().st_size;files.append(p)
             with tempfile.TemporaryDirectory(prefix='anDrop-send-') as td:
                 root=Path(td);archive=root/'files.zip'
-                if shutil.disk_usage(root).free<total+16*1024*1024:raise ValueError(t('Not enough space to prepare these files.','没有足够空间准备发送文件。'))
+                if shutil.disk_usage(root).free<total+16*1024*1024:raise TransferError(t('Not enough space to prepare these files.','没有足够空间准备发送文件。'))
                 with zipfile.ZipFile(archive,'w',zipfile.ZIP_STORED,allowZip64=True) as z:
                     for p in files:
                         with await asyncio.to_thread(p.open,'rb') as src,z.open(p.name,'w',force_zip64=True) as out:
@@ -403,7 +451,7 @@ class Engine:
                 client=BleakClient(device,timeout=15)
                 await client.connect();self.update(s,'connecting',total=total,count=len(files))
                 reply=json.loads(await asyncio.wait_for(client.read_gatt_char(bu('9897')),5))
-                if reply.get('state')!=0:raise ValueError(t('The phone is busy. Please try again shortly.','手机正忙，请稍后重试。'))
+                if reply.get('state')!=0:raise TransferError(t('The phone is busy. Please try again shortly.','手机正忙，请稍后重试。'))
                 keys.derive(reply['key'])
                 try:await client.start_notify(bu('9898'),lambda _,value:queue.put_nowait(bytes(value)))
                 except Exception as e:
@@ -415,7 +463,7 @@ class Engine:
                 async with asyncio.timeout(60):
                     while True:
                         raw=await queue.get()
-                        if raw==b'3':raise ValueError(t('The recipient declined the files.','对方已拒绝接收文件。'))
+                        if raw==b'3':raise TransferError(t('The recipient declined the files.','对方已拒绝接收文件。'))
                         if raw.startswith(b'{'):
                             p=json.loads(raw)
                             if 'wlan' in p and 'wlan_accept' not in p:break
@@ -434,7 +482,7 @@ class Engine:
                         if not raw.startswith(b'{'):continue
                         p=json.loads(raw)
                         if 'wlan_accept' in p:
-                            if not p['wlan_accept']:raise ValueError(t('Connect this Mac and your phone to the same Wi-Fi.','请将 Mac 和手机连接到同一 Wi-Fi。'))
+                            if not p['wlan_accept']:raise TransferError(t('Connect this Mac and your phone to the same Wi-Fi.','请将 Mac 和手机连接到同一 Wi-Fi。'))
                             confirmed=keys.decrypt(p['ip'])
                             if allowed_ip!=confirmed:raise ValueError('Peer address mismatch')
                             lan_confirmed.set()
@@ -446,7 +494,7 @@ class Engine:
         except TimeoutError:
             detail=t('No response. Keep the phone unlocked, enable its sharing feature, and accept the transfer notification.', '未收到回应。请解锁手机、开启互传功能并接受传输通知。') if s.get('state')=='waiting' else t('The transfer connection timed out. Check that both devices use the same Wi-Fi, then try again.','传输连接超时。请确认两台设备连接同一 Wi-Fi，然后重试。')
             self.update(s,'failed',detail=detail)
-        except Exception as e:self.update(s,'failed',detail=t(f'Send failed: {e or type(e).__name__}',f'发送失败：{e or type(e).__name__}'))
+        except Exception as e:self.update(s,'failed',detail=transfer_error_detail(e,receiving=False))
         finally:
             if client and client.is_connected:
                 if s.get('state')!='complete':
@@ -462,7 +510,7 @@ class Engine:
         route=subprocess.check_output(['/sbin/route','-n','get','default'],stderr=subprocess.DEVNULL,text=True)
         interface=next(line.split(':',1)[1].strip() for line in route.splitlines() if 'interface:' in line)
         address=subprocess.check_output(['/usr/sbin/ipconfig','getifaddr',interface],text=True).strip()
-        if not ipaddress.ip_address(address).is_private:raise ValueError(t('Connect to a local Wi-Fi network.','请连接到本地 Wi-Fi。'))
+        if not ipaddress.ip_address(address).is_private:raise TransferError(t('Connect to a local Wi-Fi network.','请连接到本地 Wi-Fi。'))
         return address
     async def command(self,obj):
         global LANG
@@ -494,7 +542,7 @@ class Engine:
                     else:self.notify('cancel',s.get('central'));self.update(s,'cancelled');await self.reset(s)
         except Exception as e:
             if self.session:
-                s=self.session;self.notify('cancel',s.get('central'));self.update(s,'failed',detail=str(e));await self.reset(s)
+                s=self.session;self.notify('cancel',s.get('central'));self.update(s,'failed',detail=transfer_error_detail(e,receiving=s.get('direction')=='receive'));await self.reset(s)
             else:emit('error',detail=str(e))
     async def run(self):
         self.read_state();self.launch(self.scanning());emit('ready')

@@ -61,3 +61,9 @@ Cancel Transfer stops the operation. Close dismisses the window while sending co
 ## Share popup behavior
 
 The recipient popup has no title bar or traffic-light window buttons. It uses the existing Cancel, Close and Done controls. While a transfer is active, clicking another window moves the popup into the background and the transfer continues. After a successful send, clicking outside the popup or switching focus to another window dismisses it. Failed and cancelled transfers retain their result until dismissed.
+
+## Receive connection errors
+
+A compatible sender may label the recipient as having rejected a transfer when anDrop aborts after a connection failure. That message alone does not mean the Mac user pressed Decline. anDrop now briefly retries transient failures while opening the initial connection. It does not retry certificate/protocol failures or resume partial files automatically.
+
+If receiving still fails, keep the sender's sharing screen open and verify both devices use the same Wi-Fi, then send again. Notifications show an actionable explanation; local diagnostics identify the failing stage without putting IP addresses or internal Python objects into the notification.
