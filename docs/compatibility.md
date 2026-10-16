@@ -1,18 +1,18 @@
 # Compatibility / 兼容性
 
-Last physical-device test: **2026-10-16**. Validation status belongs in this repository, not in device-brand restrictions in the app UI.
+Compatibility update: **2026-10-17**. Coverage includes recorded tests and the developer’s confirmation of broader testing on both OPPO devices. Validation status belongs in this repository, not in device-brand restrictions in the app UI.
 
 | Device or feature | Status | Evidence / limitation |
 | --- | --- | --- |
-| OPPO Find X9 Pro, Chinese ColorOS 17 / Android 17, 互传 17.2.36 | **Physically tested / 已实机验证** | Same-Wi-Fi file transfer in both directions; matching hashes |
-| OPPO tablet (exact model not established) | **Tablet → Mac tested / 已验证平板向 Mac 发送** | One 83,249-byte file saved in Downloads with build 7 after a transient connection retry; no sender-side hash comparison. Mac → tablet remains untested |
+| OPPO Find X9 Pro, Chinese ColorOS 17 / Android 17, 互传 17.2.36 | **Physically tested / 已实机验证** | Multiple physical test scenarios, including same-Wi-Fi transfers in both directions; matching hashes |
+| OPPO Pad 4 Pro | **Physically tested in both directions / 已实机验证双向传输** | Multiple physical test scenarios, including discovery, tablet identification and same-Wi-Fi transfers in both directions; model and broader coverage confirmed by the developer on 2026-10-17 |
 | Other OPPO models | **Untested / 未验证** | No compatibility guarantee from the tested model |
 | Xiaomi / 小米 | **Untested / 未验证** | Compatible 互传联盟 devices are a target |
 | HONOR / 荣耀 | **Untested / 未验证** | Compatible 互传联盟 devices are a target |
 | vivo | **Untested / 未验证** | Compatible 互传联盟 devices are a target |
 | Other participating brands | **Untested / 未验证** | Model, region and software version may matter |
 | Apple Silicon Mac, macOS 27.0.1 | **Tested / 已验证** | Native host, Python engine, Finder extension |
-| Intel Mac / earlier macOS | **Untested / 未验证** | 1.0.0 targets macOS 14 with bundled-binary checks; no physical older-OS validation. Published DMG is arm64 only |
+| Intel Mac / earlier macOS | **Untested / 未验证** | 1.1.0 targets macOS 14 with bundled-binary checks; no physical older-OS validation. Published DMG is arm64 only |
 | Petal Interconnect running concurrently | **Experimental / 实验性** | Successful transfers, but recurrent discovery conflicts |
 | Notification Center action buttons | **Not physically verified / 尚未实测** | Implemented; incoming files were accepted through the app during tests |
 | Open at Login after reboot | **Untested / 未验证** | Implemented; reboot not tested |
