@@ -1141,7 +1141,7 @@ struct TrustedDevicesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("Trusted Devices", "受信任的设备")).font(.headline)
-            Text(L("Add a device from successfully received transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it. Other devices can still see this Mac; Trusted Devices Only rejects their transfer requests.", "可从下方成功接收文件的记录添加设备，即使设备当前不在线。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。未受信任的设备仍可发现此 Mac；“仅限受信任的设备”会拒绝其传输请求。"))
+            Text(L("Devices you have received files from can be added as trusted devices.", "有接收记录的设备可添加为受信任的设备。"))
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
