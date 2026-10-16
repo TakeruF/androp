@@ -22,3 +22,7 @@ Last physical-device test: **2026-10-16**. Validation status belongs in this rep
 The [official HONOR guide](https://www.honor.com/cn/support/content/zh-cn15883773/) documents cross-brand 互传联盟 sharing. It does not validate anDrop on those devices.
 
 For a new compatibility report, include only device model, OS/share-service versions, direction, general network setup and outcome. Remove serial numbers, personal device names, account identifiers, IP addresses and filenames from logs or screenshots.
+
+## Manufacturer and model metadata
+
+A follow-up read-only investigation confirmed passive OPPO brand identification from the test phone's Bluetooth advertisement. Exact model information was not obtained through the examined wireless sharing path. See [the device-identification report](device-identification.md); this is separate from cross-brand transfer compatibility.
