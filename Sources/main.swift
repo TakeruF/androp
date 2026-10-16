@@ -1,0 +1,568 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 anDrop contributors
+
+import AppKit
+import SwiftUI
+import CoreBluetooth
+import UserNotifications
+import ServiceManagement
+
+struct Peer: Identifiable { let id: String; let name: String }
+struct Transfer: Identifiable, Codable {
+    var id: String
+    var direction = "receive"
+    var peer = "Android"
+    var state = "connecting"
+    var name = L("Files", "文件")
+    var count = 1
+    var total: Int64 = 0
+    var completed: Int64 = 0
+    var detail = ""
+    var paths: [String] = []
+    var date = Date()
+    var active: Bool { !["complete", "failed", "declined", "cancelled"].contains(state) }
+    var label: String {
+        switch state {
+        case "request": L("Incoming files", "接收确认")
+        case "preparing": L("Preparing", "正在准备")
+        case "waiting": L("Waiting for acceptance", "等待对方接收")
+        case "connecting": L("Connecting", "正在连接")
+        case "transferring": direction == "send" ? L("Sending", "正在发送") : L("Receiving", "正在接收")
+        case "complete": direction == "send" ? L("Sent", "已发送") : L("Received", "已接收")
+        case "declined": L("Declined", "已拒绝")
+        case "cancelled": L("Cancelled", "已取消")
+        default: L("Transfer failed", "传输失败")
+        }
+    }
+}
+
+@MainActor
+final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
+    @Published var language = UserDefaults.standard.string(forKey: "language") ?? "system"
+    @Published var peers: [Peer] = []
+    @Published var transfers: [Transfer] = []
+    @Published var selectedFiles: [URL] = []
+    @Published var selectedPeer: String?
+    @Published var tab = 0
+    @Published var bluetooth = L("Preparing Bluetooth", "正在准备蓝牙")
+    @Published var error = ""
+    @Published var petalRunning = false
+    @Published var petalRepairing = false
+    private var compactName = false
+    @Published var receiving = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true
+    @Published var engineReady = false
+    @Published var notificationsAllowed = false
+    @Published var destination = UserDefaults.standard.string(forKey: "destination") ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
+    @Published var startAtLogin = false
+    private var window: NSWindow?
+    private var item: NSStatusItem?
+    private var recipientPanel: NSPanel?
+    private var menuTracking = false
+    private var activity: NSObjectProtocol?
+    private var peripheral: CBPeripheralManager?
+    private var chars: [String: CBMutableCharacteristic] = [:]
+    private var centrals: [String: CBCentral] = [:]
+    private var notifyQueue: [(Data, String?)] = []
+    private var writes: [String: Data] = [:]
+    private var readValue = Data()
+    private var process: Process?
+    private var input: FileHandle?
+    private var outputBuffer = Data()
+    private var timer: Timer?
+    private var serviceReady = false
+    private var terminating = false
+    private var restartCount = 0
+    private var discoveryID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(6))
+    private var advertisedName = ""
+    private var configuredName = ""
+    var deviceName: String { Host.current().localizedName ?? ProcessInfo.processInfo.hostName }
+    var displayName: String {
+        if compactName { return "A" }
+        // Keep the protocol prefix and name inside a legacy BLE advertisement.
+        var name = ""
+        for character in deviceName {
+            let next = name + String(character)
+            if next.utf8.count > 15 { break }
+            name = next
+        }
+        return name.isEmpty ? "Mac" : name
+    }
+    var busy: Bool { transfers.contains(where: \.active) }
+    var byteFormat: ByteCountFormatter { let f = ByteCountFormatter(); f.countStyle = .file; return f }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if let data = UserDefaults.standard.data(forKey: "history"), let history = try? JSONDecoder().decode([Transfer].self, from: data) { transfers = history }
+        setupMenus()
+        setupNotifications()
+        activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: L("Receive files from nearby devices", "接收附近设备的文件"))
+        startAtLogin = SMAppService.mainApp.status == .enabled
+        startEngine()
+        peripheral = CBPeripheralManager(delegate: self, queue: nil)
+        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshEnvironment() }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return false }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationWillTerminate(_ notification: Notification) {
+        terminating = true; peripheral?.stopAdvertising(); input?.closeFile(); process?.terminate(); saveHistory()
+    }
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            if url.isFileURL { addFiles([url]) }
+            else if url.scheme == "androp", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), parts.host == "share" {
+                let paths = parts.queryItems?.filter { $0.name == "file" }.compactMap(\.value) ?? []
+                addFiles(paths.filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) })
+            }
+        }
+        showRecipients()
+    }
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        addFiles(filenames.map { URL(fileURLWithPath: $0) }); showRecipients(); sender.reply(toOpenOrPrint: .success)
+    }
+    @objc func woke() { refreshEnvironment(); advertise() }
+    private func setupMenus() {
+        let menu = NSMenu(); let appItem = NSMenuItem(); menu.addItem(appItem)
+        let appMenu = NSMenu(); appItem.submenu = appMenu
+        appMenu.addItem(withTitle: L("About anDrop", "关于 anDrop"), action: #selector(about), keyEquivalent: "")
+        appMenu.addItem(withTitle: L("Transfers", "传输"), action: #selector(showWindow), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: L("Quit anDrop", "退出 anDrop"), action: #selector(quit), keyEquivalent: "q")
+        for entry in appMenu.items where entry.action != nil { entry.target = self }
+        let editItem = NSMenuItem(); menu.addItem(editItem); let editMenu = NSMenu(title: L("Edit", "编辑")); editItem.submenu = editMenu
+        editMenu.addItem(withTitle: L("Copy", "拷贝"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: L("Paste", "粘贴"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        NSApp.mainMenu = menu
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item?.button?.image = NSImage(systemSymbolName: "arrow.up.arrow.down.circle", accessibilityDescription: "anDrop")
+        item?.button?.toolTip = L("anDrop — Share with Android", "anDrop — 与安卓设备共享文件")
+        let statusMenu = NSMenu(); statusMenu.autoenablesItems = false; statusMenu.delegate = self; item?.menu = statusMenu
+        rebuildMenu()
+    }
+    @objc func about() {
+        let alert = NSAlert()
+        alert.messageText = "anDrop 0.1.0"
+        alert.informativeText = L("File sharing for the Mutual Transfer Alliance (互传联盟) ecosystem.\nNo prior connection. Use the same Wi-Fi.\n\n© 2026 anDrop contributors\nGPL-3.0-only · No warranty.\nRedistribution is permitted under the license.", "面向互传联盟生态的文件共享。\n无需预先连接，请使用同一 Wi-Fi。\n\n© 2026 anDrop contributors\nGPL-3.0-only · 不提供担保。\n可按许可证条款再分发。")
+        alert.addButton(withTitle: L("Close", "关闭"))
+        alert.addButton(withTitle: L("Licenses…", "许可证…"))
+        if alert.runModal() == .alertSecondButtonReturn, let resources = Bundle.main.resourceURL {
+            NSWorkspace.shared.activateFileViewerSelecting([resources.appendingPathComponent("LICENSE"), resources.appendingPathComponent("NOTICE.md"), resources.appendingPathComponent("ThirdPartyNotices")])
+        }
+    }
+    @objc func quit() { NSApp.terminate(nil) }
+    @objc func toggleEnabled() { changeReceiving(!receiving) }
+    @objc func pickAndSend() { chooseFiles(); if !selectedFiles.isEmpty { showRecipients() } }
+    @objc func cancelMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { cancel(t) } }
+    @objc func revealMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { reveal(t) } }
+    @objc func acceptMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { decide(t, accept: true) } }
+    @objc func declineMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { decide(t, accept: false) } }
+    func menuWillOpen(_ menu: NSMenu) { rebuildMenu(); menuTracking = true }
+    func menuDidClose(_ menu: NSMenu) { menuTracking = false }
+    private func rebuildMenu() {
+        guard !menuTracking, let menu = item?.menu else { return }
+        menu.removeAllItems()
+        func add(_ title: String, _ selector: Selector? = nil, id: String? = nil) {
+            let row = NSMenuItem(title: title, action: selector, keyEquivalent: ""); row.target = self; row.representedObject = id; row.isEnabled = selector != nil; menu.addItem(row)
+        }
+        add(receiving ? L("anDrop On", "anDrop 已开启") : L("anDrop Off", "anDrop 已关闭"), #selector(toggleEnabled)); menu.items.last?.state = receiving ? .on : .off
+        add(receiving ? L("Discoverable as: \(displayName)", "显示名称：\(displayName)") : L("Sharing is off", "文件共享已关闭"))
+        if petalRunning { add(L("Petal coexistence · Experimental", "与 Petal 共存 · 实验性支持")); add(L("Repair Discovery with Petal…", "修复与 Petal 的设备发现…"), #selector(repairPetal)); menu.items.last?.isEnabled = !busy && !petalRepairing }
+        menu.addItem(.separator()); add(L("Send Files…", "发送文件…"), #selector(pickAndSend)); menu.items.last?.isEnabled = receiving && !busy
+        for t in transfers.filter(\.active) {
+            menu.addItem(.separator())
+            let progress = t.total > 0 ? " \(Int(min(1,Double(t.completed)/Double(t.total))*100))%" : ""
+            add("\(t.peer) — \(t.label)\(progress)")
+            if t.state == "request" { add(L("Accept \(t.count) files", "接收 \(t.count) 个文件"), #selector(acceptMenu(_:)), id: t.id); add(L("Decline", "拒绝"), #selector(declineMenu(_:)), id: t.id) }
+            else { add(L("Cancel This Transfer", "取消此次传输"), #selector(cancelMenu(_:)), id: t.id) }
+        }
+        let recent = transfers.filter { !$0.active }.prefix(8)
+        if !recent.isEmpty {
+            menu.addItem(.separator())
+            let row = NSMenuItem(title: L("Recent Transfers", "最近传输"), action: nil, keyEquivalent: ""); let submenu = NSMenu(); row.submenu = submenu
+            for t in recent {
+                let label = "\(t.direction == "send" ? "↑" : "↓") \(t.name) — \(t.label)"
+                let entry = NSMenuItem(title: label, action: t.paths.isEmpty ? nil : #selector(revealMenu(_:)), keyEquivalent: ""); entry.target = self; entry.representedObject = t.id; submenu.addItem(entry)
+            }
+            menu.addItem(row)
+        }
+        if !error.isEmpty { menu.addItem(.separator()); add(String(error.prefix(100))) }
+        menu.addItem(.separator()); add(L("Settings…", "设置…"), #selector(showSettings)); add(L("Quit anDrop", "退出 anDrop"), #selector(quit))
+    }
+    @objc func repairPetal() {
+        guard !petalRepairing, !busy, let petal = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.EMUIInterconnect.app" }), let url = petal.bundleURL else { return }
+        petalRepairing = true; compactName = true; peripheral?.stopAdvertising(); advertisedName = ""
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        guard petal.terminate() else { petalRepairing = false; advertise(); error = L("Please quit and reopen Petal to restore discovery.", "请退出并重新打开 Petal，以恢复设备发现。"); return }
+        Task { @MainActor in
+            for _ in 0..<100 {
+                if petal.isTerminated { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            if petal.isTerminated {
+                try? await Task.sleep(for: .milliseconds(700))
+                // Foreground priority is evaluated when the advertisement is registered.
+                // The user may have switched apps while Petal was closing.
+                NSApp.activate(ignoringOtherApps: true)
+                try? await Task.sleep(for: .milliseconds(200))
+                advertise()
+                try? await Task.sleep(for: .seconds(1))
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = false
+                do { _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration); error = "" }
+                catch { self.error = L("Please reopen Petal Interconnect.", "请重新打开 Petal Interconnect。") }
+            } else { error = L("Petal is still open. Finish any transfer, then try again.", "Petal 仍在运行。请完成传输后重试。") }
+            try? await Task.sleep(for: .seconds(2))
+            petalRepairing = false; advertise(); refreshEnvironment()
+        }
+    }
+    @objc func showWindow() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let menu = self.item?.menu else { return }
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        }
+    }
+    @objc func showSettings() {
+        if window == nil {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 510), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            w.title = L("anDrop Settings", "anDrop 设置"); w.isReleasedWhenClosed = false
+            w.contentView = NSHostingView(rootView: SettingsView(model: self)); w.center(); window = w
+        }
+        window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+    func showRecipients() {
+        command(["command": "scan", "value": true])
+        if recipientPanel == nil {
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 320), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            panel.title = L("Choose a Recipient", "选择接收设备"); panel.isReleasedWhenClosed = false; panel.hidesOnDeactivate = false; panel.delegate = self
+            panel.contentView = NSHostingView(rootView: RecipientView(model: self)); panel.center(); recipientPanel = panel
+        }
+        recipientPanel?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+    func windowWillClose(_ notification: Notification) {
+        if let closed = notification.object as? NSWindow, closed === recipientPanel { command(["command": "scan", "value": false]) }
+    }
+    private func startEngine() {
+        guard let resource = Bundle.main.resourceURL else { return }
+        let executable = resource.appendingPathComponent("Engine/anDropEngine")
+        let p = Process(); p.executableURL = executable
+        let stdin = Pipe(); let stdout = Pipe(); let stderr = Pipe()
+        p.standardInput = stdin; p.standardOutput = stdout; p.standardError = stderr
+        input = stdin.fileHandleForWriting
+        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil; return }
+            Task { @MainActor [weak self] in self?.consume(data) }
+        }
+        // Keep protocol data off system logs; unexpected errors are surfaced by termination state.
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil }
+        }
+        p.terminationHandler = { [weak self] proc in
+            let code = proc.terminationStatus
+            Task { @MainActor [weak self] in
+                guard let self, !self.terminating else { return }
+                self.engineReady = false
+                for i in self.transfers.indices where self.transfers[i].active { self.transfers[i].state = "failed"; self.transfers[i].detail = L("The connection restarted. Please try again.", "连接已重新启动，请重试。") }
+                self.error = L("Sharing service stopped (\(code))", "共享服务已停止（\(code)）")
+                self.saveHistory()
+                if self.restartCount < 2 { self.restartCount += 1; self.startEngine() }
+            }
+        }
+        do { try p.run(); process = p; configureEngine() }
+        catch { self.error = L("Could not start sharing: \(error.localizedDescription)", "无法启动共享：\(error.localizedDescription)") }
+    }
+    func command(_ value: [String: Any]) {
+        guard let bytes = try? JSONSerialization.data(withJSONObject: value) else { return }
+        do { try input?.write(contentsOf: bytes + Data([10])) }
+        catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。") }
+    }
+    func configureEngine() { configuredName = deviceName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage()]); command(["command": "enabled", "value": receiving]) }
+    private func consume(_ data: Data) {
+        outputBuffer.append(data)
+        if outputBuffer.count > 4_194_304 { outputBuffer.removeAll(); error = L("The sharing service returned an invalid response.", "共享服务返回了无效响应。"); return }
+        while let end = outputBuffer.firstIndex(of: 10) {
+            let line = outputBuffer[..<end]; outputBuffer.removeSubrange(...end)
+            guard let value = try? JSONSerialization.jsonObject(with: line) as? [String: Any], let event = value["event"] as? String else { continue }
+            if ["ready", "peers", "scan_status", "error", "transfer", "diagnostic"].contains(event) {
+                let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("anDrop")
+                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                var summary: [String: Any] = ["event": event, "time": Date().ISO8601Format(), "bluetooth": bluetooth, "advertising": peripheral?.isAdvertising ?? false, "advertisedName": advertisedName, "error": error]
+                if event == "peers" { summary["count"] = (value["peers"] as? [Any])?.count ?? 0 }
+                else if event == "transfer" { summary["id"] = value["id"]; summary["state"] = value["state"]; summary["detail"] = value["detail"] }
+                else { summary["detail"] = value["detail"] }
+                if let data = try? JSONSerialization.data(withJSONObject: summary) {
+                    let url = folder.appendingPathComponent("status.json")
+                    try? data.write(to: url, options: .atomic)
+                    if event == "transfer" { try? data.write(to: folder.appendingPathComponent("last-transfer.json"), options: .atomic) }
+                    if event == "diagnostic" { try? data.write(to: folder.appendingPathComponent("last-protocol.json"), options: .atomic) }
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                }
+            }
+            switch event {
+            case "ready": engineReady = true; error = ""; advertise()
+            case "ble_read":
+                if let obj = value["value"] { readValue = (try? JSONSerialization.data(withJSONObject: obj)) ?? Data() }
+            case "ble_notify":
+                if let encoded = value["data"] as? String, let bytes = Data(base64Encoded: encoded) { notifyQueue.append((bytes, value["central"] as? String)); flushNotifications() }
+            case "peers":
+                peers = (value["peers"] as? [[String: String]] ?? []).compactMap { obj in
+                    guard let id = obj["id"], let name = obj["name"] else { return nil }; return Peer(id: id, name: name)
+                }
+                if selectedPeer == nil, peers.count == 1 { selectedPeer = peers[0].id }
+            case "transfer": updateTransfer(value)
+            case "error", "scan_status": error = value["detail"] as? String ?? L("Something went wrong.", "发生错误。"); rebuildMenu()
+            default: break
+            }
+        }
+    }
+    private func updateTransfer(_ obj: [String: Any]) {
+        guard let id = obj["id"] as? String else { return }
+        let index: Int
+        if let found = transfers.firstIndex(where: { $0.id == id }) { index = found }
+        else { transfers.insert(Transfer(id: id), at: 0); index = 0 }
+        let previous = transfers[index].state
+        if let v = obj["direction"] as? String { transfers[index].direction = v }
+        if let v = obj["peer"] as? String { transfers[index].peer = v }
+        if let v = obj["state"] as? String { transfers[index].state = v }
+        if let v = obj["name"] as? String { transfers[index].name = v }
+        if let v = obj["count"] as? Int { transfers[index].count = v }
+        if let v = obj["total"] as? Int64 { transfers[index].total = v }
+        if let v = obj["completed"] as? Int64 { transfers[index].completed = v }
+        if let v = obj["detail"] as? String { transfers[index].detail = v }
+        if let files = obj["files"] as? [[String: Any]] { transfers[index].paths = files.compactMap { $0["path"] as? String } }
+        let t = transfers[index]
+        if t.state != previous || t.state == "request" {
+            if t.state == "request" {
+                sendNotification(t, category: "receive", title: L("Files from \(t.peer)", "来自 \(t.peer) 的文件"), body: L("Accept \(t.count) files?", "接收 \(t.count) 个文件？"))
+                if !notificationsAllowed {
+                    let alert = NSAlert(); alert.messageText = L("\(t.count) files from \(t.peer)", "来自 \(t.peer) 的 \(t.count) 个文件"); alert.informativeText = L("Save these files to your selected folder?", "将这些文件保存到所选文件夹？"); alert.addButton(withTitle: L("Accept", "接收")); alert.addButton(withTitle: L("Decline", "拒绝"))
+                    NSApp.activate(ignoringOtherApps: true); decide(t, accept: alert.runModal() == .alertFirstButtonReturn)
+                }
+            } else if t.state == "complete" {
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
+                sendNotification(t, category: "complete", title: t.label, body: L("\(t.peer) · \(t.count) files", "\(t.peer) · \(t.count) 个文件"))
+                if t.direction == "send" { selectedFiles = [] }
+            } else if t.state == "failed" {
+                sendNotification(t, category: "manage", title: t.label, body: t.detail)
+            } else if t.state == "transferring" {
+                sendNotification(t, category: "manage", title: t.label, body: L("\(t.peer) · View progress in the menu bar", "\(t.peer) · 在菜单栏查看进度"))
+            } else if !t.active { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id]) }
+        }
+        if !t.active { saveHistory() }
+        if let window { window.setContentSize(NSSize(width: 460, height: transfers.contains { $0.state == "request" } ? 585 : 510)) }
+        rebuildMenu()
+    }
+    private func saveHistory() {
+        let history = Array(transfers.filter { !$0.active }.prefix(100))
+        if let data = try? JSONEncoder().encode(history) { UserDefaults.standard.set(data, forKey: "history") }
+    }
+    func clearHistory() { transfers.removeAll { !$0.active }; saveHistory() }
+    func addFiles(_ urls: [URL]) {
+        selectedFiles = Array(Set(selectedFiles + urls.filter(\.isFileURL))).sorted { $0.lastPathComponent < $1.lastPathComponent }; tab = 0
+    }
+    func chooseFiles() {
+        let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true; panel.message = L("Choose files to send", "选择要发送的文件"); panel.prompt = L("Select", "选择")
+        if panel.runModal() == .OK { addFiles(panel.urls) }
+    }
+    func chooseDestination() {
+        let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.prompt = L("Use This Folder", "使用此文件夹"); panel.directoryURL = URL(fileURLWithPath: destination)
+        if panel.runModal() == .OK, let url = panel.url { destination = url.path; UserDefaults.standard.set(url.path, forKey: "destination"); configureEngine() }
+    }
+    func send() {
+        guard let selectedPeer, !selectedFiles.isEmpty, !busy else { return }
+        recipientPanel?.close(); error = ""; command(["command": "send", "peer": selectedPeer, "paths": selectedFiles.map(\.path)])
+    }
+    func decide(_ transfer: Transfer, accept: Bool) {
+        command(["command": "decision", "id": transfer.id, "accept": accept]); UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [transfer.id])
+    }
+    func cancel(_ transfer: Transfer) { command(["command": "cancel", "id": transfer.id]) }
+    func reveal(_ transfer: Transfer) { NSWorkspace.shared.activateFileViewerSelecting(transfer.paths.map { URL(fileURLWithPath: $0) }) }
+    func changeReceiving(_ value: Bool) { receiving = value; UserDefaults.standard.set(value, forKey: "enabled"); command(["command":"enabled", "value": value]); advertise(); rebuildMenu() }
+    func changeLanguage(_ value: String) {
+        language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu()
+        if let appMenu = NSApp.mainMenu?.items.first?.submenu {
+            appMenu.items[0].title = L("About anDrop", "关于 anDrop")
+            appMenu.items[1].title = L("Transfers", "传输")
+            appMenu.items.last?.title = L("Quit anDrop", "退出 anDrop")
+        }
+        if let edit = NSApp.mainMenu?.items.last { edit.title = L("Edit", "编辑"); edit.submenu?.title = edit.title; edit.submenu?.items.first?.title = L("Copy", "拷贝"); edit.submenu?.items.last?.title = L("Paste", "粘贴") }
+        window?.title = L("anDrop Settings", "anDrop 设置"); recipientPanel?.title = L("Choose a Recipient", "选择接收设备")
+    }
+    func changeLogin(_ value: Bool) {
+        do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; startAtLogin = value }
+        catch { self.error = L("Could not change login settings: \(error.localizedDescription)", "无法更改登录设置：\(error.localizedDescription)") }
+    }
+    private func refreshEnvironment() {
+        if configuredName != deviceName && !busy { configureEngine(); advertise() }
+        let petal = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.EMUIInterconnect.app" }
+        if petal != petalRunning {
+            petalRunning = petal
+            if !petalRepairing { compactName = petal; NSApp.setActivationPolicy(petal ? .regular : .accessory) }
+            advertise()
+        }
+        flushNotifications(); rebuildMenu()
+    }
+    private func advertise() {
+        guard serviceReady, engineReady else { return }
+        guard receiving else { peripheral?.stopAdvertising(); advertisedName = ""; return }
+        let name = discoveryID + "B" + displayName
+        guard name != advertisedName || peripheral?.isAdvertising != true else { return }
+        peripheral?.stopAdvertising(); advertisedName = name
+        peripheral?.startAdvertising([CBAdvertisementDataLocalNameKey: name, CBAdvertisementDataServiceUUIDsKey: [CBUUID(string: "8881")]])
+    }
+    func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+        guard peripheral.state == .poweredOn else {
+            bluetooth = peripheral.state == .unauthorized ? L("Allow Bluetooth access in System Settings.", "请在系统设置中允许使用蓝牙。") : L("Turn on Bluetooth.", "请打开蓝牙。")
+            serviceReady = false; advertisedName = ""; return
+        }
+        bluetooth = L("Ready to share with nearby Android devices", "可以与附近的安卓设备共享文件"); peripheral.removeAllServices(); chars.removeAll()
+        let service = CBMutableService(type: CBUUID(string: "9999"), primary: true)
+        for (uuid, properties): (String, CBCharacteristicProperties) in [("9898", [.read]), ("9896", [.write, .writeWithoutResponse]), ("9895", [.notify]), ("9984", [.notify]), ("9998", [.read])] {
+            chars[uuid] = CBMutableCharacteristic(type: CBUUID(string: uuid), properties: properties, value: nil, permissions: [.readable, .writeable])
+        }
+        service.characteristics = Array(chars.values); peripheral.add(service)
+    }
+    func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: (any Error)?) {
+        guard error == nil else { self.error = L("Could not start Bluetooth receiving.", "无法启动蓝牙接收。"); return }; serviceReady = true; refreshEnvironment(); advertise()
+    }
+    func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: (any Error)?) {
+        if let error { self.error = L("Could not make this Mac discoverable: \(error.localizedDescription)", "无法让附近设备发现此 Mac：\(error.localizedDescription)") }
+    }
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        let data = request.characteristic.uuid == CBUUID(string: "9898") ? readValue : Data()
+        guard request.offset <= data.count else { peripheral.respond(to: request, withResult: .invalidOffset); return }
+        request.value = data.subdata(in: request.offset..<data.count); peripheral.respond(to: request, withResult: .success)
+    }
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+        for request in requests {
+            let central = request.central.identifier.uuidString; centrals[central] = request.central
+            let key = central + request.characteristic.uuid.uuidString
+            if request.offset == 0 { writes[key] = Data() }
+            guard var value = writes[key], request.offset == value.count, value.count + (request.value?.count ?? 0) <= 65536 else { continue }
+            value.append(request.value ?? Data()); writes[key] = value
+            if (try? JSONSerialization.jsonObject(with: value)) != nil {
+                command(["command": "write", "uuid": request.characteristic.uuid.uuidString, "central": central, "data": value.base64EncodedString()]); writes[key] = nil
+            }
+        }
+        if let request = requests.first { peripheral.respond(to: request, withResult: .success) }
+    }
+    func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
+        centrals[central.identifier.uuidString] = central; command(["command": "subscribe", "central": central.identifier.uuidString, "uuid": characteristic.uuid.uuidString])
+    }
+    func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
+        centrals[central.identifier.uuidString] = nil
+    }
+    func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) { flushNotifications() }
+    private func flushNotifications() {
+        guard let char = chars["9895"], let peripheral else { return }
+        while let first = notifyQueue.first {
+            let target: [CBCentral]?
+            if let id = first.1 { guard let central = centrals[id] else { notifyQueue.removeFirst(); continue }; target = [central] }
+            else { target = nil }
+            guard peripheral.updateValue(first.0, for: char, onSubscribedCentrals: target) else { return }; notifyQueue.removeFirst()
+        }
+    }
+    private func setupNotifications() {
+        let center = UNUserNotificationCenter.current(); center.delegate = self
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "receive", actions: [UNNotificationAction(identifier: "accept", title: L("Accept", "接收")), UNNotificationAction(identifier: "decline", title: L("Decline", "拒绝"))], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "complete", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"), options: [.foreground])], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "manage", actions: [UNNotificationAction(identifier: "manage", title: L("Show Transfers", "查看传输"), options: [.foreground]), UNNotificationAction(identifier: "cancel", title: L("Cancel", "取消"))], intentIdentifiers: [])
+        ])
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] allowed, _ in Task { @MainActor [weak self] in self?.notificationsAllowed = allowed } }
+    }
+    private func sendNotification(_ transfer: Transfer, category: String, title: String, body: String) {
+        let content = UNMutableNotificationContent(); content.title = title; content.body = body; content.categoryIdentifier = category; content.threadIdentifier = transfer.id
+        if transfer.state != "transferring" { content.sound = .default }
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: transfer.id, content: content, trigger: nil))
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) { completionHandler([.banner, .sound]) }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping @Sendable () -> Void) {
+        let id = response.notification.request.identifier
+        let action = response.actionIdentifier
+        Task { @MainActor in
+        if let t = self.transfers.first(where: { $0.id == id }) {
+            switch action {
+            case "accept": decide(t, accept: true)
+            case "decline": decide(t, accept: false)
+            case "cancel": cancel(t)
+            case "reveal": if !t.paths.isEmpty { reveal(t) } else { showWindow() }
+            default: tab = 0; showWindow()
+            }
+        }
+        completionHandler()
+        }
+    }
+}
+
+struct RecipientView: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack { Image(systemName: "arrow.up.circle.fill").foregroundStyle(.teal); Text(L("Send with anDrop", "通过 anDrop 发送")).font(.headline); Spacer() }
+            Text(L("\(model.selectedFiles.count) files", "\(model.selectedFiles.count) 个文件")).font(.subheadline)
+            Text(model.selectedFiles.prefix(2).map(\.lastPathComponent).joined(separator: "、")).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            Divider()
+            if model.peers.isEmpty {
+                HStack { ProgressView().controlSize(.small); Text(L("Looking for devices…", "正在查找设备…")) }
+                Text(L("Enable your phone’s 互传 sharing feature and make it discoverable. Use the same Wi-Fi.", "请开启手机的互传功能并允许附近设备发现，连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(model.peers) { peer in
+                            Button { model.selectedPeer = peer.id; model.send() } label: {
+                                HStack { Image(systemName: "smartphone").font(.title2); Text(peer.name).lineLimit(2); Spacer(); Image(systemName: "arrow.up.right") }.padding(12).frame(maxWidth: .infinity).background(.teal.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                            }.buttonStyle(.plain).disabled(model.busy || !model.receiving)
+                        }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            Text(L("Choose a device to request a transfer.", "选择设备后，对方会收到接收请求。")).font(.caption).foregroundStyle(.secondary)
+        }.padding(20).frame(width: 340, height: 320)
+    }
+}
+struct SettingsView: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack { Text("anDrop").font(.title2.bold()); Spacer(); Toggle(L("On", "开启"), isOn: Binding(get: { model.receiving }, set: model.changeReceiving)).toggleStyle(.switch).fixedSize() }
+            if let incoming = model.transfers.first(where: { $0.state == "request" }) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("\(incoming.count) files from \(incoming.peer)", "来自 \(incoming.peer) 的 \(incoming.count) 个文件")).font(.headline)
+                    HStack { Button(L("Accept", "接收")) { model.decide(incoming, accept: true) }; Button(L("Decline", "拒绝")) { model.decide(incoming, accept: false) } }
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) { Text(L("Save received files to", "接收文件保存位置")).font(.headline); HStack { Text(model.destination).font(.callout).lineLimit(1).truncationMode(.middle); Spacer(); Button(L("Change…", "更改…"), action: model.chooseDestination) }; Text(L("Each transfer needs your approval. Existing files are never overwritten.", "每次接收都需确认。同名文件不会被覆盖。")).font(.caption).foregroundStyle(.secondary) }
+            Picker(L("Language", "语言"), selection: Binding(get: { model.language }, set: model.changeLanguage)) {
+                Text(L("System Default", "跟随系统")).tag("system")
+                Text("English").tag("en")
+                Text("简体中文").tag("zh")
+            }
+            Divider()
+            Toggle(L("Open at Login", "登录时启动"), isOn: Binding(get: { model.startAtLogin }, set: model.changeLogin))
+            HStack { Text(model.notificationsAllowed ? L("Notifications: On", "通知：已开启") : L("Notifications: Off", "通知：已关闭")); Spacer(); Button(L("Notification Settings…", "通知设置…")) { if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) } } }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(model.petalRunning ? L("With Petal · Nearby name “A”", "与 Petal 共存 · 附近设备名称“A”") : L("Discoverable as “\(model.displayName)”", "在设备上显示为“\(model.displayName)”"))
+                Text(L("Nearby device names: up to 15 UTF-8 bytes (15 ASCII characters or typically 5 Chinese characters). Transfer confirmations use the full Mac name.", "附近设备名称上限：15 个 UTF-8 字节（15 个半角英数字符，或通常 5 个汉字）。传输确认使用完整电脑名称。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if model.petalRunning {
+                    Text(L("Experimental: discovery may fail with Petal. Repair restarts Petal, but may not resolve every conflict. If it persists, quit Petal while receiving.", "实验性支持：与 Petal 同时运行时可能无法被发现。修复会重启 Petal，但不保证解决每次冲突。若仍无法发现，可在接收时退出 Petal。"))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if model.petalRunning { Button(model.petalRepairing ? L("Restarting Petal…", "正在重启 Petal…") : L("Repair Discovery with Petal", "修复与 Petal 的设备发现"), action: model.repairPetal).disabled(model.busy || model.petalRepairing) }
+            HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text("0.1.0").font(.caption).foregroundStyle(.secondary) }
+            Text(L("Mutual Transfer Alliance (互传联盟) · Same Wi-Fi required.", "互传联盟 · 需连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
+        }.padding(24).frame(width: 460)
+    }
+}
+
+let app = NSApplication.shared
+let model = AppModel()
+app.setActivationPolicy(NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.EMUIInterconnect.app" } ? .regular : .accessory)
+app.delegate = model
+app.run()

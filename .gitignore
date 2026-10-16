@@ -1,0 +1,34 @@
+# Local builds and environments
+/build/
+/dist/
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+*.spec
+.DS_Store
+*.dSYM/
+*.app/
+*.appex/
+*.zip
+*.dmg
+
+# Private development and test material
+/work/
+/private/
+/fixtures/
+/received/
+/logs/
+/captures/
+/screenshots/
+.env
+.env.*
+*.log
+*.pcap
+*.pcapng
+*.apk
+*.key
+*.pem
+*.p12
+*.mobileprovision
+*.provisionprofile
