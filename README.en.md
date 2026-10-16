@@ -8,9 +8,9 @@ anDrop is a macOS menu bar app for the **互传联盟 (Mutual Transfer Alliance)
 
 **[Download anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [Usage and troubleshooting](docs/usage.md) · [Compatibility](docs/compatibility.md)
 
-Version 1.0.0 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. An OPPO phone has been tested in both directions; one OPPO tablet has been tested sending to the Mac. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
+Version 1.1.0 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. An OPPO phone has been tested in both directions; one OPPO tablet has been tested sending to the Mac. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
 
-The main branch includes **1.0.1 connection and trusted-device fixes**, which have not yet been released as a new installer. The download above is still 1.0.0. See the [test record](docs/testing.md) for verified scenarios and limitations.
+**1.1.0** improves connections while vendor connectivity apps are running, fixes trusted-device rejection and Finder share-window focus, and adds diagnostic logs and email reports. Re-enroll old trusted-device entries after successfully receiving a file. See the [release notes](docs/releases/1.1.0.md) and [test record](docs/testing.md).
 
 ## Install and get started
 
@@ -89,7 +89,7 @@ Disable automatic checks or downloads in Settings → Updates, or check manually
 
 Names and privacy: local device aliases allow **40 characters** and do not rename the phone or account. The Mac uses its system Computer Name by default; change the sharing name with the pencil in Settings, or leave it blank to restore the default. Nearby names allow **15 UTF-8 bytes** (15 ASCII characters or typically 5 Chinese characters); transfer confirmations use the full sharing name. Nearby devices can see the advertised name. History stays on this Mac and can be cleared in Settings. While Petal runs, the nearby name temporarily becomes `A`.
 
-## Logs and bug reports (1.0.1 development build)
+## Logs and bug reports
 
 After a transfer fails, choose **Show Logs** in its notification, or open **Diagnostics & Bug Report…** in Settings. Preview the report, reveal it in Finder, or choose **Report a Bug…** to compose an email to `support@takeruf.com` with the log attached. Add reproduction steps and the other device’s model and OS version, then review and send it yourself. anDrop does not send reports automatically. If composing mail fails, attach the log manually.
 
@@ -104,7 +104,7 @@ The Mutual Transfer Alliance is a cross-brand ecosystem used by Xiaomi, HONOR, O
 | OPPO Find X9 Pro | Physical same-Wi-Fi transfers verified in both directions, with matching hashes. |
 | One OPPO tablet | Discovery, tablet identification and tablet → Mac verified. Mac → that tablet untested. |
 | Xiaomi, HONOR, vivo and other brands/models | Compatible devices in the target ecosystem; not physically tested yet. |
-| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.0.0. |
+| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.1.0. |
 | Petal Interconnect coexistence | Experimental. Transfers have succeeded, but discovery conflicts can recur. |
 | Wi-Fi Direct, Google Quick Share, Huawei Share | Not implemented. HarmonyOS devices untested. |
 
