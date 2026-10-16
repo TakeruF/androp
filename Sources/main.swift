@@ -38,6 +38,11 @@ struct Transfer: Identifiable, Codable {
 }
 
 @MainActor
+final class RecipientPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
+@MainActor
 final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
     @Published var language = UserDefaults.standard.string(forKey: "language") ?? "system"
     @Published var peers: [Peer] = []
@@ -62,7 +67,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @Published var startAtLogin = false
     private var window: NSWindow?
     private var item: NSStatusItem?
-    private var recipientPanel: NSPanel?
+    private var recipientPanel: RecipientPanel?
+    private var completedClickMonitors: [Any] = []
     private var menuTracking = false
     private var activity: NSObjectProtocol?
     private var peripheral: CBPeripheralManager?
@@ -113,6 +119,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return false }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        stopCompletedRecipientDismissal()
         terminating = true; peripheral?.stopAdvertising(); input?.closeFile(); process?.terminate(); saveHistory()
     }
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -245,11 +252,15 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if recipientPanel?.isVisible != true { clearPeers() }
         command(["command": "scan", "value": outgoing == nil])
         if recipientPanel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 360), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = RecipientPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 320), styleMask: [.borderless], backing: .buffered, defer: false)
             panel.title = L("Choose a Recipient", "选择接收设备"); panel.isReleasedWhenClosed = false; panel.hidesOnDeactivate = false; panel.delegate = self
+            panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
+            panel.isMovableByWindowBackground = true
+            panel.isFloatingPanel = false; panel.level = .normal
             panel.contentView = NSHostingView(rootView: RecipientView(model: self)); panel.center(); recipientPanel = panel
         }
         recipientPanel?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        updateCompletedRecipientDismissal()
     }
     func peerTitle(_ peer: Peer) -> String { peer.title(aliases: peerAliases, chinese: appLanguage() == "zh") }
     func peerSubtitle(_ peer: Peer) -> String { peer.subtitle(aliases: peerAliases, chinese: appLanguage() == "zh") }
@@ -278,8 +289,34 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         else { peerAliases[peer.aliasKey] = name }
         UserDefaults.standard.set(peerAliases, forKey: "peerAliases")
     }
+    private func stopCompletedRecipientDismissal() {
+        for monitor in completedClickMonitors { NSEvent.removeMonitor(monitor) }
+        completedClickMonitors.removeAll()
+    }
+    private func closeCompletedRecipients() {
+        guard recipientPanel?.isVisible == true, outgoingTransfer?.state == "complete" else { return }
+        closeRecipients()
+    }
+    private func updateCompletedRecipientDismissal() {
+        stopCompletedRecipientDismissal()
+        guard recipientPanel?.isVisible == true, outgoingTransfer?.state == "complete" else { return }
+        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: clicks, handler: { [weak self] event in
+            MainActor.assumeIsolated {
+                if let self, event.window !== self.recipientPanel { self.closeCompletedRecipients() }
+            }
+            return event
+        }) { completedClickMonitors.append(monitor) }
+        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.closeCompletedRecipients() }
+        }) { completedClickMonitors.append(monitor) }
+    }
+    func windowDidResignKey(_ notification: Notification) {
+        if let resigned = notification.object as? NSWindow, resigned === recipientPanel { closeCompletedRecipients() }
+    }
     func windowWillClose(_ notification: Notification) {
         if let closed = notification.object as? NSWindow, closed === recipientPanel {
+            stopCompletedRecipientDismissal()
             clearPeers(); command(["command": "scan", "value": false])
             if outgoingTransfer?.active != true { outgoing = nil; selectedFiles = [] }
         }
@@ -407,6 +444,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 sendNotification(t, category: "manage", title: t.label, body: L("\(t.peer) · View progress in the menu bar", "\(t.peer) · 在菜单栏查看进度"))
             } else if !t.active { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id]) }
         }
+        updateCompletedRecipientDismissal()
         if !t.active { saveHistory() }
         if let window { window.setContentSize(NSSize(width: 460, height: transfers.contains { $0.state == "request" } ? 585 : 510)) }
         rebuildMenu()
@@ -440,7 +478,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if !command(["command": "send", "request_id": id, "peer": selectedPeer, "peer_label": label, "paths": selectedFiles.map(\.path)]) {
             updateTransfer(["id": id, "state": "failed", "detail": L("Could not connect to the sharing service.", "无法连接到共享服务。")])
         }
-        command(["command": "scan", "value": false]); clearPeers()
+        command(["command": "scan", "value": false]); clearPeers(); updateCompletedRecipientDismissal()
     }
     func decide(_ transfer: Transfer, accept: Bool) {
         command(["command": "decision", "id": transfer.id, "accept": accept]); UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [transfer.id])
@@ -628,6 +666,7 @@ struct RecipientView: View {
                 }
             }.padding(.top, 16)
         }.padding(20).frame(width: 420, height: 320)
+            .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
     }
 }
 

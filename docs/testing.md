@@ -83,3 +83,7 @@ Petal repair remains best effort. Repeated tests disproved the assumption that s
 After the earlier file-transfer tests, temporary phone-wide discoverability was restored to the contacts/own-devices setting. The testing-only screen-awake setting was reset, the diagnostic app was uninstalled, and generated phone fixtures were removed. Raw logs, screenshots and protocol captures are not committed.
 
 For the recipient follow-up, the user manually enabled temporary visibility on both devices. No permanent visibility, screen-awake or phone-app setting was changed by this follow-up.
+
+## Titleless popup follow-up (build 6)
+
+The UI-only build passed compilation and deep/strict signature verification. Native previews using the same AppModel and RecipientPanel checked title-bar removal, rounded corners and the original window background color. With a synthetic sending state, focusing an outside window and closing that window revealed the still-open progress popup. With a synthetic successful state, the same focus change dismissed the popup; closing the outside window left no recipient popup. The preview used no Bluetooth or file transfer. The earlier build-5 physical-device transfer result is unchanged; no new file transfer was performed for this UI-only change.

@@ -57,3 +57,7 @@ After choosing a recipient, the share window stays open. A blue ring grows clock
 Preparing, Waiting and Connecting use an indeterminate ring without a fabricated percentage. After all response bytes have been sent, the ring is full and the status is Finishing until the peer confirms completion. Only then does it say Sent. Failure and cancellation are separate terminal states.
 
 Cancel Transfer stops the operation. Close dismisses the window while sending continues; reopen it through Show Progress in the menu bar. The chosen recipient remains in this transfer view even if it stops advertising. It is a snapshot of the active transfer, not a discoverable recipient available for a new send. Normal discovery still expires independently.
+
+## Share popup behavior
+
+The recipient popup has no title bar or traffic-light window buttons. It uses the existing Cancel, Close and Done controls. While a transfer is active, clicking another window moves the popup into the background and the transfer continues. After a successful send, clicking outside the popup or switching focus to another window dismisses it. Failed and cancelled transfers retain their result until dismissed.
