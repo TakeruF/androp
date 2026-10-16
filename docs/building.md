@@ -1,42 +1,79 @@
-# Building anDrop
+# Building and releasing anDrop
 
 ## Requirements
 
-- macOS with Xcode 26 or later, including a Swift compiler supporting Swift 6 and `-default-isolation MainActor` (Swift 6.2+).
-- Python 3.14 with the packages pinned in `requirements.txt`.
-- A build machine matching the desired CPU architecture. The development build was arm64; Intel has not been tested.
+- Xcode 26 or later and Swift 6.2+ (`-default-isolation MainActor`). The release was built on Apple Silicon with macOS 27.0.1 and Swift 6.4.
+- Python 3.14 and the pinned dependencies in `requirements.txt`. Version 1.0.0 uses the official python.org 3.14.7 runtime and binary wheels.
+- The build machine must match the target CPU architecture. The published 1.0.0 DMG is arm64 only; Intel is untested.
+- Normal builds fetch official Sparkle 2.10.0 from the URL in `release.json`, verify its pinned SHA-256 and embed the framework. Build-time network access is required on the first run.
 
-The recorded toolchain is macOS 27.0.1, Swift 6.4 and Python 3.14.7. The bundle declares macOS 14 as its minimum; this is not evidence of validation on macOS 14.
+The deployment target is **macOS 14.0**. A Homebrew Python built for macOS 26 cannot be made compatible by changing only Info.plist. Use a Python distribution and native wheels built for the minimum OS, such as the official python.org macOS installer. The build rejects bundled Mach-O files whose deployment target exceeds the declared minimum or whose load commands refer to build-machine libraries. This is a packaging check, not a physical test on macOS 14.
 
 ```sh
 python3.14 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install --only-binary=:all: -r requirements.txt
 .venv/bin/python build.py
 ```
 
-Build output: `build/anDrop.app`. The script builds the Swift host and Finder Share extension, freezes the Python engine with PyInstaller, copies licenses, signs the result, and verifies its signature. Temporary staging keeps extended filesystem attributes from invalidating signatures.
+Output: `build/anDrop.app`. The script compiles the Swift host and Finder Share extension, freezes the Python engine with PyInstaller, embeds Sparkle and licenses, signs nested code from the inside out and verifies the complete signature. Temporary staging avoids extended filesystem attributes invalidating signatures.
 
-After a full build, `.venv/bin/python build.py --ui-only` reuses its engine for a UI-only change. Rebuild fully whenever the engine or dependencies change.
+After a complete build, `build.py --ui-only` reuses its engine. Rebuild fully after changing engine code, Python or dependencies. The runtime compatibility check still runs for a UI-only build.
 
-## Signing and installation
+Version, monotonically increasing build number, minimum OS and public update feed live in `release.json`. `ANDROP_VERSION` and `ANDROP_BUILD` may override version/build for local tests. Release packaging rejects a mismatch with the release configuration.
 
-By default the build is ad-hoc signed. To use a configured signing identity, provide it locally through the `ANDROP_SIGN_IDENTITY` environment variable. Never commit a certificate, private key, identity string or Apple team identifier.
+## Signing
 
-The default bundle identifier is `org.androp.mac`; `ANDROP_BUNDLE_ID` can override it locally. Use a namespace you control for a public signed release. A changed bundle identifier can reset macOS permissions, preferences, login registration and extension registration.
+Default local builds are ad-hoc signed. Supply a configured Developer ID Application identity through the local `ANDROP_SIGN_IDENTITY` environment variable for a release. Real signatures use hardened runtime and secure timestamps. Certificates, identity strings, team identifiers and private keys must remain outside tracked files.
 
-Quit an existing copy before installing the built app in Applications. Open it and grant Bluetooth, Local Network, notifications and destination-folder access as requested. For local builds, follow macOS's normal approval flow; the project does not disable system security settings.
+The default bundle identifier is `org.androp.mac`; `ANDROP_BUNDLE_ID` can override it locally. Preserve the distributed identifier across updates. Changing it can reset permissions, preferences, login items and extension registration.
 
-Developer ID signatures expose the signing certificate's identity. A source repository with anonymous contributor metadata does not anonymize a signed app. No signed binary, certificate or notarization credential is committed here. Notarization is not automated by this script.
+Developer ID certificates identify the signer. Anonymous Git metadata does not anonymize a signed app. Inspect the concrete signed artifact and resolve any publication/privacy constraint before uploading it.
 
-## Licenses and verification
+## Automatic updates
+
+The app embeds the public Ed25519 key in `Resources/UpdatePublicKey.txt`. The matching private key stays in the login Keychain under the account named in `release.json`; do not commit or export it. Create your own key when distributing a fork:
 
 ```sh
-.venv/bin/python collect-licenses.py
+build/dependencies/Sparkle-2.10.0/bin/generate_keys --account org.example.your-app
+```
+
+The official Sparkle tools generate signed update archives and a signed appcast. Both signed feeds and verification before extraction are required. The feed is served from the public repository’s latest GitHub Release asset named `appcast.xml`. Automatic checks/downloads default to on; persisted choices are preserved. Update dialogs follow the app language, and installation is postponed while a transfer is active. Installation deferred with Later occurs on quit, as described in the prompt.
+
+`build.py --app-store` excludes Sparkle, its feed and updater UI. This is a build switch for future store distribution, not a claim of App Store approval or complete store compliance.
+
+## Notarization and DMG packaging
+
+The release helper never publishes. It keeps public assets separate from private signing/notarization records. Set `ANDROP_SIGN_IDENTITY` locally first, then run:
+
+```sh
+.venv/bin/python scripts/release.py prepare
+.venv/bin/python scripts/release.py submit
+.venv/bin/python scripts/release.py package
+```
+
+`prepare --skip-build` uses an already completed build after validating it. By default, submit uses the account already configured in Xcode with `xcodebuild -exportArchive` and `-allowProvisioningUpdates`. Package exports the notarized app with `-exportNotarizedApp` and refuses to continue unless signature verification, stapling validation and Gatekeeper assessment succeed. If notarization is still processing, retry package later.
+
+Alternatively, set `ANDROP_NOTARY_PROFILE` to your own existing Keychain profile before prepare. Submit uses notarytool, and package checks the saved submission status for Accepted before stapling. Credentials are never read into source or logs by the helper.
+
+The helper packages the stapled app and an Applications link into a DMG, signs the DMG, generates a signed appcast with embedded Chinese notes and writes checksums. **The application is notarized and stapled; the DMG container is Developer ID signed. The helper does not claim a separate DMG notarization.**
+
+Only these files in `dist/<version>/public/` are release assets:
+
+- `anDrop-<version>-arm64.dmg`
+- `appcast.xml`
+- `SHA256SUMS.txt`
+
+Use `docs/releases/<version>.md` as the GitHub release body. Never upload `dist/<version>/private/`, exported archives, raw build logs, ExportOptions or notarization records. Inspect assets and privacy before the separate explicit GitHub publication step. The repository must be public for unauthenticated update downloads.
+
+## Installation and validation
+
+Quit the old app and replace its complete bundle in Applications. Do not merge bundles: the archived Control Center extension could otherwise remain inside an older installation. Open the app and grant Bluetooth, Local Network, notifications and destination-folder access as requested. Follow macOS’s normal approval flow; do not disable system security protections.
+
+```sh
 .venv/bin/python -m unittest discover -s tests -v
 swift test
+python3 scripts/check-runtime.py build/anDrop.app --minimum 14.0 --arch arm64
 codesign --verify --deep --strict build/anDrop.app
 ```
 
-The collector reads installed package metadata, Python's license and available Homebrew native-library licenses. It preserves the protocol-reference licenses already checked in. Review the inventory against the actual bundle before distributing a new build. See [licensing](licensing.md) and [publication privacy](publication.md).
-
-The normal build excludes the archived [receive-panel prototype](../Prototypes/ReceivePanel/README.md). It creates no WidgetKit control extension, App Intents metadata or control-state App Group entitlement. When upgrading an older local build, replace the app bundle rather than merging it; otherwise the removed control extension may remain inside the installed bundle. Remove any old anDrop control from Control Center.
+Refresh dependency notices using `collect-licenses.py` from the exact build environment and inspect native-library provenance. See [licensing](licensing.md), [publication privacy](publication.md) and [validation records](testing.md). The normal build excludes the archived receive-panel prototype and creates no Control Center extension, App Intents metadata or control-state App Group entitlement.

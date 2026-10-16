@@ -251,7 +251,7 @@ class Engine:
                 self.notify({'wlan':'wlan','wlan_accept':True,'ip':k.encrypt(local)},central)
                 s['task']=self.launch(self.receive(s,host,port,udp))
             elif 'ssid' in payload:
-                self.notify('cancel',central);self.update(s,'failed',detail=t('Connect this Mac and your phone to the same Wi-Fi.','请将 Mac 和手机连接到同一 Wi-Fi。'));await self.reset(s)
+                self.notify('cancel',central);self.update(s,'failed',detail=t('Connect this Mac and the other device to the same Wi-Fi.','请将 Mac 和对方设备连接到同一 Wi-Fi。'));await self.reset(s)
     async def expire_receive_offer(self,s,central):
         await asyncio.sleep(15)
         if self.session is s and s.get('state')=='connecting' and 'task' not in s:
@@ -295,7 +295,7 @@ class Engine:
                     with tempfile.TemporaryDirectory(prefix='anDrop-',dir=self.destination) as td:
                         archive=Path(td)/'incoming.zip';limit=size+max(1048576,count*65536);downloaded=0
                         async with client.get(f'https://{host}:{port}/download',params={'taskId':taskid},ssl=Fingerprint(fingerprint)) as response:
-                            if response.status!=200:raise TransferError(t('Could not download files from the phone.','无法从手机获取文件。'))
+                            if response.status!=200:raise TransferError(t('Could not download files from the other device.','无法从对方设备下载文件。'))
                             with archive.open('wb') as out:
                                 async for chunk in response.content.iter_chunked(1024*1024):
                                     downloaded+=len(chunk)
@@ -441,7 +441,7 @@ class Engine:
                                         acknowledged=True
                                         if downloaded and not done.done():done.set_result(True)
                                     elif p.get('type') in (2,3):
-                                        if not done.done():done.set_exception(ValueError(t('The phone cancelled the transfer.','手机已取消传输。')))
+                                        if not done.done():done.set_exception(ValueError(t('The other device cancelled the transfer.','对方已取消传输。')))
                     finally:udp_task.cancel()
                     return ws
                 async def download(req):
@@ -463,7 +463,7 @@ class Engine:
                 client=BleakClient(device,timeout=15)
                 await client.connect();self.update(s,'connecting',total=total,count=len(files))
                 reply=json.loads(await asyncio.wait_for(client.read_gatt_char(bu('9897')),5))
-                if reply.get('state')!=0:raise TransferError(t('The phone is busy. Please try again shortly.','手机正忙，请稍后重试。'))
+                if reply.get('state')!=0:raise TransferError(t('The other device is busy. Please try again shortly.','对方设备正忙，请稍后重试。'))
                 keys.derive(reply['key'])
                 try:await client.start_notify(bu('9898'),lambda _,value:queue.put_nowait(bytes(value)))
                 except Exception as e:
@@ -494,7 +494,7 @@ class Engine:
                         if not raw.startswith(b'{'):continue
                         p=json.loads(raw)
                         if 'wlan_accept' in p:
-                            if not p['wlan_accept']:raise TransferError(t('Connect this Mac and your phone to the same Wi-Fi.','请将 Mac 和手机连接到同一 Wi-Fi。'))
+                            if not p['wlan_accept']:raise TransferError(t('Connect this Mac and the other device to the same Wi-Fi.','请将 Mac 和对方设备连接到同一 Wi-Fi。'))
                             confirmed=keys.decrypt(p['ip'])
                             if allowed_ip!=confirmed:raise ValueError('Peer address mismatch')
                             lan_confirmed.set()
@@ -504,7 +504,7 @@ class Engine:
                 await asyncio.sleep(.6)
         except asyncio.CancelledError:self.update(s,'cancelled')
         except TimeoutError:
-            detail=t('No response. Keep the phone unlocked, enable its sharing feature, and accept the transfer notification.', '未收到回应。请解锁手机、开启互传功能并接受传输通知。') if s.get('state')=='waiting' else t('The transfer connection timed out. Check that both devices use the same Wi-Fi, then try again.','传输连接超时。请确认两台设备连接同一 Wi-Fi，然后重试。')
+            detail=t('No response. Keep the other device unlocked, enable sharing, and accept its transfer request.', '未收到回应。请解锁对方设备、开启互传，并确认接收请求。') if s.get('state')=='waiting' else t('The transfer connection timed out. Check that both devices use the same Wi-Fi, then try again.','传输连接超时。请确认两台设备连接同一 Wi-Fi，然后重试。')
             self.update(s,'failed',detail=detail)
         except Exception as e:self.update(s,'failed',detail=transfer_error_detail(e,receiving=False))
         finally:

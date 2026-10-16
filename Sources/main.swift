@@ -8,6 +8,8 @@ import UserNotifications
 import ServiceManagement
 import CoreWLAN
 
+var applicationVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0" }
+
 struct Transfer: Identifiable, Codable {
     var id: String
     var direction = "receive"
@@ -68,6 +70,7 @@ final class RecipientPanel: NSPanel {
 
 @MainActor
 final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
+    let updates = AppUpdates()
     @Published private(set) var forgottenDeviceIdentifiers = Set(UserDefaults.standard.stringArray(forKey: "forgottenDeviceIdentifiers") ?? [])
     @Published private(set) var trustedOnly = UserDefaults.standard.bool(forKey: "trustedOnly")
     @Published private(set) var trustedDevices: [RememberedDevice] = {
@@ -79,7 +82,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         return (try? JSONDecoder().decode([RememberedDevice].self, from: data)) ?? []
     }()
     @Published private(set) var customSharingName = UserDefaults.standard.string(forKey: "customSharingName") ?? ""
-    @Published var language = UserDefaults.standard.string(forKey: "language") ?? "system"
+    @Published var language = UserDefaults.standard.string(forKey: "language") ?? "zh"
     @Published var peers: [Peer] = []
     @Published private(set) var peerAliases = UserDefaults.standard.dictionary(forKey: "peerAliases") as? [String: String] ?? [:]
     @Published var transfers: [Transfer] = []
@@ -151,12 +154,15 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         startAtLogin = SMAppService.mainApp.status == .enabled
         startEngine()
         peripheral = CBPeripheralManager(delegate: self, queue: nil)
+        refreshEnvironment()
+        updates.start(hasActiveTransfers: { [weak self] in self?.busy ?? false })
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshEnvironment() }
         }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return false }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { updates.installing && busy ? .terminateCancel : .terminateNow }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         stopCompletedRecipientDismissal()
@@ -186,6 +192,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         let appMenu = NSMenu(); appItem.submenu = appMenu
         appMenu.addItem(withTitle: L("About anDrop", "关于 anDrop"), action: #selector(about), keyEquivalent: "")
         appMenu.addItem(withTitle: L("Transfers", "传输"), action: #selector(showWindow), keyEquivalent: "")
+        if updates.isAvailable { appMenu.addItem(withTitle: L("Check for Updates…", "检查更新…"), action: #selector(checkForUpdates), keyEquivalent: "") }
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Quit anDrop", "退出 anDrop"), action: #selector(quit), keyEquivalent: "q")
         for entry in appMenu.items where entry.action != nil { entry.target = self }
@@ -200,9 +207,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         let statusMenu = NSMenu(); statusMenu.autoenablesItems = false; statusMenu.delegate = self; item?.menu = statusMenu
         rebuildMenu()
     }
+    @objc func checkForUpdates() { updates.checkForUpdates() }
     @objc func about() {
         let alert = NSAlert()
-        alert.messageText = "anDrop 0.1.1"
+        alert.messageText = "anDrop \(applicationVersion)"
         alert.informativeText = L("File sharing for the Mutual Transfer Alliance (互传联盟) ecosystem.\nNo prior connection. Use the same Wi-Fi.\n\n© 2026 anDrop contributors\nGPL-3.0-only · No warranty.\nRedistribution is permitted under the license.", "面向互传联盟生态的文件共享。\n无需预先连接，请使用同一 Wi-Fi。\n\n© 2026 anDrop contributors\nGPL-3.0-only · 不提供担保。\n可按许可证条款再分发。")
         alert.addButton(withTitle: L("Close", "关闭"))
         alert.addButton(withTitle: L("Licenses…", "许可证…"))
@@ -259,10 +267,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         func add(_ title: String, _ selector: Selector? = nil, id: String? = nil) {
             let row = NSMenuItem(title: title, action: selector, keyEquivalent: ""); row.target = self; row.representedObject = id; row.isEnabled = selector != nil; menu.addItem(row)
         }
-        add(L("Trusted Devices Only", "仅限信任设备"), #selector(selectTrustedOnly)); menu.items.last?.state = trustedOnly ? .on : .off
+        add(L("Trusted Devices Only", "仅限受信任的设备"), #selector(selectTrustedOnly)); menu.items.last?.state = trustedOnly ? .on : .off
         add(L("Everyone", "所有人"), #selector(selectEveryone)); menu.items.last?.state = trustedOnly ? .off : .on
         add(receiving ? L("Discoverable as: \(displayName)", "显示名称：\(displayName)") : L("Sharing is off", "文件共享已关闭"))
-        if petalRunning { add(L("Petal coexistence · Experimental", "与 Petal 共存 · 实验性支持")); add(L("Repair Discovery with Petal…", "修复与 Petal 的设备发现…"), #selector(repairPetal)); menu.items.last?.isEnabled = !busy && !petalRepairing }
+        if petalRunning { add(L("Petal coexistence · Experimental", "与 Petal 同时运行 · 实验性支持")); add(L("Repair Discovery with Petal…", "修复与 Petal 的发现冲突…"), #selector(repairPetal)); menu.items.last?.isEnabled = !busy && !petalRepairing }
         menu.addItem(.separator()); add(L("Send Files…", "发送文件…"), #selector(pickAndSend)); menu.items.last?.isEnabled = receiving && !busy
         for t in transfers.filter(\.active) {
             menu.addItem(.separator())
@@ -286,7 +294,12 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             menu.addItem(row)
         }
         if !error.isEmpty { menu.addItem(.separator()); add(String(error.prefix(100))) }
-        menu.addItem(.separator()); add(L("Settings…", "设置…"), #selector(showSettings)); add(L("Quit anDrop", "退出 anDrop"), #selector(quit))
+        menu.addItem(.separator()); add(L("Settings…", "设置…"), #selector(showSettings))
+        if updates.isAvailable {
+            add(L("Check for Updates…", "检查更新…"), #selector(checkForUpdates))
+            menu.items.last?.isEnabled = !busy && (updates.canCheck || updates.readyVersion != nil)
+        }
+        add(L("Quit anDrop", "退出 anDrop"), #selector(quit))
     }
     @objc func repairPetal() {
         guard !petalRepairing, !busy, let petal = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.EMUIInterconnect.app" }), let url = petal.bundleURL else { return }
@@ -564,6 +577,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         updateCompletedRecipientDismissal()
         if !t.active { saveHistory() }
+        updates.transferStateDidChange()
         rebuildMenu()
     }
     func removeLegacyHistoryOnce() {
@@ -618,10 +632,11 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         return true
     }
     func changeLanguage(_ value: String) {
-        language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu()
+        language = value; UserDefaults.standard.set(value, forKey: "language"); configureBundleLanguage(); configureEngine(); setupNotifications(); rebuildMenu()
         if let appMenu = NSApp.mainMenu?.items.first?.submenu {
             appMenu.items[0].title = L("About anDrop", "关于 anDrop")
             appMenu.items[1].title = L("Transfers", "传输")
+            appMenu.items.first(where: { $0.action == #selector(checkForUpdates) })?.title = L("Check for Updates…", "检查更新…")
             appMenu.items.last?.title = L("Quit anDrop", "退出 anDrop")
         }
         if let edit = NSApp.mainMenu?.items.last { edit.title = L("Edit", "编辑"); edit.submenu?.title = edit.title; edit.submenu?.items.first?.title = L("Copy", "拷贝"); edit.submenu?.items.last?.title = L("Paste", "粘贴") }
@@ -638,9 +653,13 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         let petal = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.EMUIInterconnect.app" }
         if petal != petalRunning {
             petalRunning = petal
-            if !petalRepairing { compactName = petal; NSApp.setActivationPolicy(petal ? .regular : .accessory) }
+            if !petalRepairing { compactName = petal }
             advertise()
         }
+        // Launch Services can restore .regular after the pre-run policy was set.
+        // Reconcile even when Petal's running state has not changed.
+        let policy: NSApplication.ActivationPolicy = petal || petalRepairing ? .regular : .accessory
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
         flushNotifications(); rebuildMenu()
     }
     private func advertise() {
@@ -796,7 +815,7 @@ struct RecipientView: View {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.small)
                     Text(L("Looking for devices…", "正在查找设备…")).font(.subheadline)
-                    Text(L("Turn on 互传 and allow nearby devices to find you. Use the same Wi-Fi.", "请开启互传并允许附近设备发现，连接同一 Wi-Fi。"))
+                    Text(L("Turn on 互传 and allow nearby devices to find you. Use the same Wi-Fi.", "请开启互传并允许附近设备发现，同时连接同一 Wi-Fi。"))
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 270)
                 }.frame(maxWidth: .infinity).frame(height: 128)
             } else {
@@ -867,7 +886,7 @@ private struct RenamePeerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L("Name on This Mac", "在此 Mac 上的名称")).font(.headline)
-            Text(L("Up to 40 characters. Leave blank to use device details. Saved only on this Mac.", "最多 40 个字符。留空则使用设备信息。仅保存在此 Mac。"))
+            Text(L("Up to 40 characters. Leave blank to use device details. Saved only on this Mac.", "最多 40 个字符。留空时使用设备信息。此名称仅保存在本机。"))
                 .font(.callout).foregroundStyle(.secondary)
             TextField(peer.deviceLabel(chinese: appLanguage() == "zh"), text: $draft)
                 .textFieldStyle(.roundedBorder).focused($nameFocused)
@@ -1027,14 +1046,14 @@ struct SettingsView: View {
             }
             VStack(alignment: .leading, spacing: 8) { Text(L("Save received files to", "接收文件保存位置")).font(.headline); HStack { Text(model.destination).font(.callout).lineLimit(1).truncationMode(.middle); Spacer(); Button(L("Change…", "更改…"), action: model.chooseDestination) }; Text(L("Each transfer needs your approval. Existing files are never overwritten.", "每次接收都需确认。同名文件不会被覆盖。")).font(.caption).foregroundStyle(.secondary) }
             VStack(alignment: .leading, spacing: 8) {
-                Picker(L("Allow Requests From", "允许接收请求"), selection: Binding(get: { model.trustedOnly }, set: model.changeTrustedOnly)) {
-                    Text(L("Trusted Devices Only", "仅限信任设备")).tag(true)
+                Picker(L("Allow Requests From", "接收范围"), selection: Binding(get: { model.trustedOnly }, set: model.changeTrustedOnly)) {
+                    Text(L("Trusted Devices Only", "仅限受信任的设备")).tag(true)
                     Text(L("Everyone", "所有人")).tag(false)
                 }
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 8) {
                         if model.trustedDevices.isEmpty {
-                            Text(L("No trusted devices", "暂无信任设备"))
+                            Text(L("No trusted devices", "尚未添加受信任的设备"))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         ForEach(model.trustedDevices) { device in
@@ -1054,9 +1073,9 @@ struct SettingsView: View {
                             }
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
-                    Button(L("Trusted Devices…", "信任设备…")) { managingTrustedDevices = true }
+                    Button(L("Trusted Devices…", "受信任的设备…")) { managingTrustedDevices = true }
                 }
-                Text(L("Other devices can still see this Mac. In Trusted Devices Only mode, their transfer requests are rejected. Trusted devices still need your approval.", "未受信任的设备仍可发现此 Mac；选择“仅限信任设备”后，其传输请求会被拒绝。信任设备每次传输仍需你确认。"))
+                Text(L("Other devices can still see this Mac. In Trusted Devices Only mode, their transfer requests are rejected. Trusted devices still need your approval.", "未受信任的设备仍可发现此 Mac；选择“仅限受信任的设备”后，其传输请求会被拒绝。受信任的设备每次传输仍需你确认。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Picker(L("Language", "语言"), selection: Binding(get: { model.language }, set: model.changeLanguage)) {
@@ -1069,7 +1088,7 @@ struct SettingsView: View {
             HStack { Text(model.notificationsAllowed ? L("Notifications: On", "通知：已开启") : L("Notifications: Off", "通知：已关闭")); Spacer(); Button(L("Notification Settings…", "通知设置…")) { if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) } } }
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(model.petalRunning ? L("With Petal · Nearby name “A”", "与 Petal 共存 · 附近设备名称“A”") : L("Discoverable as “\(model.displayName)”", "在设备上显示为“\(model.displayName)”"))
+                    Text(model.petalRunning ? L("With Petal · Nearby name “A”", "Petal 运行中 · 附近设备名称“A”") : L("Discoverable as “\(model.displayName)”", "在附近设备中显示为“\(model.displayName)”"))
                     Button { editingSharingName = true } label: { Image(systemName: "pencil") }
                         .buttonStyle(.borderless)
                         .help(L("Change sharing name", "更改共享名称"))
@@ -1077,16 +1096,25 @@ struct SettingsView: View {
                         .disabled(model.busy)
                     Spacer(minLength: 0)
                 }
-                Text(L("Nearby device names: up to 15 UTF-8 bytes (15 ASCII characters or typically 5 Chinese characters). Transfer confirmations use the full sharing name. Leave the custom name blank to use the Mac name.", "附近设备名称上限：15 个 UTF-8 字节（15 个半角英数字符，或通常 5 个汉字）。传输确认使用完整共享名称。自定义名称留空时使用系统电脑名称。"))
+                Text(L("Nearby device names: up to 15 UTF-8 bytes (15 ASCII characters or typically 5 Chinese characters). Transfer confirmations use the full sharing name. Leave the custom name blank to use the Mac name.", "附近设备名称上限：15 个 UTF-8 字节（15 个 ASCII 字符（英文、数字等），或通常 5 个汉字）。传输确认使用完整共享名称。自定义名称留空时使用系统电脑名称。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if model.petalRunning {
                     Text(L("Experimental: discovery may fail with Petal. Repair restarts Petal, but may not resolve every conflict. If it persists, quit Petal while receiving.", "实验性支持：与 Petal 同时运行时可能无法被发现。修复会重启 Petal，但不保证解决每次冲突。若仍无法发现，可在接收时退出 Petal。"))
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if model.petalRunning { Button(model.petalRepairing ? L("Restarting Petal…", "正在重启 Petal…") : L("Repair Discovery with Petal", "修复与 Petal 的设备发现"), action: model.repairPetal).disabled(model.busy || model.petalRepairing) }
-            HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text("0.1.1").font(.caption).foregroundStyle(.secondary) }
+            if model.petalRunning {
+                Text(L("The Dock icon is shown only while Petal is running to preserve Bluetooth discovery. It hides again after Petal quits.", "仅在 Petal 运行期间保留 Dock 图标，以维持蓝牙设备发现；退出 Petal 后会自动隐藏。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if model.petalRunning { Button(model.petalRepairing ? L("Restarting Petal…", "正在重启 Petal…") : L("Repair Discovery with Petal", "修复与 Petal 的发现冲突"), action: model.repairPetal).disabled(model.busy || model.petalRepairing) }
+            UpdateSettingsView(updates: model.updates, chinese: appLanguage() == "zh", busy: model.busy)
+            HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text(applicationVersion).font(.caption).foregroundStyle(.secondary) }
             Text(L("Mutual Transfer Alliance (互传联盟) · Same Wi-Fi required.", "互传联盟 · 需连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                Link(L("License (GPL-3.0)", "许可证（GPL-3.0）"), destination: URL(string: "https://github.com/TakeruF/cn-android-share/blob/main/LICENSE")!)
+                Link(L("GitHub Repository", "GitHub 仓库"), destination: URL(string: "https://github.com/TakeruF/cn-android-share")!)
+            }.font(.caption)
         }.padding(24)
         }.frame(width: 460, height: min(640, (NSScreen.main?.visibleFrame.height ?? 740) - 100))
             .sheet(isPresented: $editingSharingName) {
@@ -1101,8 +1129,8 @@ struct TrustedDevicesView: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L("Trusted Devices", "信任设备")).font(.headline)
-            Text(L("Add a device from previous transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it. Other devices can still see this Mac; Trusted Devices Only rejects their transfer requests.", "可从下方的传输历史添加设备，无需当前可见。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。未受信任的设备仍可发现此 Mac；“仅限信任设备”会拒绝其传输请求。"))
+            Text(L("Trusted Devices", "受信任的设备")).font(.headline)
+            Text(L("Add a device from previous transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it. Other devices can still see this Mac; Trusted Devices Only rejects their transfer requests.", "可从下方的传输记录添加设备，即使设备当前不在线。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。未受信任的设备仍可发现此 Mac；“仅限受信任的设备”会拒绝其传输请求。"))
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -1152,7 +1180,7 @@ struct SharingNameView: View {
             Text(L("Visible to nearby devices. Leave blank to follow this Mac’s system name. This does not rename your Mac.", "附近设备可见。留空时跟随本机的系统名称，不会修改 Mac 的系统名称。"))
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             TextField(model.deviceName, text: $name).textFieldStyle(.roundedBorder).focused($nameFocused).onSubmit(save)
-            Text(L("\(normalizedName.utf8.count)/15 UTF-8 bytes · 15 ASCII characters or typically 5 Chinese characters.", "\(normalizedName.utf8.count)/15 个 UTF-8 字节 · 15 个半角英数字符或通常 5 个汉字。"))
+            Text(L("\(normalizedName.utf8.count)/15 UTF-8 bytes · 15 ASCII characters or typically 5 Chinese characters.", "\(normalizedName.utf8.count)/15 个 UTF-8 字节 · 15 个 ASCII 字符（英文、数字等）或通常 5 个汉字。"))
                 .font(.caption).foregroundStyle(valid ? Color.secondary : Color.red).fixedSize(horizontal: false, vertical: true)
             if model.petalRunning {
                 Text(L("While Petal runs, the nearby name remains “A”. Your sharing name is used in transfer confirmations and restored nearby when Petal quits.", "Petal 运行时，附近名称仍为“A”。传输确认使用此共享名称，退出 Petal 后附近名称也会恢复。"))
@@ -1168,6 +1196,7 @@ struct SharingNameView: View {
     }
 }
 
+configureBundleLanguage()
 let app = NSApplication.shared
 let model = AppModel()
 app.setActivationPolicy(NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.EMUIInterconnect.app" } ? .regular : .accessory)

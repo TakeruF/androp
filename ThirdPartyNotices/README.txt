@@ -2,6 +2,7 @@ Dependency inventory from the anDrop build environment.
 PyInstaller is used under its bootloader exception.
 Protocol-reference licenses: mtapy-LICENSE (GPL-3.0), CatShare-LICENSE (MIT).
 These two references are not bundled runtime dependencies. See NOTICE.md.
+Sparkle 2.10.0: MIT and bundled third-party notices; see Sparkle-LICENSE.txt.
 
 aiohttp 3.14.5: Apache-2.0 AND MIT
 aiohappyeyeballs 2.7.1: PSF-2.0
@@ -26,6 +27,11 @@ macholib 1.16.4: MIT
 pyinstaller-hooks-contrib 2026.8: See component license
 pyinstaller 6.22.3: GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones)
 setuptools 84.0.0: MIT
+Python incorporated-software notices: from the matching official Python installer documentation.
+OpenSSL notice source: https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.7/LICENSE.txt
+zstd notice source: https://raw.githubusercontent.com/facebook/zstd/v1.5.7/LICENSE
+liblzma notice source: https://raw.githubusercontent.com/tukaani-project/xz/v5.2.3/COPYING
+Python runtime: 3.14.7; OpenSSL 3.5.7; Zstandard 1.5.7.
 pyobjc-core license source: https://raw.githubusercontent.com/ronaldoussoren/pyobjc/v12.2.2/pyobjc-core/License.txt
 pyobjc-framework-libdispatch license source: https://raw.githubusercontent.com/ronaldoussoren/pyobjc/v12.2.2/pyobjc-framework-libdispatch/License.txt
 PyObjC links to macOS system libffi; no separate libffi library is bundled.

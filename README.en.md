@@ -4,118 +4,115 @@
 
 [简体中文](README.md) · English
 
-anDrop is a macOS menu bar app for the **互传联盟 (Mutual Transfer Alliance)** ecosystem. No prior connection to a vendor desktop app, extra phone app, account, cloud service or USB cable is needed at runtime. **Both devices still need Bluetooth enabled and the same local Wi-Fi network.**
+anDrop is a macOS menu bar app for the **互传联盟 (Mutual Transfer Alliance)** ecosystem. No prior connection to a vendor desktop app, extra phone app, account or USB cable is needed. File transfers stay on the local network. **Both devices need Bluetooth enabled and the same local Wi-Fi network.**
 
-> **Development version 0.1.1. No ready-to-download installer is available yet.** For now, [build from source](#build-from-source). An OPPO phone has been tested in both directions; one OPPO tablet has been tested sending to the Mac. Other brands and models remain untested. The mock screens below do not establish compatibility with every brand shown.
+**[Download anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [Usage and troubleshooting](docs/usage.md) · [Compatibility](docs/compatibility.md)
+
+Version 1.0.0 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. An OPPO phone has been tested in both directions; one OPPO tablet has been tested sending to the Mac. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
+
+## Install and get started
+
+1. Download the `.dmg`, open it and drag **anDrop** into **Applications**.
+2. Open anDrop and allow Bluetooth, Local Network, notifications and destination-folder access as needed. A paper-plane icon appears in the menu bar.
+3. Enable compatible sharing on the other device and connect both devices to the same local Wi-Fi. Guest networks or networks that isolate devices may prevent transfers.
+
+Fresh installations default to **Simplified Chinese**. Choose English or System Default in Settings; an existing language choice is preserved. Receiving is enabled while anDrop is running; quit to stop receiving. No main window needs to stay open. The Dock icon normally stays hidden; it remains visible while Petal runs to improve Bluetooth discovery.
 
 ## See how it works
 
-These images use the actual app views with fictional device names, filenames, Computer Name and progress. They contain no real accounts, device records or transferred content.
-
-### 1. Choose a device and send
-
-Select files in Finder, then **Share → anDrop**. A small badge identifies the phone or tablet beside its circular brand logo. Click a device to send; click the pencil to give it a name stored only on this Mac.
-
-<img src="docs/images/recipients-en.png" alt="Mock recipient chooser with Work phone, Travel tablet and other fictional devices, brand logos, device badges and pencil buttons" width="600">
-
-### 2. Follow progress and keep working
-
-A blue ring and percentage show sending progress. Preparing, waiting for acceptance and connecting have their own states. The app says “Sent” only after the other device confirms completion.
-
-<img src="docs/images/sending-en.png" alt="Mock transfer to Work phone showing a blue progress ring at 42%, a single Cancel button" width="600">
-
-Clicking another window during sending moves anDrop into the background while the transfer continues. The single Cancel button dismisses the picker before sending and cancels the transfer while sending. After a successful send, clicking outside dismisses it.
-
-### 3. Set it up your way
-
-Received files go directly into **Downloads** by default. The menu bar provides Send Files, progress, recent transfers and Settings; no main window needs to stay open.
-
-<details>
-<summary>View Settings (mock data)</summary>
-
-<img src="docs/images/settings-en.png" alt="Mock Settings showing Downloads, language selection, Open at Login, notification status, nearby name and Clear Transfer History" width="600">
-
-</details>
-
-## Get started
-
-### Before your first transfer
-
-- Use a Mac running anDrop and a phone or tablet with a **compatible Mutual Transfer Alliance sharing feature**.
-- Enable Bluetooth on both and join the same local Wi-Fi network. Guest networks or networks that isolate devices may prevent transfers.
-- On first launch, allow Bluetooth, Local Network, notifications and destination-folder access when needed. Receiving is enabled whenever anDrop is running. Quit anDrop to stop receiving.
+These are production app views with fictional device names, filenames, Computer Name and progress. They contain no real accounts, device records or transferred content.
 
 ### Mac → phone or tablet
 
-1. Open sharing on the receiving device and allow nearby devices to discover it. You may need to temporarily choose “Everyone”; some systems turn this off after a few minutes.
-2. Select files in Finder → **Share → anDrop**, or use **Send Files** in anDrop’s menu bar.
-3. Choose the device and approve the incoming files on it.
+Enable sharing and nearby visibility on the receiving device. You may need to temporarily select Everyone; some systems automatically expire this mode after a few minutes.
+
+Select files in Finder, then **Share → anDrop**, or choose **Send Files** in the menu bar. A badge beside the manufacturer logo distinguishes phones and tablets. Click a device to send, then approve receipt on that device. The pencil beside its name sets a name stored only on this Mac.
+
+<img src="docs/images/recipients-en.png" alt="Mock recipient chooser with fictional Work phone and Travel tablet names, manufacturer logos, device badges and pencil buttons" width="600">
+
+The progress ring and percentage show sending progress. Preparing, waiting and connecting have separate states. Sent appears only after the recipient confirms completion. Clicking another window moves anDrop into the background while sending continues.
+
+<img src="docs/images/sending-en.png" alt="Mock sending view with a 42 percent progress ring and a single Cancel button" width="600">
+
+Before sending, Cancel dismisses the picker. While sending, it cancels the transfer. After a successful send, clicking outside dismisses the popup.
 
 ### Phone or tablet → Mac
 
 1. Select files on the device, open its built-in compatible sharing feature and choose the Mac.
-2. Accept in anDrop’s notification or menu bar. Every incoming transfer requires approval.
-3. Find the files directly in Downloads. Existing files are preserved by adding a number to duplicate names; received files are not opened automatically.
+2. Accept in anDrop’s notification or menu bar. **Every incoming transfer requires approval.**
+3. Files go directly into **Downloads** by default. Duplicate names receive a numeric suffix; existing files are never overwritten and received files are not opened automatically.
 
 One transfer runs at a time. Compress folders first. Send files with identical base names in separate transfers.
+
+### Settings
+
+Change the destination folder, sharing name, language, Open at Login, receiving scope and update settings. License and GitHub links are at the bottom.
+
+<details>
+<summary>View Settings (mock data)</summary>
+
+<img src="docs/images/settings-en.png" alt="Mock settings showing destination, trusted devices, language, sharing name, automatic updates and license links" width="600">
+
+</details>
+
+## Receive scope and trusted devices
+
+Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Both modes require approval for every incoming transfer.
+
+**This differs from AirDrop Contacts Only: untrusted devices may still see this Mac. Trusted Devices Only rejects their transfer requests; it does not hide anDrop.** See [discovery limits and receive filtering](docs/trusted-discovery.md).
+
+In Settings → **Trusted Devices…**, add devices from transfer history even when they are offline. New devices need one transfer in Everyone mode first. Rows show manufacturer artwork, a phone/tablet badge and a device name. Local identifier suffixes distinguish identical names. Remove trust or forget a device at any time.
+
+<img src="docs/images/trusted-en.png" alt="Mock trusted-device management with manufacturer artwork and add, remove and forget controls" width="600">
+
+The filter uses Bluetooth identifiers remembered by this Mac, not names or accounts. It is not cryptographic pairing or authenticated identity. Verify each device yourself and add it again if its identifier changes. Unlisted requests are rejected before approval or a Wi-Fi download connection. Removing trust does not interrupt a transfer already in progress.
+
+## Automatic updates
+
+**Automatic checks and automatic downloads are enabled by default.** anDrop checks GitHub Releases at launch and periodically afterward. Once an update is downloaded and its signatures are verified, it prompts you to restart and install. Choose Later to install when you quit. Checks or restarts are deferred during transfers.
+
+Disable automatic checks or downloads in Settings → Updates, or check manually from the menu bar. Updating needs access to GitHub; file sharing does not use a cloud service.
 
 ## Common questions
 
 | What happened? | What to try |
 | --- | --- |
-| anDrop is missing from Finder’s Share menu | Open anDrop once, then enable its Share extension in macOS settings. You can also send from the menu bar. |
-| The Mac cannot find the phone or tablet | Unlock the receiving device, reopen sharing and enable everyone-visible mode. Check the same Wi-Fi; visibility can expire automatically. |
-| A device stays listed briefly after becoming undiscoverable | It normally disappears about 10–11 seconds after its last Bluetooth advertisement. The Mac cannot read the other system’s visibility countdown. |
-| Two devices show the same person’s name | Sharing names may come from an account. Use the phone/tablet badge and pencil to name each device locally. For identical entries, initially make only one discoverable. |
+| anDrop is missing from Finder’s Share menu | Open anDrop once and enable its Share extension in macOS settings, or send from the menu bar. |
+| The Mac cannot find a device | Unlock it, reopen sharing, enable Everyone visibility and check the Wi-Fi. Visibility may have expired. |
+| A device remains listed briefly after becoming undiscoverable | It normally disappears about 10–11 seconds after its last Bluetooth advertisement. The Mac cannot read the other system’s visibility countdown. |
+| Two devices show the same person’s name | Sharing names can come from an account. Use the badge and pencil to name each device locally. For identical entries, initially make only one discoverable. |
 | No notification appears | Check macOS notification and Focus settings. Approval and progress are also available in the menu bar. |
-| The phone cannot find the Mac while Petal is running | Coexistence is experimental. Finish Petal transfers before trying anDrop’s manual repair in Settings, which restarts Petal. If needed, quit Petal while receiving. |
+| Discovery fails while Petal runs | Coexistence is experimental. Finish Petal transfers before using the manual repair in Settings, which restarts Petal. If needed, quit Petal while receiving. |
+| Finder’s Share menu still shows the old icon | macOS may retain the old extension icon in its cache. Restart the Mac later; this does not prevent file transfers. |
 
-Names and privacy: local device names allow **40 characters** and do not rename the phone or account. The Mac uses its system Computer Name by default. Click the pencil beside the nearby name in Settings to set a custom sharing name (up to 15 UTF-8 bytes); leave it blank to restore the default. This does not rename your Mac. Nearby advertisements allow **15 UTF-8 bytes**—15 ASCII characters or typically 5 Chinese characters—while transfer confirmations use the full name. Nearby devices can see the advertised name. Transfer history stays on this Mac and can be cleared in Settings. While Petal runs, anDrop temporarily uses `A` nearby and keeps a Dock icon to improve coexistence.
-
-## Receive scope and trusted devices
-
-Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Every transfer still requires approval in both modes; trusting a device never enables automatic acceptance.
-
-**Visibility is different from AirDrop Contacts Only.** Other devices can still see this Mac in their sharing picker. **Trusted Devices Only rejects transfer requests from devices that are not in the trusted list; it does not hide anDrop from them.** Trusted devices still require approval. AirDrop Contacts Only performs contact matching before responding during discovery ([Apple Platform Security](https://support.apple.com/guide/security/airdrop-security-sec2261183f4/web)); anDrop’s current alliance discovery uses a public Bluetooth advertisement. See [discovery limits and receive filtering](docs/trusted-discovery.md).
-
-Open Settings → **Trusted Devices…** to add devices from previous transfers even when they are offline. New devices need one transfer in Everyone mode first. Device rows use manufacturer artwork with a phone/tablet badge. Verify the requesting device yourself. Different local identifier suffixes distinguish devices with identical names. Remove trust or forget a remembered device at any time.
-
-This filter uses Bluetooth identifiers remembered by this Mac, not account or device names. It is not cryptographic pairing or authenticated identity. Add a device again if its identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or connecting over Wi-Fi to download files. Removing trust does not interrupt an already-started transfer.
-
-![anDrop trusted devices from mock history](docs/images/trusted-en.png)
-
-Control Center integration has been removed. Use the menu bar or Settings for receiving options. The compact panel’s source and standalone preview are preserved in the [receive-panel prototype](Prototypes/ReceivePanel/README.md) for possible reuse.
+Names and privacy: local device aliases allow **40 characters** and do not rename the phone or account. The Mac uses its system Computer Name by default; change the sharing name with the pencil in Settings, or leave it blank to restore the default. Nearby names allow **15 UTF-8 bytes** (15 ASCII characters or typically 5 Chinese characters); transfer confirmations use the full sharing name. Nearby devices can see the advertised name. History stays on this Mac and can be cleared in Settings. While Petal runs, the nearby name temporarily becomes `A`.
 
 ## Which devices work?
 
-The Mutual Transfer Alliance is a cross-brand ecosystem used by manufacturers including Xiaomi, HONOR, OPPO and vivo. **It is separate from Google Quick Share and is not an Android-wide standard.** See [HONOR’s official overview](https://www.honor.com/cn/support/content/zh-cn15883773/). Compatibility depends on model, region and software version. Alliance membership or a displayed logo does not mean that anDrop has been tested with that device.
+The Mutual Transfer Alliance is a cross-brand ecosystem used by Xiaomi, HONOR, OPPO, vivo and other manufacturers. **It is separate from Google Quick Share and is not an Android-wide standard.** See [HONOR’s official overview](https://www.honor.com/cn/support/content/zh-cn15883773/). Compatibility depends on model, region and software version. Alliance membership or a displayed logo does not establish anDrop compatibility.
 
 | Device or feature | Current status |
 | --- | --- |
-| OPPO Find X9 Pro | Physical same-Wi-Fi transfers verified in both directions, with matching file hashes. |
-| One OPPO tablet | Discovery, tablet identification and tablet → Mac verified; Mac → that tablet untested. |
+| OPPO Find X9 Pro | Physical same-Wi-Fi transfers verified in both directions, with matching hashes. |
+| One OPPO tablet | Discovery, tablet identification and tablet → Mac verified. Mac → that tablet untested. |
 | Xiaomi, HONOR, vivo and other brands/models | Compatible devices in the target ecosystem; not physically tested yet. |
-| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Intel and earlier macOS versions are untested. The declared macOS 14 minimum is not a tested support range. |
+| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.0.0. |
 | Petal Interconnect coexistence | Experimental. Transfers have succeeded, but discovery conflicts can recur. |
-| Wi-Fi Direct, Google Quick Share, Huawei Share | Not implemented. HarmonyOS devices are untested. |
+| Wi-Fi Direct, Google Quick Share, Huawei Share | Not implemented. HarmonyOS devices untested. |
 
-See the [compatibility matrix](docs/compatibility.md) and [test report](docs/testing.md). Recognizing a brand or device category does not identify the exact model.
+Physical transfer results come from development testing, not a fresh test after every UI or packaging change. See [compatibility](docs/compatibility.md) and [validation records](docs/testing.md). Brand/category recognition does not identify the exact model.
 
 ## Build from source
 
-For developers and users comfortable installing build tools. **There is no one-click installer in this repository yet.** If you are unfamiliar with the terminal, you can review the usage and compatibility information above and wait for a future packaged release.
-
-You need macOS, Xcode 26 or later (including the macOS 26 SDK and App Intents tools), Swift 6.2+ and Python 3.14. The recorded environment used Apple Silicon, macOS 27.0.1, Swift 6.4 and Python 3.14.7.
-
-After downloading or cloning this repository, run these commands in its directory:
+Most users should download the DMG. Developers need Xcode 26 or later, Swift 6.2+ and Python 3.14. **Use Python and dependencies built for older macOS versions**, such as the official python.org installer. A local Homebrew Python may require a newer OS. The build checks every bundled Mach-O binary against the declared minimum.
 
 ```sh
 python3.14 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install --only-binary=:all: -r requirements.txt
 .venv/bin/python build.py
 ```
 
-The output is `build/anDrop.app`. Quit an older copy, put the app in Applications and open it. Builds are ad-hoc signed by default; notarization is not automated. Use macOS’s normal opening and permission flow; disabling system security features is not required. See [building, signing and installation](docs/building.md).
+Output: `build/anDrop.app`. Local builds are ad-hoc signed by default; release builds use Developer ID. The build fetches a pinned, checksum-verified Sparkle framework. See [building, signing and releases](docs/building.md). Disabling macOS security features is not required.
 
 <details>
 <summary>Developers: tests, architecture and documentation images</summary>
@@ -126,11 +123,11 @@ swift test
 python3 scripts/render-docs.py
 ```
 
-- [Architecture and protocol boundaries](docs/architecture.md): Bluetooth discovery and negotiation, with files using the existing local network.
-- [Detailed usage and troubleshooting](docs/usage.md): discovery expiry, aliases, progress, Petal and receive errors.
-- [Device identification](docs/device-identification.md): evidence and limits of brand/category detection.
-- [Documentation image generation](docs/images/README.md): reproducible production views with fictional data on a Mac.
-- `Sources/`: native host, Finder extension and transfer engine; `tests/`: related checks.
+- [Architecture and protocol boundaries](docs/architecture.md)
+- [Detailed usage and troubleshooting](docs/usage.md)
+- [Device identification](docs/device-identification.md)
+- [Documentation image generation](docs/images/README.md)
+- [Archived receive-panel prototype](Prototypes/ReceivePanel/README.md): source and standalone preview of the removed Control Center panel, excluded from release builds.
 
 The repository is named **cn-android-share**; the app is named **anDrop**.
 
@@ -138,6 +135,6 @@ The repository is named **cn-android-share**; the app is named **anDrop**.
 
 ## License and affiliation
 
-Project-authored source, documentation and app icon assets use **GPL-3.0-only**. Third-party components retain their own licenses. [Official brand artwork](Resources/BrandLogos/README.md) retains its owners’ copyright and trademark rights and is excluded from this project’s GPL grant, including logos visible in documentation images. See [LICENSE](LICENSE), [NOTICE.md](NOTICE.md) and [licensing details](docs/licensing.md).
+Project-authored source, documentation and app icons use **GPL-3.0-only**. Dependencies retain their own licenses. [Official manufacturer artwork](Resources/BrandLogos/README.md) retains its owners’ copyright and trademark rights and is excluded from the GPL grant, including artwork visible in documentation images. See [LICENSE](LICENSE), [NOTICE.md](NOTICE.md) and [licensing details](docs/licensing.md).
 
-This project is not affiliated with, certified by or endorsed by device manufacturers or Apple. Documentation images use fictional data only. Real device logs, private screenshots, vendor APKs, decompiled vendor source, credentials and signing material are excluded from the repository.
+The project is not affiliated with, certified by or endorsed by manufacturers or Apple. Documentation images contain fictional data only. Real device logs, private screenshots, vendor APKs, decompiled vendor source, credentials and private keys are excluded. Developer ID certificates are inspectable and identify their signer; anonymous source metadata does not hide that identity.

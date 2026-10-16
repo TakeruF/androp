@@ -144,3 +144,15 @@ A native preview using the production views checked a one-line “Example” lab
 - A disposable native-model check exercised the production cancel action with a local JSON-lines sink and no transfer engine: unsent closure, cancellation of the correct ID in all five active phases, and closure after a cancelled result passed.
 - Existing Python tests: **54 passed**. Swift identity/progress/policy tests: **15 passed**. The English and Chinese sending screenshots were regenerated from production views with mock data and show one Cancel button.
 - This UI/integration update did not repeat a physical-device file transfer.
+
+## Version 1.0.0 release preparation
+
+- The full app was rebuilt with the official Python 3.14.7 macOS runtime and pinned binary wheels. All **80 bundled Mach-O files** passed an arm64/macOS 14.0 deployment-target check; no load commands referred to the development machine’s library paths. This does not establish execution on physical macOS 14 hardware.
+- The signed hardened-runtime engine started with Python/DYLD environment overrides removed, emitted ready and exited normally with no stderr output. No file transfer or Bluetooth scan was started by this engine smoke check.
+- **54 Python tests and 15 Swift tests passed.** The future App Store build switch was separately typechecked without importing Sparkle; this is not store validation.
+- A separate UUID-identified fixture compiled the production AppUpdates implementation and embedded Sparkle 2.10.0. It used a loopback-only HTTP feed, synthetic UI and a signed 1.0.0 DMG; it had no transfer engine or Bluetooth advertising. From 0.9.9, automatic checking/download produced the Chinese ready dialog, Later retained the old version, a simulated active transfer disabled installation, and Restart and Update installed and relaunched **1.0.0**. A manual check then displayed Sparkle’s Chinese up-to-date dialog.
+- Disabling automatic checks/downloads was reflected in the UI and independently read back from that disposable fixture’s persistent preferences. The fixture did not change the installed anDrop preferences.
+- Both the signed feed and update archive were verified. Appending bytes to the test archive caused signature verification to fail, using both Sparkle’s tool and an independent verification with the embedded public Ed25519 key. Private signing keys were not exported.
+- Frozen Python archives contained **479 code filenames**, none absolute; no project-owner name, private home path or signing-team identifier was found in their inspected string constants. The Git history and intended source changes were also screened for those private values. This is a focused publication check, not a claim that arbitrary data can be automatically anonymized.
+- Chinese and English documentation captures were regenerated from production views with fictional data. The mock Settings viewport is expanded to show the update controls and license/repository links. Normal Settings remains scrollable.
+- No additional physical-device transfer was performed for the updater/packaging change. Earlier physical test results above remain scoped to their recorded builds.

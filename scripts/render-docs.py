@@ -30,6 +30,11 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
     original = 'var deviceName: String { Host.current().localizedName ?? ProcessInfo.processInfo.hostName }'
     assert original in source, 'Review the mock Computer Name override after a source change.'
     source = source.replace(original, 'var deviceName: String { "Studio Mac" }')
+    # Expand only the mock Settings viewport so its update controls and footer
+    # remain visible in one documentation image. Production remains scrollable.
+    viewport = 'height: min(640, (NSScreen.main?.visibleFrame.height ?? 740) - 100)'
+    assert viewport in source
+    source = source.replace(viewport, 'height: 900')
     source += (ROOT / 'scripts/DocumentationPreview.swift').read_text()
     generated = stage / 'main.swift'
     generated.write_text(source)
@@ -38,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
         'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
         '-module-cache-path', str(stage / 'module-cache'),
         *[str(ROOT / 'Sources' / name) for name in
-          ['Localization.swift', 'Peer.swift', 'ReceiveAccessPolicy.swift', 'TransferProgress.swift', 'BrandLogos.swift']],
+          ['AppUpdates.swift', 'Localization.swift', 'Peer.swift', 'ReceiveAccessPolicy.swift', 'TransferProgress.swift', 'BrandLogos.swift']],
         str(generated), '-o', str(executable),
     ], check=True)
     # This renders views to PNGs without starting the app delegate, Bluetooth,

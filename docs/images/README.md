@@ -2,14 +2,14 @@
 
 These PNGs are rendered from the production recipient, settings and trusted-device SwiftUI views with fictional data. They are illustrative UI captures, **not evidence of device compatibility or an actual transfer**.
 
-这些 PNG 使用实际应用的设备选择、发送进度、设置及信任设备界面，填入虚构数据生成。它们用于说明操作，**不代表真实设备连接、传输或品牌兼容性验证**。
+这些 PNG 使用实际应用的设备选择、发送进度、设置及受信任设备界面，填入虚构数据生成。它们用于说明操作，**不代表真实设备连接、传输或品牌兼容性验证**。
 
 | Filename | Scene |
 | --- | --- |
 | `recipients-zh.png`, `recipients-en.png` | Four fictional phones/tablets with brand badges and local-name controls |
 | `sending-zh.png`, `sending-en.png` | Synthetic 42% outgoing transfer of `Project.pdf` |
 | `trusted-zh.png`, `trusted-en.png` | Two offline devices from fictional transfer history, with Add buttons |
-| `settings-zh.png`, `settings-en.png` | Mock `Studio Mac`, `~/Downloads`, languages and notification settings |
+| `settings-zh.png`, `settings-en.png` | Mock `Studio Mac`, `~/Downloads`, languages, notifications, automatic updates and footer links |
 
 ## Regenerate on macOS
 
@@ -19,7 +19,7 @@ From the repository root, with the Swift build tools described in [building](../
 python3 scripts/render-docs.py
 ```
 
-The script compiles a disposable copy of the production UI and appends `scripts/DocumentationPreview.swift`. It uses a separate bundle identifier and a volatile preferences domain. The system Computer Name getter is replaced with a fixed mock value in that disposable build only. No app delegate is installed, no window is shown, and Bluetooth, notifications, the transfer engine and login items are not started. It renders the views directly to 2× PNGs and removes EXIF, text and timestamp metadata. It does not read real history, connect to devices or change the installed app.
+The script compiles a disposable copy of the production UI and appends `scripts/DocumentationPreview.swift`. It uses a separate bundle identifier and a volatile preferences domain. The system Computer Name getter is replaced with a fixed mock value in that disposable build only. No app delegate is installed, no window is shown, and Bluetooth, notifications, the transfer engine and login items are not started. The mock Settings viewport is expanded to include update controls and footer links in one image; the real app uses a scrollable window. It renders the views directly to 2× PNGs and removes EXIF, text and timestamp metadata. It does not read real history, connect to devices or change the installed app.
 
 Review all eight images after changing UI or localization. The capture of a SwiftUI view does not include macOS window shadows, the menu bar, permission dialogs or system notification banners; those are not simulated here. Build/runtime logs belong outside this folder.
 

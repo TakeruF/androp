@@ -8,7 +8,7 @@ let package = Package(
     name: "anDropIdentity",
     platforms: [.macOS(.v14)],
     targets: [
-        .target(name: "anDropIdentity", path: "Sources", exclude: ["BrandLogos.swift", "main.swift", "Localization.swift", "ShareViewController.swift", "engine.py", "peer_metadata.py", "discovery.py"], sources: ["Peer.swift", "ReceiveAccessPolicy.swift", "TransferProgress.swift"]),
+        .target(name: "anDropIdentity", path: "Sources", exclude: ["AppUpdates.swift", "BrandLogos.swift", "main.swift", "Localization.swift", "ShareViewController.swift", "engine.py", "peer_metadata.py", "discovery.py"], sources: ["Peer.swift", "ReceiveAccessPolicy.swift", "TransferProgress.swift"]),
         .testTarget(name: "anDropIdentityTests", dependencies: ["anDropIdentity"], path: "tests/swift")
     ]
 )
