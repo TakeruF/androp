@@ -61,3 +61,31 @@ class TrustedDeviceTests(unittest.IsolatedAsyncioTestCase):
         engine.trusted_ids = {DEVICE}
         self.assertTrue(engine.may_receive(DEVICE.lower()))
         self.assertFalse(engine.may_receive(OTHER))
+
+    async def test_unknown_subscription_receives_no_ready_notification(self):
+        engine = Engine(); engine.trusted_only = True; engine.trusted_ids = {DEVICE}
+        with patch('engine.emit') as emit:
+            await engine.command({'command':'subscribe','uuid':'9895','central':OTHER})
+            await engine.command({'command':'subscribe','uuid':'9895'})
+        self.assertFalse(any(c.args[0] == 'ble_notify' for c in emit.call_args_list))
+
+    async def test_trusted_subscription_gets_ready_but_disabled_receiver_does_not(self):
+        engine = Engine(); engine.trusted_only = True; engine.trusted_ids = {DEVICE}
+        with patch('engine.emit') as emit:
+            await engine.command({'command':'subscribe','uuid':'9895','central':DEVICE})
+        self.assertEqual(sum(c.args[0] == 'ble_notify' for c in emit.call_args_list), 1)
+        engine.scan_enabled = False
+        with patch('engine.emit') as emit:
+            await engine.command({'command':'subscribe','uuid':'9895','central':DEVICE})
+        self.assertFalse(any(c.args[0] == 'ble_notify' for c in emit.call_args_list))
+
+    def test_accepted_session_retains_control_access_after_trust_removal(self):
+        engine = Engine(); engine.trusted_only = True
+        engine.session = {'direction':'receive','state':'connecting','central':DEVICE}
+        self.assertTrue(engine.may_access_control(DEVICE.lower()))
+        self.assertFalse(engine.may_access_control(OTHER))
+        self.assertFalse(engine.may_receive(DEVICE))  # New offers remain blocked.
+        engine.session['state'] = 'request'
+        self.assertFalse(engine.may_access_control(DEVICE))
+        engine.session = None
+        self.assertFalse(engine.may_access_control(DEVICE))

@@ -723,12 +723,26 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: (any Error)?) {
         if let error { self.error = L("Could not make this Mac discoverable: \(error.localizedDescription)", "无法让附近设备发现此 Mac：\(error.localizedDescription)") }
     }
+    private func mayAccessReceiveControl(_ centralID: String) -> Bool {
+        let active = transfers.first { $0.direction == "receive" && ["connecting", "transferring", "confirming"].contains($0.state) }
+        return ReceiveAccessPolicy.allows(centralID: centralID, enabled: receiveSwitchIsOn,
+            trustedOnly: trustedOnly, trustedIDs: trustedDevices.map(\.id),
+            activeReceiveID: active?.deviceIdentifier)
+    }
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        guard mayAccessReceiveControl(request.central.identifier.uuidString) else {
+            peripheral.respond(to: request, withResult: .insufficientAuthorization); return
+        }
         let data = request.characteristic.uuid == CBUUID(string: "9898") ? readValue : Data()
         guard request.offset <= data.count else { peripheral.respond(to: request, withResult: .invalidOffset); return }
         request.value = data.subdata(in: request.offset..<data.count); peripheral.respond(to: request, withResult: .success)
     }
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+        // Reject the whole ATT batch before retaining fragments or sending commands.
+        if requests.contains(where: { !mayAccessReceiveControl($0.central.identifier.uuidString) }) {
+            if let first = requests.first { peripheral.respond(to: first, withResult: .insufficientAuthorization) }
+            return
+        }
         for request in requests {
             let central = request.central.identifier.uuidString; centrals[central] = request.central
             let key = central + request.characteristic.uuid.uuidString
@@ -742,6 +756,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if let request = requests.first { peripheral.respond(to: request, withResult: .success) }
     }
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
+        // CoreBluetooth has no API to reject subscription itself; send no application data.
+        guard mayAccessReceiveControl(central.identifier.uuidString) else { return }
         centrals[central.identifier.uuidString] = central; command(["command": "subscribe", "central": central.identifier.uuidString, "uuid": characteristic.uuid.uuidString])
     }
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
@@ -751,9 +767,15 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private func flushNotifications() {
         guard let char = chars["9895"], let peripheral else { return }
         while let first = notifyQueue.first {
-            let target: [CBCentral]?
-            if let id = first.1 { guard let central = centrals[id] else { notifyQueue.removeFirst(); continue }; target = [central] }
-            else { target = nil }
+            let target: [CBCentral]
+            if let id = first.1 {
+                guard mayAccessReceiveControl(id), let central = centrals[id] else { notifyQueue.removeFirst(); continue }
+                target = [central]
+            } else {
+                // Never pass nil, which broadcasts to every subscribed central.
+                target = Array(centrals.values).filter { mayAccessReceiveControl($0.identifier.uuidString) }
+                if target.isEmpty { notifyQueue.removeFirst(); continue }
+            }
             guard peripheral.updateValue(first.0, for: char, onSubscribedCentrals: target) else { return }; notifyQueue.removeFirst()
         }
     }
@@ -1071,7 +1093,7 @@ struct SettingsView: View {
                     Spacer()
                     Button(L("Trusted Devices…", "信任设备…")) { managingTrustedDevices = true }
                 }
-                Text(L("Every transfer still needs approval. Nearby devices can still discover this Mac.", "每次接收仍需确认。附近设备仍可发现此 Mac。"))
+                Text(L("Other devices can still see this Mac. In Trusted Devices Only mode, their transfer requests are rejected. Trusted devices still need your approval.", "未受信任的设备仍可发现此 Mac；选择“仅限信任设备”后，其传输请求会被拒绝。信任设备每次传输仍需你确认。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Picker(L("Language", "语言"), selection: Binding(get: { model.language }, set: model.changeLanguage)) {
@@ -1152,6 +1174,7 @@ struct ReceiveControlsView: View {
             Divider().padding(.horizontal, 14)
             VStack(spacing: 0) {
                 ReceiveScopeRow(title: L("Trusted Devices Only", "仅限信任设备"), symbol: "person.crop.circle", selected: model.trustedOnly, enabled: model.receiveSwitchIsOn) { model.changeTrustedOnly(true) }
+                    .help(L("Other devices can still see this Mac, but their transfer requests are rejected.", "未受信任的设备仍可发现此 Mac，但其传输请求会被拒绝。"))
                 ReceiveScopeRow(title: L("Everyone", "所有人"), symbol: "person.2.fill", selected: !model.trustedOnly, enabled: model.receiveSwitchIsOn) { model.changeTrustedOnly(false) }
             }.padding(.horizontal, 7).padding(.top, 5).padding(.bottom, 6)
         }.frame(width: 308).onExitCommand(perform: model.closeReceiveControls)
@@ -1192,7 +1215,7 @@ struct TrustedDevicesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("Trusted Devices", "信任设备")).font(.headline)
-            Text(L("Add a device from previous transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it.", "可从下方的传输历史添加设备，无需当前可见。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。"))
+            Text(L("Add a device from previous transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it. Other devices can still see this Mac; Trusted Devices Only rejects their transfer requests.", "可从下方的传输历史添加设备，无需当前可见。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。未受信任的设备仍可发现此 Mac；“仅限信任设备”会拒绝其传输请求。"))
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {

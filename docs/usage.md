@@ -76,6 +76,8 @@ The name itself is centered below the avatar, with the pencil immediately to its
 
 Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Every transfer still requires approval in both modes; trusting a device never enables automatic acceptance.
 
+**Visibility is different from AirDrop Contacts Only.** Other devices can still see this Mac in their sharing picker. **Trusted Devices Only rejects transfer requests from devices that are not in the trusted list; it does not hide anDrop from them.** Trusted devices still require approval. AirDrop Contacts Only performs contact matching before responding during discovery ([Apple Platform Security](https://support.apple.com/guide/security/airdrop-security-sec2261183f4/web)); anDrop’s current alliance discovery uses a public Bluetooth advertisement. See [discovery limits and receive filtering](trusted-discovery.md).
+
 Open Settings → **Trusted Devices…** to add devices from previous transfers even when they are offline. New devices need one transfer in Everyone mode first. Device rows use manufacturer artwork with a phone/tablet badge. Verify the requesting device yourself. Different local identifier suffixes distinguish devices with identical names. Remove trust or forget a remembered device at any time.
 
 This filter uses Bluetooth identifiers remembered by this Mac, not account or device names. It is not cryptographic pairing or authenticated identity. Add a device again if its identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or connecting over Wi-Fi to download files. Removing trust does not interrupt an already-started transfer.

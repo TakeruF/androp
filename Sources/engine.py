@@ -211,6 +211,14 @@ class Engine:
             self.session=None;self.keys=Keys();self.read_state()
     def may_receive(self,central):
         return not self.trusted_only or bool(central and central.upper() in self.trusted_ids)
+    def may_access_control(self,central):
+        if not isinstance(central,str):return False
+        try:identifier=str(uuid.UUID(central)).upper()
+        except (ValueError,AttributeError):return False
+        session=self.session
+        if session and session.get('direction')=='receive' and session.get('state') in ('connecting','transferring','confirming') and session.get('central','').upper()==identifier:
+            return True
+        return self.scan_enabled and self.may_receive(identifier)
     async def receive_write(self,obj):
         central=obj.get('central','')
         if obj.get('uuid')!='9896': return
@@ -533,7 +541,7 @@ class Engine:
                 if not value or not self.discovering:self.clear_peers()
                 self.discovering=value
             elif command=='subscribe':
-                if obj.get('uuid')=='9895':self.notify('ready',obj.get('central'))
+                if obj.get('uuid')=='9895' and self.may_access_control(obj.get('central')):self.notify('ready',obj.get('central'))
             elif command=='write':await self.receive_write(obj)
             elif command=='decision':
                 future=self.decisions.get(obj.get('id'))

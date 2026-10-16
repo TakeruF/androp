@@ -116,3 +116,22 @@ A native preview using the production views checked a one-line “Example” lab
 - macOS registered the control extension. A user confirmed gallery visibility and the initial control-to-file-picker invocation during development. The final design offers one Receive control opening the host-owned receive-scope panel; its public API boundary is documented in usage.
 - Production UI renders with fictional data cover English/Chinese receive scope and trusted-device history. Manufacturer artwork and phone/tablet badges are reused from the recipient chooser; OPPO/vivo use white logos on green/blue, and Xiaomi retains official orange artwork.
 - These checks do not establish physical-device coverage for other manufacturers or cryptographic peer authentication.
+
+
+## GATT trust-boundary follow-up
+
+- Python suite: **54 tests pass**, including no ready notification for an unlisted
+  or missing central, disabled-receiver subscription rejection, and a transfer
+  already accepted before trust removal retaining its control channel.
+- Swift suite: **13 tests pass**. New production-policy tests cover unknown,
+  trusted, malformed and unavailable-receiver cases, case-insensitive UUIDs and
+  the accepted-session exemption. A completed session grants no exemption for
+  a new offer.
+- Pending confirmation is excluded from the accepted-session exemption; existing
+  revocation-before-acceptance tests continue to pass.
+- GATT read/write/notification callbacks now apply that policy. Unit tests do
+  not establish physical-device compatibility of the changed ATT responses.
+- Read-only analysis of OShare `17.2.36` established that its `8881` discovery
+  path adds a candidate directly from advertising data before any GATT read.
+  These changes therefore do **not** implement selective visibility. See the
+  [investigation and remaining limitation](trusted-discovery.md).
