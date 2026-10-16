@@ -22,6 +22,7 @@ struct Transfer: Identifiable, Codable {
     var detail = ""
     var paths: [String] = []
     var deviceIdentifier: String?
+    var transportIdentifier: String?
     var deviceKind: String?
     var deviceBrand: String?
     var date = Date()
@@ -44,6 +45,7 @@ struct Transfer: Identifiable, Codable {
         case "request": L("Incoming files", "接收确认")
         case "preparing": L("Preparing", "正在准备")
         case "waiting": L("Waiting for acceptance", "等待对方接收")
+        case "verifying": L("Verifying sender", "正在核对发送设备")
         case "connecting": L("Connecting", "正在连接")
         case "confirming": L("Finishing", "正在确认完成")
         case "transferring": direction == "send" ? L("Sending", "正在发送") : L("Receiving", "正在接收")
@@ -227,10 +229,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     var knownDevices: [RememberedDevice] {
         var seen = Set<String>()
         let history = transfers.compactMap { transfer -> RememberedDevice? in
-            guard let id = transfer.deviceIdentifier, let uuid = UUID(uuidString: id) else { return nil }
-            return RememberedDevice(id: uuid.uuidString, name: transfer.peer, kind: transfer.deviceKind, brand: transfer.deviceBrand)
+            guard transfer.direction == "receive", transfer.state == "complete", let id = transfer.deviceIdentifier, ReceiveAccessPolicy.persistentID(id) else { return nil }
+            return RememberedDevice(id: id, name: transfer.peer, kind: transfer.deviceKind, brand: transfer.deviceBrand)
         }
-        return (rememberedDevices + history).filter { !forgottenDeviceIdentifiers.contains($0.id) && seen.insert($0.id).inserted }.map { device in
+        return (rememberedDevices + history).filter { ReceiveAccessPolicy.persistentID($0.id) && !forgottenDeviceIdentifiers.contains($0.id) && seen.insert($0.id).inserted }.map { device in
             var result = device
             let detailed = history.first { $0.id == device.id && $0.kind != nil }
             result.kind = result.kind ?? detailed?.kind
@@ -546,16 +548,25 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if let v = obj["completed"] as? Int64 { transfers[index].completed = v }
         if let v = obj["detail"] as? String { transfers[index].detail = v }
         if let files = obj["files"] as? [[String: Any]] { transfers[index].paths = files.compactMap { $0["path"] as? String } }
-        if let identifier = obj["device_identifier"] as? String, let uuid = UUID(uuidString: identifier) {
-            transfers[index].deviceIdentifier = uuid.uuidString
+        if let identifier = obj["device_identifier"] as? String {
+            if ReceiveAccessPolicy.persistentID(identifier) { transfers[index].deviceIdentifier = identifier }
+            else if let uuid = UUID(uuidString: identifier) { transfers[index].deviceIdentifier = uuid.uuidString }
         }
+        if let identifier = obj["transport_identifier"] as? String, let uuid = UUID(uuidString: identifier) { transfers[index].transportIdentifier = uuid.uuidString }
+        if let v = obj["device_kind"] as? String { transfers[index].deviceKind = v }
+        if let v = obj["device_brand"] as? String { transfers[index].deviceBrand = v }
         let t = transfers[index]
-        if t.direction == "receive", t.state == "request", let identifier = t.deviceIdentifier {
+        if t.direction == "receive", t.state == "complete", let identifier = t.deviceIdentifier, ReceiveAccessPolicy.persistentID(identifier) {
             forgottenDeviceIdentifiers.remove(identifier)
             UserDefaults.standard.set(Array(forgottenDeviceIdentifiers), forKey: "forgottenDeviceIdentifiers")
             rememberedDevices.removeAll { $0.id == identifier }
             rememberedDevices.insert(RememberedDevice(id: identifier, name: t.peer, kind: t.deviceKind, brand: t.deviceBrand), at: 0)
             rememberedDevices = Array(rememberedDevices.prefix(50))
+            if let trusted = trustedDevices.firstIndex(where: { $0.id == identifier }) {
+                trustedDevices[trusted].kind = t.deviceKind ?? trustedDevices[trusted].kind
+                trustedDevices[trusted].brand = t.deviceBrand ?? trustedDevices[trusted].brand
+                if let data = try? JSONEncoder().encode(trustedDevices) { UserDefaults.standard.set(data, forKey: "trustedDevices") }
+            }
             if let data = try? JSONEncoder().encode(rememberedDevices) { UserDefaults.standard.set(data, forKey: "rememberedDevices") }
         }
         if t.state != previous || t.state == "request" {
@@ -690,10 +701,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if let error { self.error = L("Could not make this Mac discoverable: \(error.localizedDescription)", "无法让附近设备发现此 Mac：\(error.localizedDescription)") }
     }
     private func mayAccessReceiveControl(_ centralID: String) -> Bool {
-        let active = transfers.first { $0.direction == "receive" && ["connecting", "transferring", "confirming"].contains($0.state) }
+        let active = transfers.first { $0.direction == "receive" && ["verifying", "request", "connecting", "transferring", "confirming"].contains($0.state) }
         return ReceiveAccessPolicy.allows(centralID: centralID, enabled: receiveSwitchIsOn,
             trustedOnly: trustedOnly, trustedIDs: trustedDevices.map(\.id),
-            activeReceiveID: active?.deviceIdentifier)
+            activeReceiveID: active?.transportIdentifier ?? active?.deviceIdentifier)
     }
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
         guard mayAccessReceiveControl(request.central.identifier.uuidString) else {
@@ -1130,7 +1141,7 @@ struct TrustedDevicesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("Trusted Devices", "受信任的设备")).font(.headline)
-            Text(L("Add a device from previous transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it. Other devices can still see this Mac; Trusted Devices Only rejects their transfer requests.", "可从下方的传输记录添加设备，即使设备当前不在线。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。未受信任的设备仍可发现此 Mac；“仅限受信任的设备”会拒绝其传输请求。"))
+            Text(L("Add a device from successfully received transfers below, even when it is offline. For a new device, select Everyone and transfer a file first. Verify the device yourself before trusting it. Other devices can still see this Mac; Trusted Devices Only rejects their transfer requests.", "可从下方成功接收文件的记录添加设备，即使设备当前不在线。新设备请先选择“所有人”并传输一次文件。请自行核实设备后再信任。未受信任的设备仍可发现此 Mac；“仅限受信任的设备”会拒绝其传输请求。"))
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -1139,7 +1150,7 @@ struct TrustedDevicesView: View {
                     if model.trustedDevices.isEmpty && model.knownDevices.isEmpty { Text(L("No devices yet", "暂无设备")).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 80) }
                 }
             }.frame(height: 230)
-            Text(L("Remembered Bluetooth identifiers are used, not names or accounts. This is not cryptographic pairing. If an identifier changes, add the device again.", "按本机记住的蓝牙标识符识别，不按名称或账号识别。这不是加密配对；标识符变更后需重新添加。"))
+            Text(L("Uses the sender ID from a completed incoming transfer, so changing Bluetooth addresses does not remove trust. This is a self-reported ID, not cryptographic pairing. Old entries need one incoming transfer in Everyone mode and must be added again.", "使用成功接收文件时记录的发送设备标识符，蓝牙地址变化不会影响信任。该标识符由设备提供，不等同于加密配对。旧版记录需在“所有人”模式下重新接收一次文件，再添加到列表。"))
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack { Spacer(); Button(L("Done", "完成")) { dismiss() }.keyboardShortcut(.defaultAction) }
         }.padding(20).frame(width: 420)
@@ -1150,7 +1161,7 @@ struct TrustedDevicesView: View {
                 .scaleEffect(0.64).frame(width: 44, height: 44).padding(.trailing, 6)
             VStack(alignment: .leading) {
                 Text(model.peerTitle(device.peer)).lineLimit(2)
-                Text(String(device.id.suffix(8))).font(.caption.monospaced()).foregroundStyle(.secondary)
+                Text(ReceiveAccessPolicy.persistentID(device.id) ? String(device.id.suffix(8)) : L("Receive a file to update this entry", "需重新接收文件并添加")).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
             Spacer()
             Button(trusted ? L("Remove", "移除") : L("Add", "添加")) { model.setTrusted(device, trusted: !trusted) }

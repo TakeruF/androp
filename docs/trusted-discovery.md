@@ -1,74 +1,41 @@
-# Trusted receiving and Bluetooth visibility
+# 受信任设备与蓝牙可见性 / Trusted receiving and visibility
 
-Investigation: **2026-10-16**.
+更新：2026-10-17。
 
-## Result
+**“仅限受信任的设备”限制接收，不限制发现。** 未登记的设备仍可能在系统互传列表中看到此 Mac，但其文件不会被接收。这与 AirDrop 的“仅限联系人”不同。
 
-**Trusted Devices Only currently limits receiving, not who can discover this Mac.**
-An unlisted device can still see anDrop in its standard sharing picker. It must
-not be described as private discovery or as equivalent to AirDrop Contacts Only.
-This is a real limitation of the implemented discovery path.
+## 为什么更换识别方式
 
-The receive filter now also guards GATT status reads, writes and application
-notifications. An unknown device receives no sharing status/public-key response,
-its write batch is rejected before buffering, and it receives no ready/session
-notification. This closes access that was previously left open before the
-engine's incoming-offer filter. **It does not remove the advertised candidate
-from the Android picker.**
+实机测试中，同一手机连续发起传输时，CoreBluetooth 的 central UUID 会变化；Mac 向手机发送时使用的 peripheral UUID 也不能当成接收身份。旧版按这些 UUID 登记信任，会把已经登记的设备误判为陌生设备。
 
-## Why GATT rejection cannot hide this candidate
+现在使用成功接收时取得的协议 `senderId`，本机只保存其 SHA-256 摘要。显示名称、账号名称、IP 地址、蓝牙广播名称与传输任务 ID 均不作为授权依据。蓝牙地址变化时，只要协议发送者标识符保持不变，就不必重新添加。
 
-The examined OShare version `17.2.36` handles service `8881` advertisements by
-extracting a protocol identifier and sharing name from the Bluetooth local name.
-Its `com.oplus.oshare.ble.impl.o.onScanResult` dispatches to `o(ScanResult)`, which
-passes that advertisement-derived device to `v9.a.e`. The latter inserts the
-candidate into the device list and notifies its observers. This path does not
-require a GATT connection or characteristic `9898` read before listing.
+旧版记录缺少该标识符，不能仅凭同名自动迁移。请先选择“所有人”，从原设备成功发送一个文件到 Mac，再将新记录添加为受信任设备，移除标有“需重新接收文件并添加”的旧记录。缺少有效发送者 ID 的设备可以在“所有人”模式下请求接收，但不会出现在可新增的持久信任候选中。
 
-This finding comes from read-only local analysis of the installed vendor app.
-It applies to that examined implementation, not every alliance device. The
-vendor APK and decompiled source are not redistributed here. This investigation
-did not change Android visibility, pair devices, or establish a new successful
-physical transfer after the GATT change.
+## 接收顺序
 
-anDrop currently broadcasts one local name and service `8881`. Apple's public
-[`CBPeripheralManager.startAdvertising`](https://developer.apple.com/documentation/corebluetooth/cbperipheralmanager/startadvertising(_:))
-accepts local-name and service-UUID data. It offers no per-central destination or
-allowlist parameter. A remembered CoreBluetooth UUID becomes available to the
-host's GATT request callbacks; it cannot retrospectively restrict who heard the
-public advertisement.
+1. 蓝牙协商取得当前传输的网络端点。
+2. 建立 TLS 控制连接，读取发送者 ID 和文件元数据。
+3. 在“仅限受信任的设备”模式下核对发送者 ID；不匹配则拒绝，不显示接收确认，也不请求下载文件。
+4. 匹配后仍需用户确认；等待确认期间移除信任或关闭接收，会使接受操作失效。
+5. 用户确认后才发起文件下载，并固定控制连接取得的证书指纹。
 
-Stopping all advertisements would also remove discovery for trusted devices.
-Advertising only while a trusted device is nearby would still expose the same
-packet to untrusted devices nearby. Neither implements selective discovery.
-Changing the sharing name or denying GATT status does not make a public packet
-private.
+有持久信任记录时，未知蓝牙地址也必须能完成前两步，否则地址轮换后的原设备无法证明它提供了同一个发送者 ID。这不是自动接收文件。空信任列表仍直接拒绝新请求。已经接受的传输可完成；新请求重新检查当前策略。
 
-## What the additional receive checks enforce
+**这不是加密配对或经认证的设备身份。** 发送者 ID 由对方提供，能够伪造同一 ID 的客户端可能通过此筛选。用户确认不会被省略。本功能适合便利地筛选设备，不应作为防冒充的安全认证。若对方重置应用或改变其协议 ID，需重新核实并添加。
 
-- In trusted mode, GATT reads and write batches are denied for unlisted central
-  UUIDs before exposing sharing state or forwarding data to the engine.
-- CoreBluetooth subscription callbacks cannot themselves be rejected, but
-  unlisted subscribers receive no application notification. Queued notifications
-  are checked against the current policy at delivery time; a nil destination is
-  never used to broadcast to every subscriber.
-- The engine independently checks ready-notification subscriptions and retains
-  its incoming-offer check before key derivation and user confirmation.
-- Removing trust while confirmation is pending still prevents acceptance.
-  A previously accepted transfer may finish; this exemption is scoped to that
-  receive session's central and ends with the session.
-- Names and advertised protocol identifiers never grant trust. A locally
-  remembered Bluetooth identifier is not cryptographic authentication.
+## 可见性限制
 
-## Remaining implementation requirement
+检查过的 OShare `17.2.36` 在收到 `8881` 广播后，会直接将广播中的名称和协议标识放入候选列表，尚未读取 GATT 特征。因此拒绝 GATT 读写不能隐藏此候选。
 
-Actual selective discovery needs a different interoperable discovery exchange
-in which a supported peer proves or recognizes a provisioned identity before
-showing anDrop. Current per-Mac UUID history does not create that shared identity.
-Vendor account/contact discovery is a separate research direction; the existing
-public advertisement cannot be made selective by a host-side GATT access check.
-No universal impossibility claim is made for future protocol work.
+Apple 的公开 [`CBPeripheralManager.startAdvertising`](https://developer.apple.com/documentation/corebluetooth/cbperipheralmanager/startadvertising(_:)) 接口没有按远端设备设置广播接收名单的参数。关闭广播也会影响受信任的设备。真正的选择性发现需要另行实现兼容的身份发现机制；当前版本未实现。
 
-The receive-control checks are covered by isolated Python and Swift tests.
-Physical visibility/transfer behavior after the change remains a separate
-verification step. The public candidate remains expected on the examined path.
+分析使用本地安装的厂商应用；不在仓库分发 APK、反编译源码或真实设备标识。其他厂商的身份稳定性与发现行为需要各自实机验证。
+
+## English
+
+Trusted Devices Only filters receipt, not visibility. It uses a hash of the protocol sender ID learned from a successful incoming transfer, rather than a transient CoreBluetooth central/peripheral UUID. Names and accounts never authorize a transfer. Old UUID-only entries require one new incoming transfer in Everyone mode and explicit enrollment of the resulting record.
+
+A new Bluetooth address may negotiate a TLS control channel to present its sender ID. An unlisted ID is rejected before the user prompt and before any HTTP file download. Listed devices still need approval for every transfer. Trust removal or disabling receipt while approval is pending prevents download.
+
+The protocol ID is self-reported and spoofable: this is not cryptographic pairing or authenticated identity. Certificate pinning protects the subsequent download connection within the session, not the initial device identity. Other manufacturers and devices that reset/change their protocol IDs require separate validation.

@@ -7,7 +7,8 @@ No cloud, saved peer credentials, or USB transport. One transfer at a time.
 import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, socket, ssl, stat, sys, tempfile, time, uuid, zipfile
 from pathlib import Path, PurePosixPath
 from peer_metadata import parse_peer_metadata, peer_identifier
-from aiohttp import web, ClientSession, ClientTimeout, Fingerprint, WSMsgType, ClientConnectionError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
+from network_routes import lan_addresses, private_ipv4, direct_local_address, interface_for_address, bind_interface, lan_socket, client_socket_factory
+from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, Fingerprint, WSMsgType, ClientConnectionError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
 from bleak import BleakClient, BleakScanner
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -53,10 +54,30 @@ class Keys:
         c=Cipher(algorithms.AES(self.key),modes.CBC(b'0102030405060708')).decryptor();data=c.update(base64.b64decode(value))+c.finalize()
         p=padding.PKCS7(128).unpadder();return (p.update(data)+p.finalize()).decode()
 
+def sender_identifier(value):
+    """A protocol identifier, never a display name, account, address, or task ID.
+
+    It is self-reported, not cryptographic authentication. Hash at rest to avoid
+    retaining vendor/account suffixes. Missing IDs cannot gain persistent trust.
+    """
+    if not isinstance(value,str) or not 8<=len(value)<=256 or value!=value.strip() or any(ord(c)<33 for c in value):
+        return None
+    return 'sender:' + hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+
+def valid_trust_identifier(value):
+    if not isinstance(value,str):return None
+    if value.startswith('sender:') and len(value)==71 and all(c in '0123456789abcdef' for c in value[7:]):return value
+    try:return str(uuid.UUID(value)).upper()
+    except ValueError:return None
+
+
 def local_endpoint(host, port):
     ip=ipaddress.ip_address(host)
-    if not ip.is_private or ip.is_loopback or ip.is_multicast or ip.is_unspecified or ip.version!=4 or not 1<=port<65535:
+    if not private_ipv4(host) or not 1<=port<65535:
         raise ValueError('Invalid local endpoint')
+    direct=direct_local_address(host)
+    if direct:return direct
     with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as s:
         s.connect((host,port));return s.getsockname()[0]
 
@@ -90,7 +111,7 @@ def transfer_error_detail(error,receiving=True):
     if isinstance(error,(ConnectionResetError,ConnectionAbortedError)) or getattr(error,'errno',None) in (errno.ECONNRESET,errno.ECONNABORTED):
         return t('The other device closed the connection. Keep its sharing screen open and try again.','对方设备断开了连接。请保持对方互传页面打开后重试。')
     if isinstance(error,(ClientConnectionError,ConnectionError,OSError)):
-        return t('Could not connect to the other device. Check that both devices use the same Wi-Fi and try again.','无法连接到对方设备。请确认两台设备连接同一 Wi-Fi 后重试。')
+        return t('Could not reach the other device. Check local network access, VPN routing, and other interconnect sessions.','无法连接到对方设备。请检查本地网络权限、VPN 路由及其他设备互联连接。')
     if isinstance(error,(ValueError,zipfile.BadZipFile)):
         return t('The other device sent invalid or unsupported file information. Please try a different file.','对方发送的文件信息无效或暂不支持。请尝试其他文件。') if receiving else t('Could not prepare the selected files. Please choose different files.','无法准备所选文件。请尝试其他文件。')
     return t('Could not receive the files. Keep sharing open on the other device and try again.','无法接收文件。请保持对方互传页面打开后重试。') if receiving else t('Could not send the files. Keep sharing open on the other device and try again.','无法发送文件。请保持对方互传页面打开后重试。')
@@ -201,7 +222,7 @@ class Engine:
         emit('ble_notify',uuid='9895',data=base64.b64encode(data.encode()).decode(),central=central)
     def update(self,session,state,**kwargs):
         session['state']=state
-        emit('transfer',id=session['id'],direction=session['direction'],peer=session.get('peer','Android'),state=state,device_identifier=session.get('central') or session.get('device_identifier'),**kwargs)
+        emit('transfer',id=session['id'],direction=session['direction'],peer=session.get('peer','Android'),state=state,device_identifier=session.get('device_identifier') or session.get('central'),transport_identifier=session.get('central'),device_kind=session.get('kind'),device_brand=session.get('brand'),**kwargs)
     def progress(self,s,n,total):
         now=time.monotonic()
         if now-s.get('last_progress',0)>.2 or n>=total:
@@ -209,16 +230,32 @@ class Engine:
     async def reset(self,s):
         if self.session is s:
             self.session=None;self.keys=Keys();self.read_state()
-    def may_receive(self,central):
-        return not self.trusted_only or bool(central and central.upper() in self.trusted_ids)
+    def may_receive(self,central,sender=None):
+        return not self.trusted_only or bool(central and central.upper() in self.trusted_ids) or bool(sender and sender in self.trusted_ids)
+    def may_negotiate(self,central):
+        # The sender ID arrives in TLS sendRequest, after GATT negotiation. This
+        # permits metadata only; receipt and the download endpoint stay gated.
+        return self.scan_enabled and (self.may_receive(central) or any(x.startswith('sender:') for x in self.trusted_ids))
+    async def approve_receive(self,s,metadata):
+        identity=sender_identifier(metadata.get('senderId'))
+        if identity:s['device_identifier']=identity
+        if not self.scan_enabled or not self.may_receive(s['central'],identity):
+            emit('diagnostic',detail='receive_untrusted_sender')
+            return False
+        future=asyncio.get_running_loop().create_future();self.decisions[s['id']]=future
+        self.update(s,'request',count=s['count'],name=str(metadata.get('fileName',t('Files','文件')))[:240],total=int(metadata['totalSize']))
+        try:accepted=await asyncio.wait_for(future,28)
+        except TimeoutError:accepted=False
+        finally:self.decisions.pop(s['id'],None)
+        return bool(accepted and self.session is s and self.scan_enabled and self.may_receive(s['central'],identity))
     def may_access_control(self,central):
         if not isinstance(central,str):return False
         try:identifier=str(uuid.UUID(central)).upper()
         except (ValueError,AttributeError):return False
         session=self.session
-        if session and session.get('direction')=='receive' and session.get('state') in ('connecting','transferring','confirming') and session.get('central','').upper()==identifier:
+        if session and session.get('direction')=='receive' and session.get('state') in ('verifying','request','connecting','transferring','confirming') and session.get('central','').upper()==identifier:
             return True
-        return self.scan_enabled and self.may_receive(identifier)
+        return self.may_negotiate(identifier)
     async def receive_write(self,obj):
         central=obj.get('central','')
         if obj.get('uuid')!='9896': return
@@ -227,35 +264,43 @@ class Engine:
         payload=json.loads(raw)
         if not isinstance(payload,dict): return
         if 'key' in payload:
-            if not self.scan_enabled or not self.may_receive(central): self.notify('3',central);return
+            if not self.may_negotiate(central): self.notify('3',central);return
             if self.session: self.notify('3',central);return
             keys=self.keys;keys.derive(payload['key']);count=int(keys.decrypt(payload['number']))
             if not 1<=count<=10000: self.notify('3',central);return
             s={'id':uuid.uuid4().hex,'direction':'receive','peer':keys.decrypt(payload.get('device_name',''))[:100] or 'Android','central':central,'keys':keys,'count':count}
-            self.session=s;self.read_state();future=asyncio.get_running_loop().create_future();self.decisions[s['id']]=future
-            self.update(s,'request',count=count,name=t(f'{count} files',f'{count} 个文件'))
-            try: accepted=await asyncio.wait_for(future,28)
-            except TimeoutError: accepted=False
-            finally: self.decisions.pop(s['id'],None)
-            if self.session is not s:return
-            if accepted and self.may_receive(central) and self.scan_enabled:
-                self.update(s,'connecting');self.notify('6',central)
-                self.launch(self.expire_receive_offer(s,central))
-            else:
-                self.notify('3',central);self.update(s,'declined');await self.reset(s)
+            for field,target in [('vender','brand'),('device_type','kind')]:
+                if field in payload:
+                    try:
+                        value=keys.decrypt(payload[field])
+                        if target=='kind':value={'0':'phone','1':'tablet'}.get(value)
+                        if value:s[target]=value[:32]
+                    except (ValueError,TypeError):pass
+            if 'ip' in payload:
+                hint=keys.decrypt(payload['ip'])
+                if private_ipv4(hint):s['network_hint']=hint
+            self.session=s;self.read_state()
+            self.update(s,'verifying');self.notify('6',central)
+            self.launch(self.expire_receive_offer(s,central))
         elif self.session and self.session.get('central')==central:
             s=self.session;k=s['keys']
-            if 'wlan' in payload and 'port' in payload and 'task' not in s:
+            if 'reuse' in payload and 'port' in payload and 'ip' not in payload and s.get('network_hint') and k.decrypt(payload['reuse'])=='true':
+                payload={**payload,'ip':k.encrypt(s['network_hint'])}
+            if 'ip' in payload and 'port' in payload and 'task' not in s:
                 host=k.decrypt(payload['ip']);port=int(k.decrypt(payload['port']));local=local_endpoint(host,port)
-                udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);udp.bind((local,port+1));udp.setblocking(False)
-                self.notify({'wlan':'wlan','wlan_accept':True,'ip':k.encrypt(local)},central)
+                emit('diagnostic',detail='receive_network_offer',mode='lan' if 'wlan' in payload else 'direct')
+                udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+                try:
+                    bind_interface(udp,interface_for_address(local));udp.bind((local,port+1));udp.setblocking(False)
+                except BaseException:udp.close();raise
+                if 'wlan' in payload:self.notify({'wlan':'wlan','wlan_accept':True,'ip':k.encrypt(local)},central)
                 s['task']=self.launch(self.receive(s,host,port,udp))
-            elif 'ssid' in payload:
-                self.notify('cancel',central);self.update(s,'failed',detail=t('Connect this Mac and the other device to the same Wi-Fi.','请将 Mac 和对方设备连接到同一 Wi-Fi。'));await self.reset(s)
+            elif 'ssid' in payload and 'task' not in s:
+                self.notify('cancel',central);self.update(s,'failed',detail=t('The other device requested a direct Wi-Fi connection that is not reachable from this Mac. Disconnect its other interconnect session and try again.','对方请求的 Wi-Fi 直连网络无法从此 Mac 访问。请断开对方与其他设备的互联后重试。'));await self.reset(s)
     async def expire_receive_offer(self,s,central):
         await asyncio.sleep(15)
-        if self.session is s and s.get('state')=='connecting' and 'task' not in s:
-            self.notify('cancel',central);self.update(s,'failed',detail=t('Use the same Wi-Fi and try again.','请连接同一 Wi-Fi 后重试。'));await self.reset(s)
+        if self.session is s and s.get('state') in ('verifying','connecting') and 'task' not in s:
+            self.notify('cancel',central);self.update(s,'failed',detail=t('The other device did not finish network negotiation. Keep sharing open and check whether another interconnect session is using the connection.','对方未完成网络协商。请保持互传页面打开，并检查是否有其他设备互联正在占用连接。'));await self.reset(s)
     async def receive(self,s,host,port,udp):
         async def bandwidth():
             total=0;start=None;loop=asyncio.get_running_loop()
@@ -267,16 +312,22 @@ class Engine:
         bw=asyncio.create_task(bandwidth());ws=None;taskid='';phase='connect'
         def diagnostic(code,**fields):emit('diagnostic',detail=code,transfer_id=s['id'],phase=phase,**fields)
         try:
-            self.update(s,'connecting')
+            self.update(s,'verifying')
             context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);context.check_hostname=False;context.verify_mode=ssl.CERT_NONE
             timeout=ClientTimeout(total=None,sock_connect=8,sock_read=35)
-            async with ClientSession(timeout=timeout,trust_env=False) as client:
+            local=udp.getsockname()[0]
+            connector=TCPConnector(local_addr=(local,0),socket_factory=client_socket_factory(local))
+            async with ClientSession(timeout=timeout,trust_env=False,connector=connector) as client:
                 async with await connect_receive_channel(lambda: client.ws_connect(f'https://{host}:{port}/websocket',ssl=context,max_msg_size=131072),diagnostic) as ws:
                     phase='bandwidth';diagnostic('receive_connected')
                     connection=ws._response.connection
                     sslobject=connection.transport.get_extra_info('ssl_object')
                     fingerprint=hashlib.sha256(sslobject.getpeercert(binary_form=True)).digest()
-                    speed=await asyncio.wait_for(bw,2)
+                    try:speed=await asyncio.wait_for(bw,2)
+                    except TimeoutError:
+                        # UDP probes are advisory. A working TLS connection can
+                        # still transfer files when a VPN/firewall drops UDP.
+                        speed=0.0;diagnostic('receive_udp_probe_unavailable')
                     phase='negotiate';diagnostic('receive_negotiating')
                     await ws.send_str(wire('ack',0,'wlanBandwidth',{'speed':f'{speed:.2f}'}))
                     async with asyncio.timeout(45):
@@ -289,6 +340,9 @@ class Engine:
                             else:await ws.send_str(wire('ack',index,name))
                     count=int(p.get('fileCount',0));size=int(p.get('totalSize',-1));taskid=str(p.get('id',''))
                     if count!=s['count'] or size<0 or len(taskid)>256 or not taskid:raise ValueError('Invalid transfer metadata')
+                    if not await self.approve_receive(s,p):
+                        await ws.send_str(wire('action',101,'status',{'taskId':taskid,'type':3,'reason':'declined'}))
+                        self.notify('3',s['central']);self.update(s,'declined');return
                     if shutil.disk_usage(self.destination).free<size*2+16*1024*1024:raise TransferError(t('Not enough free disk space.','磁盘空间不足。'))
                     await ws.send_str(wire('ack',index,name));self.update(s,'transferring',name=str(p.get('fileName',t('Files','文件')))[:240],count=count,total=size,completed=0)
                     phase='download';diagnostic('receive_download_start')
@@ -399,7 +453,7 @@ class Engine:
                         with await asyncio.to_thread(p.open,'rb') as src,z.open(p.name,'w',force_zip64=True) as out:
                             while chunk:=src.read(1024*1024):out.write(chunk);await asyncio.sleep(0)
                 with zipfile.ZipFile(archive) as z:total=sum(e.file_size for e in z.infolist())
-                keys=Keys();done=asyncio.get_running_loop().create_future();queue=asyncio.Queue();allowed_ip=None;port=0;offered=False;downloaded=False;acknowledged=False;lan_confirmed=asyncio.Event()
+                keys=Keys();done=asyncio.get_running_loop().create_future();queue=asyncio.Queue();allowed_ip=None;confirmed_ip=None;port=0;offered=False;downloaded=False;acknowledged=False;lan_confirmed=asyncio.Event();channel_connected=asyncio.Event()
                 certkey=ec.generate_private_key(ec.SECP256R1());name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'anDrop')]);now=datetime.datetime.now(datetime.timezone.utc)
                 cert=x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(certkey.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now-datetime.timedelta(minutes=1)).not_valid_after(now+datetime.timedelta(days=1)).sign(certkey,hashes.SHA256())
                 (root/'cert').write_bytes(cert.public_bytes(serialization.Encoding.PEM));(root/'key').write_bytes(certkey.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()));(root/'key').chmod(0o600)
@@ -407,21 +461,23 @@ class Engine:
                 async def socket_handler(req):
                     nonlocal ws,offered,allowed_ip,acknowledged
                     candidate=ipaddress.ip_address(req.remote)
-                    if not candidate.is_private or candidate.is_loopback or ws is not None:raise web.HTTPForbidden()
+                    if not private_ipv4(req.remote) or ws is not None or (confirmed_ip and req.remote!=confirmed_ip):raise web.HTTPForbidden()
                     allowed_ip=req.remote
-                    ws=web.WebSocketResponse(max_msg_size=131072);await ws.prepare(req)
+                    ws=web.WebSocketResponse(max_msg_size=131072);await ws.prepare(req);channel_connected.set()
                     emit('diagnostic',detail='WebSocket connected')
                     async def udp():
                         try:
                             await asyncio.sleep(.15)
                             async def burst():
                                 with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
+                                    bind_interface(sock,interface_for_address(req.transport.get_extra_info('sockname')[0]))
                                     for _ in range(256):sock.sendto(bytes(4096),(req.remote,port+1));await asyncio.sleep(.001)
                             await retry_local_route(burst)
                             emit('diagnostic',detail='Bandwidth probes sent')
                         except Exception as e:
                             emit('diagnostic',detail=f'Bandwidth probe failed: {e}')
-                            if not done.done():done.set_exception(e)
+                            # A working control channel may proceed without the
+                            # advisory UDP benchmark; the peer decides readiness.
                     udp_task=asyncio.create_task(udp())
                     await ws.send_str(wire('action',0,'wlanBandwidth',{}))
                     try:
@@ -478,33 +534,48 @@ class Engine:
                         if raw==b'3':raise TransferError(t('The recipient declined the files.','对方已拒绝接收文件。'))
                         if raw.startswith(b'{'):
                             p=json.loads(raw)
+                            emit('diagnostic',detail='send_offer_fields',fields=list(p))
                             if 'wlan' in p and 'wlan_accept' not in p:break
-                # Bind only the interface leading to the BLE-selected peer, and admit only its address.
-                allowed_ip=keys.decrypt(p['ip'])
-                # The first address can be the phone's dormant hotspot address. The LAN address is
-                # supplied after the TLS WebSocket connection; use an active local IPv4 interface.
-                local=self.local_ipv4()
-                runner=web.AppRunner(app,access_log=None);await runner.setup();site=web.TCPSite(runner,local,0,ssl_context=context);await site.start();port=site._server.sockets[0].getsockname()[1]
-                allowed_ip=None
-                await client.write_gatt_char(bu('9896'),json.dumps({'wlan':'wlan','ip':keys.encrypt(local),'port':keys.encrypt(str(port))},separators=(',',':')).encode(),response=True)
-                self.update(s,'connecting')
-                async with asyncio.timeout(20):
-                    while True:
-                        raw=await queue.get()
-                        if not raw.startswith(b'{'):continue
-                        p=json.loads(raw)
-                        if 'wlan_accept' in p:
-                            if not p['wlan_accept']:raise TransferError(t('Connect this Mac and the other device to the same Wi-Fi.','请将 Mac 和对方设备连接到同一 Wi-Fi。'))
-                            confirmed=keys.decrypt(p['ip'])
-                            if allowed_ip!=confirmed:raise ValueError('Peer address mismatch')
-                            lan_confirmed.set()
-                            break
+                # Prefer a directly attached subnet; never advertise a VPN default
+                # route or a dormant hotspot address as this Mac's LAN endpoint.
+                peer_hint=keys.decrypt(p['ip'])
+                candidates=lan_addresses(peer_hint)
+                if not candidates:raise TransferError(t('No active local network address. Connect Wi-Fi or Ethernet and try again.','未找到可用的局域网地址。请连接 Wi-Fi 或以太网后重试。'))
+                runner=web.AppRunner(app,access_log=None);await runner.setup()
+                for candidate_index,local in enumerate(candidates):
+                    listener=lan_socket(local)
+                    try:
+                        site=web.SockSite(runner,listener,ssl_context=context);await site.start()
+                    except BaseException:listener.close();raise
+                    port=listener.getsockname()[1]
+                    allowed_ip=None;confirmed_ip=None;channel_connected.clear()
+                    await client.write_gatt_char(bu('9896'),json.dumps({'wlan':'wlan','ip':keys.encrypt(local),'port':keys.encrypt(str(port))},separators=(',',':')).encode(),response=True)
+                    self.update(s,'connecting')
+                    async with asyncio.timeout(20):
+                        while True:
+                            raw=await queue.get()
+                            if raw in (b'3',b'cancel'):raise TransferError(t('The recipient cancelled the transfer.','对方已取消传输。'))
+                            if not raw.startswith(b'{'):continue
+                            p=json.loads(raw)
+                            if 'wlan_accept' not in p:continue
+                            if p['wlan_accept'] is not True:
+                                if candidate_index+1==len(candidates):raise TransferError(t('The other device could not reach this Mac over the local network. Another interconnect session or network isolation may be blocking it.','对方无法通过局域网连接此 Mac。其他设备互联连接或网络隔离可能阻止了通信。'))
+                                if ws is not None:await ws.close();ws=None
+                                await site.stop();break
+                            confirmed_ip=keys.decrypt(p['ip'])
+                            if not private_ipv4(confirmed_ip):raise ValueError('Invalid peer address')
+                            # GATT acknowledgement and the TLS connection can arrive in
+                            # either order. Authorize only after both agree on the peer.
+                            await channel_connected.wait()
+                            if allowed_ip!=confirmed_ip:raise ValueError('Peer address mismatch')
+                            lan_confirmed.set();break
+                    if lan_confirmed.is_set():break
                 await asyncio.wait_for(done, max(120,total/(256*1024)))
                 self.update(s,'complete',count=len(files),total=total,completed=total,files=[])
                 await asyncio.sleep(.6)
         except asyncio.CancelledError:self.update(s,'cancelled')
         except TimeoutError:
-            detail=t('No response. Keep the other device unlocked, enable sharing, and accept its transfer request.', '未收到回应。请解锁对方设备、开启互传，并确认接收请求。') if s.get('state')=='waiting' else t('The transfer connection timed out. Check that both devices use the same Wi-Fi, then try again.','传输连接超时。请确认两台设备连接同一 Wi-Fi，然后重试。')
+            detail=t('No response. Keep the other device unlocked, enable sharing, and accept its transfer request.', '未收到回应。请解锁对方设备、开启互传，并确认接收请求。') if s.get('state')=='waiting' else t('The transfer connection timed out. Check local-network access, VPN routing, and other interconnect sessions, then try again.','传输连接超时。请检查局域网访问权限、VPN 路由及其他设备互联连接后重试。')
             self.update(s,'failed',detail=detail)
         except Exception as e:self.update(s,'failed',detail=transfer_error_detail(e,receiving=False))
         finally:
@@ -517,13 +588,9 @@ class Engine:
             if runner:await runner.cleanup()
             await self.reset(s)
     def local_ipv4(self):
-        # Ask macOS for the active primary interface. No external connection is made.
-        import subprocess
-        route=subprocess.check_output(['/sbin/route','-n','get','default'],stderr=subprocess.DEVNULL,text=True)
-        interface=next(line.split(':',1)[1].strip() for line in route.splitlines() if 'interface:' in line)
-        address=subprocess.check_output(['/usr/sbin/ipconfig','getifaddr',interface],text=True).strip()
-        if not ipaddress.ip_address(address).is_private:raise TransferError(t('Connect to a local Wi-Fi network.','请连接到本地 Wi-Fi。'))
-        return address
+        addresses=lan_addresses()
+        if not addresses:raise TransferError(t('No active local network address. Connect Wi-Fi or Ethernet and try again.','未找到可用的局域网地址。请连接 Wi-Fi 或以太网后重试。'))
+        return addresses[0]
     async def command(self,obj):
         global LANG
         try:
@@ -531,7 +598,7 @@ class Engine:
             if command=='configure':
                 LANG=obj.get('language','en')
                 self.trusted_only=bool(obj.get('trusted_only',False))
-                self.trusted_ids={str(uuid.UUID(value)).upper() for value in obj.get('trusted_ids',[]) if isinstance(value,str) and len(value)==36}
+                self.trusted_ids={identifier for value in obj.get('trusted_ids',[]) if (identifier:=valid_trust_identifier(value))}
                 self.destination=obj.get('destination',self.destination);self.name=obj.get('name',self.name);self.read_state()
             elif command=='enabled':
                 self.scan_enabled=bool(obj.get('value'))
@@ -555,6 +622,8 @@ class Engine:
                     if future and not future.done():future.set_result(False)
                     else:self.notify('cancel',s.get('central'));self.update(s,'cancelled');await self.reset(s)
         except Exception as e:
+            if obj.get('command')=='write' and self.session and obj.get('central')!=self.session.get('central'):
+                emit('diagnostic',detail='ignored_unrelated_invalid_write');return
             if self.session:
                 s=self.session;self.notify('cancel',s.get('central'));self.update(s,'failed',detail=transfer_error_detail(e,receiving=s.get('direction')=='receive'));await self.reset(s)
             else:emit('error',detail=str(e))

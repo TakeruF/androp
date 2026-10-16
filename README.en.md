@@ -61,11 +61,11 @@ Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Bot
 
 **This differs from AirDrop Contacts Only: untrusted devices may still see this Mac. Trusted Devices Only rejects their transfer requests; it does not hide anDrop.** See [discovery limits and receive filtering](docs/trusted-discovery.md).
 
-In Settings → **Trusted Devices…**, add devices from transfer history even when they are offline. New devices need one transfer in Everyone mode first. Rows show manufacturer artwork, a phone/tablet badge and a device name. Local identifier suffixes distinguish identical names. Remove trust or forget a device at any time.
+In Settings → **Trusted Devices…**, add devices from successful incoming transfers even when they are offline. New devices must first send a file to this Mac in Everyone mode. Rows show manufacturer artwork, a phone/tablet badge and a device name. Local identifier suffixes distinguish identical names. Remove trust or forget a device at any time.
 
 <img src="docs/images/trusted-en.png" alt="Mock trusted-device management with manufacturer artwork and add, remove and forget controls" width="600">
 
-The filter uses Bluetooth identifiers remembered by this Mac, not names or accounts. It is not cryptographic pairing or authenticated identity. Verify each device yourself and add it again if its identifier changes. Unlisted requests are rejected before approval or a Wi-Fi download connection. Removing trust does not interrupt a transfer already in progress.
+The filter stores a hash of the protocol sender ID, so rotating Bluetooth addresses do not remove trust. Names and accounts do not authorize receipt. This is a self-reported ID, not cryptographic pairing or authenticated identity. After the control connection supplies the ID, unlisted senders are rejected before approval and before downloading files. Listed senders still require approval. Removing trust does not interrupt an already accepted transfer. Old UUID-only entries require one incoming transfer in Everyone mode and enrollment of the new record; matching a display name is not a safe migration.
 
 ## Automatic updates
 

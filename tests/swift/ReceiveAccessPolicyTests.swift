@@ -34,3 +34,11 @@ private let unknownCentral = "00000000-0000-0000-0000-00000000000B"
     #expect(!ReceiveAccessPolicy.allows(centralID: trustedCentral, enabled: true,
         trustedOnly: true, trustedIDs: []))
 }
+
+@Test func rotatingAddressCanNegotiateForStableIdentityValidation() {
+    let senderID = "sender:" + String(repeating: "a", count: 64)
+    #expect(ReceiveAccessPolicy.persistentID(senderID))
+    #expect(!ReceiveAccessPolicy.persistentID("sender:" + String(repeating: "g", count: 64)))
+    #expect(ReceiveAccessPolicy.allows(centralID: unknownCentral, enabled: true, trustedOnly: true, trustedIDs: [senderID]))
+    #expect(!ReceiveAccessPolicy.allows(centralID: unknownCentral, enabled: false, trustedOnly: true, trustedIDs: [senderID]))
+}

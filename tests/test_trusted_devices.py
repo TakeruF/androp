@@ -2,12 +2,14 @@
 # Copyright (c) 2026 anDrop contributors
 import asyncio, base64, json, sys, unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'Sources'))
-from engine import Engine, Keys
+from engine import Engine, Keys, sender_identifier, valid_trust_identifier
 
 DEVICE = '00000000-0000-0000-0000-000000000001'
 OTHER = '00000000-0000-0000-0000-000000000002'
+SENDER = 'synthetic-device-a'
+IDENTITY = sender_identifier(SENDER)
 
 def offer(engine, identifier=DEVICE, name='Same account name'):
     keys = Keys(); keys.derive(engine.keys.public)
@@ -15,77 +17,88 @@ def offer(engine, identifier=DEVICE, name='Same account name'):
     return {'uuid': '9896', 'central': identifier, 'data': base64.b64encode(json.dumps(payload).encode()).decode()}
 
 class TrustedDeviceTests(unittest.IsolatedAsyncioTestCase):
-    async def test_unknown_sender_rejected_before_key_exchange_or_confirmation(self):
-        engine = Engine(); engine.trusted_only = True; engine.trusted_ids = {DEVICE}
-        with patch.object(engine.keys, 'derive') as derive, patch('engine.emit') as emit:
-            await engine.receive_write(offer(engine, OTHER))
-        derive.assert_not_called()
-        self.assertIsNone(engine.session)
-        self.assertFalse(any(c.args[0] == 'transfer' for c in emit.call_args_list))
+    async def asyncTearDown(self):
+        for task in asyncio.all_tasks():
+            if task is not asyncio.current_task(): task.cancel()
 
-    async def test_trusted_sender_still_needs_approval_and_identity_is_forwarded(self):
-        engine = Engine(); engine.trusted_only = True; engine.trusted_ids = {DEVICE}
-        with patch('engine.emit') as emit:
-            task = asyncio.create_task(engine.receive_write(offer(engine)))
-            await asyncio.sleep(0)
-            self.assertEqual(engine.session['state'], 'request')
-            self.assertEqual(next(c.kwargs['device_identifier'] for c in emit.call_args_list if c.args[0] == 'transfer'), DEVICE)
-            engine.decisions[engine.session['id']].set_result(False)
-            await task
-        self.assertIsNone(engine.session)
+    async def test_empty_trust_list_rejects_before_key_exchange(self):
+        engine = Engine(); engine.trusted_only = True
+        with patch.object(engine.keys,'derive') as derive, patch('engine.emit'):
+            await engine.receive_write(offer(engine,OTHER))
+        derive.assert_not_called();self.assertIsNone(engine.session)
 
-    async def test_revoking_trust_while_confirmation_pending_blocks_accept(self):
-        engine = Engine(); engine.trusted_only = True; engine.trusted_ids = {DEVICE}
-        with patch('engine.emit') as emit:
-            task = asyncio.create_task(engine.receive_write(offer(engine)))
-            await asyncio.sleep(0)
-            engine.trusted_ids.clear()
-            engine.decisions[engine.session['id']].set_result(True)
-            await task
-        self.assertIsNone(engine.session)
-        self.assertFalse(any(c.kwargs.get('state') == 'connecting' for c in emit.call_args_list))
+    async def test_rotated_address_can_negotiate_but_not_receive_before_identity_check(self):
+        engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+        with patch('engine.emit') as events:
+            await engine.receive_write(offer(engine,OTHER))
+        self.assertEqual(engine.session['state'],'verifying')
+        self.assertEqual(engine.decisions,{})
+        self.assertFalse(any(c.kwargs.get('state')=='request' for c in events.call_args_list))
 
-    async def test_everyone_still_needs_approval(self):
-        engine = Engine()
+    async def approve(self, engine, sender=SENDER, decision=True, mutate=None):
+        session={'id':'session','direction':'receive','central':OTHER,'count':1,'peer':'Same account name'};engine.session=session
         with patch('engine.emit'):
-            task = asyncio.create_task(engine.receive_write(offer(engine, OTHER)))
+            task=asyncio.create_task(engine.approve_receive(session,{'senderId':sender,'fileName':'test.txt','totalSize':5}))
             await asyncio.sleep(0)
-            self.assertEqual(engine.session['state'], 'request')
-            engine.decisions[engine.session['id']].set_result(False)
-            await task
+            if mutate:mutate()
+            if engine.decisions:engine.decisions['session'].set_result(decision)
+            return await task
 
-    def test_names_do_not_grant_trust_and_empty_list_is_closed(self):
-        engine = Engine(); engine.trusted_only = True
-        self.assertFalse(engine.may_receive(DEVICE))
-        self.assertFalse(engine.may_receive(''))
-        engine.trusted_ids = {DEVICE}
-        self.assertTrue(engine.may_receive(DEVICE.lower()))
+    async def test_rotated_trusted_sender_requires_user_approval(self):
+        for decision in [True,False]:
+            engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+            self.assertEqual(await self.approve(engine,decision=decision),decision)
+            self.assertEqual(engine.session['device_identifier'],IDENTITY)
+
+    async def test_same_name_different_sender_id_is_denied(self):
+        engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+        self.assertFalse(await self.approve(engine,sender='synthetic-device-b'))
+        self.assertEqual(engine.decisions,{})
+
+    async def test_missing_id_cannot_inherit_stable_trust(self):
+        engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+        self.assertFalse(await self.approve(engine,sender=None))
+
+    async def test_revocation_and_disable_while_confirming_win_over_acceptance(self):
+        for change in ['revoke','disable']:
+            engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+            def mutate():
+                if change=='revoke':engine.trusted_ids.clear()
+                else:engine.scan_enabled=False
+            self.assertFalse(await self.approve(engine,mutate=mutate))
+
+    async def test_everyone_still_requires_acceptance(self):
+        for decision in [True,False]:self.assertEqual(await self.approve(Engine(),decision=decision),decision)
+
+    async def test_legacy_uuid_cannot_match_another_role_or_rotated_address(self):
+        engine=Engine();engine.trusted_only=True;engine.trusted_ids={DEVICE}
+        self.assertFalse(engine.may_negotiate(OTHER))
+        self.assertTrue(engine.may_negotiate(DEVICE))
+        self.assertFalse(await self.approve(engine))
+
+    async def test_invalid_configuration_ids_are_ignored_without_breaking_engine(self):
+        engine=Engine()
+        with patch('engine.emit'):
+            await engine.command({'command':'configure','trusted_only':True,'trusted_ids':[None,123,'x'*36,IDENTITY,DEVICE.lower()]})
+        self.assertEqual(engine.trusted_ids,{IDENTITY,DEVICE})
+
+    def test_hash_is_stable_private_and_not_a_display_name_fallback(self):
+        self.assertEqual(sender_identifier(SENDER),IDENTITY)
+        self.assertNotIn(SENDER,IDENTITY)
+        for value in [None,'','a',' ','1234567\n',' padded-id','id with space',42,'a'*257]:self.assertIsNone(sender_identifier(value))
+        for value in [IDENTITY,DEVICE]:self.assertEqual(valid_trust_identifier(value),value)
+
+    def test_negotiation_does_not_grant_file_authorization(self):
+        engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+        self.assertTrue(engine.may_access_control(OTHER))
         self.assertFalse(engine.may_receive(OTHER))
-
-    async def test_unknown_subscription_receives_no_ready_notification(self):
-        engine = Engine(); engine.trusted_only = True; engine.trusted_ids = {DEVICE}
-        with patch('engine.emit') as emit:
-            await engine.command({'command':'subscribe','uuid':'9895','central':OTHER})
-            await engine.command({'command':'subscribe','uuid':'9895'})
-        self.assertFalse(any(c.args[0] == 'ble_notify' for c in emit.call_args_list))
-
-    async def test_trusted_subscription_gets_ready_but_disabled_receiver_does_not(self):
-        engine = Engine(); engine.trusted_only = True; engine.trusted_ids = {DEVICE}
-        with patch('engine.emit') as emit:
-            await engine.command({'command':'subscribe','uuid':'9895','central':DEVICE})
-        self.assertEqual(sum(c.args[0] == 'ble_notify' for c in emit.call_args_list), 1)
-        engine.scan_enabled = False
-        with patch('engine.emit') as emit:
-            await engine.command({'command':'subscribe','uuid':'9895','central':DEVICE})
-        self.assertFalse(any(c.args[0] == 'ble_notify' for c in emit.call_args_list))
-
-    def test_accepted_session_retains_control_access_after_trust_removal(self):
-        engine = Engine(); engine.trusted_only = True
-        engine.session = {'direction':'receive','state':'connecting','central':DEVICE}
-        self.assertTrue(engine.may_access_control(DEVICE.lower()))
+        self.assertTrue(engine.may_receive(OTHER,IDENTITY))
+        engine.scan_enabled=False
         self.assertFalse(engine.may_access_control(OTHER))
-        self.assertFalse(engine.may_receive(DEVICE))  # New offers remain blocked.
-        engine.session['state'] = 'request'
-        self.assertFalse(engine.may_access_control(DEVICE))
-        engine.session = None
-        self.assertFalse(engine.may_access_control(DEVICE))
+
+    async def test_malformed_write_from_another_device_cannot_abort_active_transfer(self):
+        engine=Engine();session={'id':'active','central':DEVICE,'direction':'receive','state':'transferring'};engine.session=session
+        with patch('engine.emit'):
+            await engine.command({'command':'write','central':OTHER,'uuid':'9896','data':'not valid base64'})
+        self.assertIs(engine.session,session)
+        self.assertEqual(session['state'],'transferring')

@@ -118,7 +118,7 @@ A native preview using the production views checked a one-line “Example” lab
 - These checks do not establish physical-device coverage for other manufacturers or cryptographic peer authentication.
 
 
-## GATT trust-boundary follow-up
+## Historical GATT trust-boundary follow-up (superseded by sender-ID verification)
 
 - Python suite: **54 tests pass**, including no ready notification for an unlisted
   or missing central, disabled-receiver subscription rejection, and a transfer
@@ -162,3 +162,61 @@ The minimum-OS check was also exercised with an actual macOS 26-only binary and 
 The 1.0.0 application subsequently passed Apple notarization. The exported application’s stapled ticket validated, deep/strict code-signature verification succeeded, and Gatekeeper reported `source=Notarized Developer ID`. The Developer ID-signed DMG mounted read-only, its checksums matched, and all **251 file/link entries** matched the notarized export. Installation from that DMG retained preferences/history and matched the same manifest. The installed Chinese Settings view showed 1.0.0, both update settings enabled, and the license/repository links. Host and bundled engine processes remained running.
 
 Published on 2026-10-17 as [v1.0.0](https://github.com/TakeruF/cn-android-share/releases/tag/v1.0.0). All three assets were downloaded again without GitHub authentication and matched the local release artifacts. Their SHA-256 checksums and the Ed25519 signatures of both appcast and DMG verified independently with the embedded public key. The installed production app read that public feed and displayed Sparkle’s Chinese confirmation that 1.0.0 was current. With Petal stopped, the installed host reported accessory activation policy (Dock hidden). macOS 14 physical-device testing remains outstanding.
+
+
+## 1.0.1 连接与受信任设备修复（2026-10-17）
+
+### 修复内容
+
+- **受信任设备误拒绝**：实机连续接收时，同一手机出现了 5 个不同的 CoreBluetooth central UUID，但协议 `senderId` 保持一致。发送时使用的 peripheral UUID 也不能直接作为接收身份。现在先完成必要的控制连接，再检查发送端协议标识的 SHA-256；只有通过接收范围检查后，才显示接收确认并下载文件。不会根据同名、账号名称、IP 地址或机型自动信任设备。
+- **多网络环境**：从已启用的局域网接口选择地址，优先选择与对端同网段的接口；忽略 VPN 默认路由、未启用接口和标记为 inactive 的接口。Darwin 的接口绑定只作用于本次传输的套接字，不修改系统路由或 VPN 设置。对端明确拒绝某个地址时，可尝试其他局域网地址。
+- **互联连接复用**：允许使用协议提供的可达 IP/端口，包括带有直连信息的端点；复用地址只取自同一次蓝牙协商。不会仅因消息含有 SSID 就立即判定失败。无法从 Mac 访问的厂商私有直连网络仍不能凭空连通，也不会自动切换用户的 Wi-Fi。
+- **时序与速度测量**：蓝牙确认和 TLS 连接不再要求固定先后顺序，两者的对端地址匹配后才提供下载。UDP 速度测量失败不再直接终止已建立的控制连接；接收端如实返回测量值 0，由协议继续协商。
+- **错误提示**：局域网权限、VPN 路由、其他互联连接和网络隔离均可能影响传输，不再把所有连接问题归因于“未连接同一 Wi-Fi”。
+
+### 自动化验证
+
+**90 项 Python 测试、16 项 Swift 测试通过。** TLS/WebSocket/HTTP 集成测试实际建立本机加密连接，仅替代蓝牙传输层。
+
+| 场景 | 结果 |
+| --- | --- |
+| 蓝牙确认先于／晚于 TLS 建连 | 均成功，文件内容一致 |
+| 确认地址与实际连接来源不符 | 不提供下载 |
+| 多局域网地址，首个地址被明确拒绝 | 尝试下一个地址并成功 |
+| VPN 接口、inactive 接口、错误地址／端口 | 正确排除或拒绝 |
+| UDP 探测无回应／发送失败，控制连接正常 | 不因探测失败直接中断 |
+| 同名未信任发送端、缺少标识、协议标识变化 | 不下载文件 |
+| 接收确认打开后移除信任或关闭接收 | 不下载文件 |
+| 用户拒绝、错误文件数量 | 不下载文件 |
+| 中途取消下载 | 清理临时文件，不留下部分接收文件 |
+| 多文件、中文／日文文件名、空文件、8 MiB 二进制文件 | 内容与原文件一致 |
+| 连续交替允许／拒绝 | 不沿用上一次会话的授权 |
+
+### 实机验证
+
+使用开发诊断宿主运行相同生产传输代码，仅为合成测试文件自动回复接收确认。调试入口、原始日志、真实设备标识及个人文件均不包含在生产应用和公开仓库中。
+
+| 场景 | 观察结果 |
+| --- | --- |
+| OPPO 互联连接平板时，手机 → Mac | 成功，内容一致 |
+| OPPO 互联连接手机时，手机 → Mac | 成功，含 8 MiB 文件 SHA-256 校验 |
+| OPPO 互联连接手机时，Mac → 手机 | 成功；从手机实际保存位置读取 8 MiB 文件并校验 SHA-256 |
+| 同一手机使用新蓝牙 UUID，再次以受信任设备接收 | 成功 |
+| 将实机排除出信任名单 | 拒绝，未显示接收确认／未下载 |
+| “所有人”下手动拒绝的等价确认操作 | 正确拒绝 |
+| 日文文件名 | 接收成功，内容一致 |
+| “仅限受信任的设备”与“所有人”交替 6 次 | 全部接收成功，内容一致 |
+| 手机单独发送 0 字节文件 | OPPO 系统互传在发起连接前提示“无法发送大小为零的文件”；没有进入 anDrop 接收流程 |
+
+最初两次 Mac → 手机测试未及时操作手机上的悬浮接收按钮，因而超时；操作该按钮后完成了上述传输。这些超时不计为成功测试。空文件的真实手机发送能力也不计为通过。
+
+### 验证边界与升级说明
+
+- 观察到了蓝牙标识变化，可解释旧版的受信任设备误拒绝。原报告的“互联后必定无法传输”未能在所有连接状态下稳定重现；修复版在上述已连接状态下通过，但不能据此保证所有厂商和网络组合。
+- 新信任记录依赖对端自报的协议标识，**不是密码学配对或身份认证**，不能防止知道该标识的设备冒充。始终保留每次接收确认。见 [信任与发现机制](trusted-discovery.md)。
+- 旧蓝牙 UUID 记录不会按名称自动迁移。需要在“所有人”下成功接收一次，再从历史添加。若切换账号或厂商重新生成协议标识，也需重新核实后添加。
+- 其他品牌的实机、物理多网卡切换、厂商隔离直连网络、macOS 14 实机尚未验证。网络接口排序及明确拒绝后的重试有自动化覆盖，但不等于这些环境的实测。
+- 最终安装阶段 Mac 自动锁定；未要求用户解锁。正式签名构建的启动和包验证与上述诊断构建的实机传输证明分别记录，不把启动成功当成一次新的端到端传输。
+
+
+最终正式构建为 **1.0.1（10001）**，已安装到 `/Applications/anDrop.app`，通过 Developer ID 深度／严格签名校验。80 个 Mach-O 文件通过 arm64／最低 macOS 14 检查，未引用构建机库路径。另直接运行安装包内的生产引擎，完成 3 次真实 TLS/HTTP 场景：受信任接收、同名未信任拒绝、更换蓝牙 UUID 后再次接收；日文文件和空文件内容一致、拒绝场景无下载、没有 UDP 探测包时仍完成传输。引擎正常退出且无 stderr；之后正常宿主与引擎均成功启动，手机互传重新列出了 Mac。生产应用不包含诊断宿主的测试命令入口。此构建尚未作为新的 GitHub Release 发布或重新提交公证。
