@@ -1,6 +1,6 @@
 {
   "version": "1.0.1",
-  "build": 10006,
+  "build": 10007,
   "minimum_macos": "14.0",
   "repository": "TakeruF/cn-android-share",
   "feed_url": "https://github.com/TakeruF/cn-android-share/releases/latest/download/appcast.xml",

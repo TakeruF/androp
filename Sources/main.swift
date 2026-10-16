@@ -797,7 +797,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func reportBug() {
         guard let file = diagnosticFile else { return }
-        let body = L("What happened and how to reproduce it:\n\nExpected behavior:\n\nOther device model:\nOther device OS and version (if known; e.g. Android 16 / ColorOS 16):\nWas a VPN or a device-connectivity app running? If so, which one?\n\nThe attached anDrop diagnostic report includes file types, device metadata and running Mac apps. Please review it before sending.", "遇到的问题及复现步骤：\n\n预期结果：\n\n对方设备型号：\n对方设备的系统及版本（如知道，请填写，例如 Android 16 / ColorOS 16）：\n当时是否开启 VPN 或设备互联应用？如有，请填写名称：\n\n附件为 anDrop 诊断报告，包含文件类型、设备信息及 Mac 上运行的应用。请检查后再发送。")
+        let body = L("What happened and how to reproduce it:\n\nExpected behavior:\n\nOther device model:\nOther device OS and version (if known; e.g. Android 16 / ColorOS 16):\nWas a VPN or a device-connectivity app running? If so, which one?\n\nThe attached anDrop diagnostic report includes file types, device metadata and running Mac apps. Please review it before sending.", "遇到的问题及复现步骤：\n预期结果：\n接收端设备型号：\n接收端系统及版本（如知道请填写，例如Android 17 / ColorOS 17）：\n当时是否开启了 VPN 或手机互联类应用（例如OPPO 互联）？如有，请填写名称：\n附件为 anDrop 诊断报告，包含文件类型、设备信息及 Mac 上运行的应用列表。发送前请先检查内容，确认不含敏感信息。")
         guard let service = NSSharingService(named: .composeEmail), service.canPerform(withItems: [body, file]) else {
             diagnosticMessage = L("Could not open an email draft. Use Show in Finder and attach the log to an email to support@takeruf.com.", "无法打开邮件草稿。请点击“在访达中显示”，将日志作为附件发送至 support@takeruf.com。")
             return
