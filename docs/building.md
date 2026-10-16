@@ -38,3 +38,5 @@ codesign --verify --deep --strict build/anDrop.app
 ```
 
 The collector reads installed package metadata, Python's license and available Homebrew native-library licenses. It preserves the protocol-reference licenses already checked in. Review the inventory against the actual bundle before distributing a new build. See [licensing](licensing.md) and [publication privacy](publication.md).
+
+Control Center status sharing uses an App Group between the host and the controls extension. For a Developer ID build, `build.py` derives its macOS-style group from the signing team; provide `ANDROP_TEAM_ID` locally if the identity is specified as a certificate hash rather than a full identity name. Both signatures receive the same group entitlement. Keep the team ID and generated entitlements out of the repository. No provisioning profile is needed for this macOS-style group. Ad-hoc builds without a team keep the basic panel action, but cannot share the receive scope with the extension; the tile displays “Open to choose” instead of inventing a scope.

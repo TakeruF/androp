@@ -4,11 +4,28 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
+nonisolated struct ReceiveControlProvider: ControlValueProvider {
+    var previewValue: ReceiveControlState { .preview }
+    func currentValue() async throws -> ReceiveControlState {
+        await MainActor.run { ReceiveControlStore.read() }
+    }
+}
+
 struct ReceiveControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        // Keep the original primary kind so an already-added tile updates in place.
-        StaticControlConfiguration(kind: "org.androp.send") {
-            ControlWidgetButton(action: ReceiveSettingsIntent()) { Label("anDrop", systemImage: "paperplane") }
+        // Keep the original kind so an already-added tile updates in place.
+        StaticControlConfiguration(kind: ReceiveControlStore.kind, provider: ReceiveControlProvider()) { state in
+            ControlWidgetToggle(isOn: state.isOn, action: ReceiveSettingsIntent()) {
+                Text("anDrop")
+            } valueLabel: { _ in
+                Label { Text(state.status) } icon: {
+                    Image(systemName: "paperplane.circle.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(state.isOn ? Color.accentColor : Color.secondary, state.isOn ? Color.white : Color.secondary.opacity(0.25))
+                }
+                    .controlWidgetStatus(state.status)
+                    .controlWidgetActionHint("Receiving Options")
+            }.tint(Color.accentColor)
         }.displayName("anDrop").description("Manage anDrop receiving and trusted devices.")
     }
 }

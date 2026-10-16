@@ -7,6 +7,7 @@ import CoreBluetooth
 import UserNotifications
 import ServiceManagement
 import CoreWLAN
+import WidgetKit
 
 struct Transfer: Identifiable, Codable {
     var id: String
@@ -157,6 +158,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         setupNotifications()
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: L("Receive files from nearby devices", "接收附近设备的文件"))
         startAtLogin = SMAppService.mainApp.status == .enabled
+        publishReceiveControlState()
         startEngine()
         peripheral = CBPeripheralManager(delegate: self, queue: nil)
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -168,6 +170,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         stopCompletedRecipientDismissal(); closeReceiveControls()
+        publishReceiveControlState(running: false)
         terminating = true; peripheral?.stopAdvertising(); input?.closeFile(); process?.terminate(); saveHistory()
     }
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -224,7 +227,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @objc func selectTrustedOnly() { changeTrustedOnly(true) }
     @objc func selectEveryone() { changeTrustedOnly(false) }
     func changeTrustedOnly(_ value: Bool) {
-        trustedOnly = value; UserDefaults.standard.set(value, forKey: "trustedOnly"); configureEngine(); rebuildMenu()
+        trustedOnly = value; UserDefaults.standard.set(value, forKey: "trustedOnly"); configureEngine(); rebuildMenu(); publishReceiveControlState()
     }
     var knownDevices: [RememberedDevice] {
         var seen = Set<String>()
@@ -332,12 +335,21 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
         }
     }
+    private func publishReceiveControlState(running: Bool = true) {
+        ReceiveControlStore.write(ReceiveControlState(isOn: running && receiveSwitchIsOn, trustedOnly: trustedOnly, language: appLanguage()))
+        if #available(macOS 26.0, *) { ControlCenter.shared.reloadControls(ofKind: ReceiveControlStore.kind) }
+    }
     func setReceiveSwitch(_ enabled: Bool) {
         if !enabled { quit() }
     }
     private func refreshRadioAvailability() {
         let available = peripheral?.state == .poweredOn && (CWWiFiClient.shared().interface()?.powerOn() ?? false)
-        if radiosAvailable != available { radiosAvailable = available }
+        if radiosAvailable != available {
+            radiosAvailable = available
+            configureEngine(); advertise()
+            if !available { clearPeers() }
+            publishReceiveControlState()
+        }
     }
     @objc func showReceiveControls() {
         if receivePanel == nil {
@@ -513,7 +525,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         do { try input.write(contentsOf: bytes + Data([10])); return true }
         catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。"); return false }
     }
-    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "trusted_ids": trustedDevices.map(\.id)]); command(["command": "enabled", "value": receiving]) }
+    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "trusted_ids": trustedDevices.map(\.id)]); command(["command": "enabled", "value": receiveSwitchIsOn]) }
     private func consume(_ data: Data) {
         outputBuffer.append(data)
         if outputBuffer.count > 4_194_304 { outputBuffer.removeAll(); error = L("The sharing service returned an invalid response.", "共享服务返回了无效响应。"); return }
@@ -659,7 +671,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         return true
     }
     func changeLanguage(_ value: String) {
-        language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu()
+        language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu(); publishReceiveControlState()
         if let appMenu = NSApp.mainMenu?.items.first?.submenu {
             appMenu.items[0].title = L("About anDrop", "关于 anDrop")
             appMenu.items[1].title = L("Transfers", "传输")
@@ -685,8 +697,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         flushNotifications(); rebuildMenu()
     }
     private func advertise() {
+        guard receiveSwitchIsOn else { peripheral?.stopAdvertising(); advertisedName = ""; return }
         guard serviceReady, engineReady else { return }
-        guard receiving else { peripheral?.stopAdvertising(); advertisedName = ""; return }
         let name = discoveryID + "B" + displayName
         guard name != advertisedName || peripheral?.isAdvertising != true else { return }
         peripheral?.stopAdvertising(); advertisedName = name

@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
         'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
         '-module-cache-path', str(stage / 'module-cache'),
         *[str(ROOT / 'Sources' / name) for name in
-          ['Localization.swift', 'Peer.swift', 'TransferProgress.swift', 'BrandLogos.swift']],
+          ['Localization.swift', 'Peer.swift', 'TransferProgress.swift', 'BrandLogos.swift', 'ControlState.swift']],
         str(generated), '-o', str(executable),
     ], check=True)
     # This renders views to PNGs without starting the app delegate, Bluetooth,

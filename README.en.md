@@ -86,6 +86,8 @@ This filter uses Bluetooth identifiers remembered by this Mac, not account or de
 
 Open anDrop, then choose Control Center → **Edit Controls** and search for **anDrop**. Add the single **anDrop** control. It opens a compact panel with anDrop and its receive switch in the header, followed by Trusted Devices Only / Everyone. Turning the switch off quits the app. Opening the control starts the app without opening its main Settings window. If Bluetooth or Wi-Fi is unavailable, the switch shows off; enable the radios in macOS Control Center. Public Controls API does not allow a third-party app to embed an AirDrop-style detail panel inside Control Center itself, so this panel opens near the menu bar. If an older Toggle Sharing tile remains after an update, remove that obsolete tile in Edit Controls. This feature uses [Apple’s official Controls API](https://developer.apple.com/documentation/widgetkit/controls-collection).
 
+Set the control to **Medium** size to show the selected receive scope (Trusted Devices Only / Everyone), or **Off** when anDrop is closed or its radios are unavailable. The small size shows only the symbol. The native control follows the system accent color and appearance. Clicking it opens receiving options; use the switch in that panel to quit. The control uses a native toggle as a state indicator and resynchronizes after opening the panel, so its appearance may briefly change during the click. macOS controls the active tile background; it does not exactly reproduce Apple’s AirDrop module.
+
 ![anDrop receive controls](docs/images/receive-en.png)
 
 ## Which devices work?
