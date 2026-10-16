@@ -4,8 +4,6 @@
 from pathlib import Path
 import urllib.request
 import sysconfig
-import shutil
-import subprocess
 import importlib.metadata as m
 import ssl
 import sys

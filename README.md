@@ -8,7 +8,7 @@ anDrop 是一个常驻 macOS 菜单栏的文件共享应用，面向 **互传联
 
 **[下载 anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md)
 
-1.0.0 提供适用于 **Apple Silicon Mac、macOS 14 或更新版本**的 DMG 安装包。OPPO 手机已验证双向传输，一台 OPPO 平板已验证向 Mac 发送；其他品牌和机型尚未实机验证。更早 macOS 的最低要求已通过构建检查，但尚未在 macOS 14 实机测试。下方图片均使用虚构数据，不代表其中所有品牌都已通过兼容性测试。
+1.0.0 提供适用于 **Apple Silicon Mac、macOS 14 或更新版本**的 DMG 安装包。OPPO 手机已验证双向传输，一台 OPPO 平板已验证向 Mac 发送；其他品牌和机型尚未实机验证。构建检查已确认随应用打包的二进制不要求高于 macOS 14 的版本，但尚未在 macOS 14 实机测试。下方图片均使用虚构数据，不代表其中所有品牌都已通过兼容性测试。
 
 ## 安装与首次使用
 

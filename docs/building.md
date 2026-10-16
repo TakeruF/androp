@@ -53,7 +53,7 @@ The release helper never publishes. It keeps public assets separate from private
 
 `prepare --skip-build` uses an already completed build after validating it. By default, submit uses the account already configured in Xcode with `xcodebuild -exportArchive` and `-allowProvisioningUpdates`. Package exports the notarized app with `-exportNotarizedApp` and refuses to continue unless signature verification, stapling validation and Gatekeeper assessment succeed. If notarization is still processing, retry package later.
 
-Alternatively, set `ANDROP_NOTARY_PROFILE` to your own existing Keychain profile before prepare. Submit uses notarytool, and package checks the saved submission status for Accepted before stapling. Credentials are never read into source or logs by the helper.
+Alternatively, set `ANDROP_NOTARY_PROFILE` to your own existing Keychain profile before prepare. Submit uses notarytool, and package checks the saved submission status for Accepted before stapling. Keep credentials in the configured Keychain/Xcode account; do not put them in command arguments or source. All export and notarization diagnostics remain private.
 
 The helper packages the stapled app and an Applications link into a DMG, signs the DMG, generates a signed appcast with embedded Chinese notes and writes checksums. **The application is notarized and stapled; the DMG container is Developer ID signed. The helper does not claim a separate DMG notarization.**
 

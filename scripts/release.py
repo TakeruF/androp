@@ -137,7 +137,14 @@ def package():
             run('xcrun', 'stapler', 'staple', app)
         else:
             exported = temp / 'notarized'
-            run('xcodebuild', '-exportNotarizedApp', '-archivePath', ARCHIVE, '-exportPath', exported)
+            result = subprocess.run(['xcodebuild', '-exportNotarizedApp', '-archivePath', str(ARCHIVE),
+                                     '-exportPath', str(exported)], capture_output=True, text=True)
+            diagnostic = result.stdout + result.stderr
+            (PRIVATE / 'notarized-export.log').write_text(diagnostic)
+            if result.returncode:
+                if 'is processing and not ready for distribution' in diagnostic:
+                    raise SystemExit('Apple is still processing the archive. Run package again later.')
+                raise SystemExit('Notarized export failed. Inspect dist/<version>/private/notarized-export.log.')
             run('ditto', exported / 'anDrop.app', app)
         assert_release(app)
         run('xcrun', 'stapler', 'validate', app)
