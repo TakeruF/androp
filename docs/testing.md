@@ -24,7 +24,7 @@ Tests checked that the nearby name obeys the byte limit and transfer confirmatio
 swift test
 ```
 
-Fifteen Python tests and six Swift tests passed for version 0.1.1. They cover:
+Twenty-seven Python tests and six Swift tests passed for version 0.1.1 (build 4). They cover:
 
 - Key exchange, encryption round trip and protocol parsing.
 - Japanese filenames, empty files and collision handling.
@@ -37,6 +37,9 @@ Fifteen Python tests and six Swift tests passed for version 0.1.1. They cover:
 - Unknown/conflicting metadata and future-version fallback.
 - Bluetooth endpoint rotation while retaining one protocol recipient and the latest connection route.
 - Alias persistence by device identity, same-name disambiguation and the 40-character Unicode limit.
+- Discovery expiry at the ten-second boundary, removal of cached connection routes, and rejection of stale sends.
+- Scanner startup/runtime failure, late callbacks, partial packets, sender-only advertisements and endpoint rotation.
+- Closing the chooser during file preparation without losing the already-selected route.
 
 ## Repository packaging verification
 
@@ -49,6 +52,14 @@ The phone and a second OPPO device advertising the tablet flag were visible simu
 The first native chooser revision was opened through Finder Share and showed the phone and tablet as distinct entries. A temporary tablet alias changed only that entry. The final version uses an official brand logo in a circle, phone/tablet badge and sharing name, with the same identity and alias handling.
 
 The final chooser was visually checked through Finder Share in English and Simplified Chinese with two real recipients. Official OPPO artwork and the SF Symbols phone/landscape-tablet badges rendered correctly. The tablet alias persisted through restart without appearing on the phone, then was cleared. All ten bundled images loaded through AppKit and matched their manifest hashes. The full and subsequent UI builds passed deep/strict signature verification. No file-transfer request was sent during these UI checks.
+
+## Recipient expiry follow-up
+
+A phone and tablet were observed through live advertisements. During a user-operated visibility-off test on the phone, new phone advertisements stopped; none arrived for the remaining approximately 55 seconds of that observation. This was a radio observation, not a timestamped measurement of the native UI switch. The ten-second expiry and error paths were checked separately by automated tests. A natural ten-minute timeout was not timed in this run.
+
+The installed build was opened from Finder Share after the visibility-off test. Discovery updates continued normally with zero recipients and no scan error; the stopped recipients did not reappear. The full signed build passed deep/strict signature verification. No file was sent in this follow-up.
+
+The macOS scanner adapter explicitly requests repeat advertisement delivery while the chooser is open. It uses a custom Bleak backend with the pinned 3.0.2 implementation; dependency upgrades must recheck this adapter. It does not connect to a device just to keep its row alive. The UI additionally expires a silent discovery stream and clears on Bluetooth-off, engine restart and chooser closure.
 
 ## Remaining validation
 

@@ -41,3 +41,11 @@ While Petal runs, anDrop shortens its discovery name to **A** and keeps a Dock i
 ## Privacy on your local network
 
 Nearby devices can see the advertised device name while sharing is enabled. The full Computer Name is used in transfer negotiation. Local transfer history includes peer names and file paths; use Clear History in Settings to remove it. The app does not use a cloud service or analytics endpoint.
+
+## When a recipient disappears
+
+The chooser shows devices with a receiving advertisement heard within the last 10 seconds. It refreshes once per second, so a device normally disappears about 10–11 seconds after its last advertisement. Closing the chooser, switching anDrop off, or a scanner error clears its discovery cache. Reopening starts a fresh search. The screen also clears results if it receives no discovery updates for six seconds (checked every two seconds), or if the sharing service restarts.
+
+A send request rechecks freshness before preparing files; an expired route is not reused. Expiry does not cancel a transfer already started. A device can still go offline between selection and connection, which produces a normal connection error.
+
+anDrop cannot read another device's “everyone for 10 minutes” countdown. It observes Bluetooth advertisements rather than assuming that a device stays visible for a fixed ten-minute period. The exact OS visibility-switch time is not available to the Mac, so removal is not instantaneous.

@@ -15,6 +15,8 @@ from cryptography.hazmat.primitives import serialization, hashes, padding
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+PEER_TTL = 10.0
+
 LANG = 'en'
 def t(en,zh): return zh if LANG=='zh' else en
 
@@ -138,7 +140,7 @@ async def unpack(archive_path, destination, count, total, progress):
 class Engine:
     def __init__(self):
         self.destination=str(Path.home()/'Downloads');self.name='anDrop Mac';self.keys=Keys();self.session=None
-        self.scanner=None;self.devices={};self.peers={};self.last_peers=0;self.decisions={};self.scan_enabled=True;self.discovering=False;self.jobs=set()
+        self.scanner=None;self.scan_token=None;self.devices={};self.peers={};self.decisions={};self.scan_enabled=True;self.discovering=False;self.jobs=set()
     def launch(self,coro):
         task=asyncio.create_task(coro);self.jobs.add(task);task.add_done_callback(self.jobs.discard);return task
     def read_state(self):
@@ -247,28 +249,64 @@ class Engine:
             self.notify('cancel',s['central']);self.update(s,'failed',detail=t(f'Receive failed: {e or type(e).__name__}',f'接收失败：{e or type(e).__name__}'))
         finally:
             bw.cancel();udp.close();await self.reset(s)
+    def clear_peers(self):
+        self.peers.clear();self.devices.clear();emit('peers',peers=[])
+    def prune_peers(self):
+        now=time.monotonic()
+        for identifier in list(self.peers):
+            if now-self.peers[identifier]['last']>=PEER_TTL:
+                self.peers.pop(identifier,None);self.devices.pop(identifier,None)
+    def publish_peers(self):
+        self.prune_peers()
+        emit('peers',peers=[{k:v for k,v in p.items() if k!='last'} for p in self.peers.values()])
     def discovered(self,device,ad):
-        if bu('3333') not in ad.service_data:return
+        if not self.scan_enabled or not self.discovering:return
+        if bu('3333') not in ad.service_data:return  # A partial advertisement is not a withdrawal.
         identity=ad.service_data[bu('3333')].decode(errors='ignore')
-        if len(identity)<14 or '-r' not in identity:return
+        fields=identity.split('-')
+        if len(identity)<14 or len(fields)<2 or fields[1] not in ('r','sr'):
+            # Only revoke this endpoint, not a newer route after address rotation.
+            removed=[key for key,value in self.devices.items() if value.address==device.address]
+            for key in removed:self.devices.pop(key,None);self.peers.pop(key,None)
+            if removed:self.publish_peers()
+            return
         name=ad.service_data.get(bu('3334'),b'').decode(errors='replace').strip('\0') or ad.local_name or 'Android'
         identifier=peer_identifier(identity,device.address)
         self.devices[identifier]=device;self.peers[identifier]={'id':identifier,'name':name[:100],'last':time.monotonic(),**parse_peer_metadata(identity)}
+    def discovery_callback(self,token):
+        def found(device,ad):
+            if self.scan_token is token:self.discovered(device,ad)
+        return found
     async def scanning(self):
         while True:
             if not self.scan_enabled or not self.discovering:
-                emit('peers',peers=[]);await asyncio.sleep(1);continue
+                await asyncio.sleep(1);continue
+            self.clear_peers()
+            token=object();self.scan_token=token
+            found=self.discovery_callback(token)
             try:
-                async with BleakScanner(detection_callback=self.discovered,service_uuids=[bu('3333')]) as scanner:
+                options={}
+                if sys.platform=='darwin':
+                    from discovery import LiveScannerCoreBluetooth
+                    options['backend']=LiveScannerCoreBluetooth
+                async with BleakScanner(detection_callback=found,service_uuids=[bu('3333')],**options) as scanner:
                     self.scanner=scanner
-                    while self.scan_enabled and self.discovering:
-                        now=time.monotonic();emit('peers',peers=[{k:v for k,v in p.items() if k!='last'} for p in self.peers.values() if now-p['last']<15]);await asyncio.sleep(2)
-            except asyncio.CancelledError:raise
+                    try:
+                        while self.scan_enabled and self.discovering:
+                            self.publish_peers();await asyncio.sleep(1)
+                    finally:
+                        self.scan_token=None;self.scanner=None;self.clear_peers()
+            except asyncio.CancelledError:
+                self.scan_token=None;self.clear_peers();raise
             except Exception as e:
+                self.scan_token=None;self.clear_peers()
                 emit('scan_status',detail=t(f'Check Bluetooth: {e}',f'请检查蓝牙：{e}'));await asyncio.sleep(5)
     async def send(self,peer_id,paths,peer_label=None):
         if self.session:emit('error',detail=t('Wait for the current transfer to finish.','请等待当前传输完成。'));return
-        if peer_id not in self.devices:emit('error',detail=t('Choose the recipient again.','请重新选择接收设备。'));return
+        self.prune_peers()
+        if not self.scan_enabled or not self.discovering or peer_id not in self.devices:
+            self.publish_peers();emit('error',detail=t('This device is no longer discoverable. Enable sharing on it and choose it again.','此设备已无法被发现。请在对方设备上开启互传后重新选择。'));return
+        device=self.devices[peer_id]  # Keep the selected route while the chooser closes.
         s={'id':uuid.uuid4().hex,'direction':'send','peer':peer_label[:200] if isinstance(peer_label,str) and peer_label else self.peers[peer_id]['name']};self.session=s;s['task']=asyncio.current_task();self.read_state()
         runner=None;client=None;ws=None
         try:
@@ -344,7 +382,7 @@ class Engine:
                             await response.write(chunk);sent+=len(chunk);self.progress(s,min(sent,total),total)
                     downloaded=True;await response.write_eof();return response
                 app=web.Application(client_max_size=131072);app.router.add_get('/websocket',socket_handler);app.router.add_get('/download',download)
-                client=BleakClient(self.devices[peer_id],timeout=15)
+                client=BleakClient(device,timeout=15)
                 await client.connect();self.update(s,'connecting',total=total,count=len(files))
                 reply=json.loads(await asyncio.wait_for(client.read_gatt_char(bu('9897')),5))
                 if reply.get('state')!=0:raise ValueError(t('The phone is busy. Please try again shortly.','手机正忙，请稍后重试。'))
@@ -416,8 +454,13 @@ class Engine:
             if command=='configure':
                 LANG=obj.get('language','en')
                 self.destination=obj.get('destination',self.destination);self.name=obj.get('name',self.name);self.read_state()
-            elif command=='enabled':self.scan_enabled=bool(obj.get('value'))
-            elif command=='scan':self.discovering=bool(obj.get('value'))
+            elif command=='enabled':
+                self.scan_enabled=bool(obj.get('value'))
+                if not self.scan_enabled:self.clear_peers()
+            elif command=='scan':
+                value=bool(obj.get('value'))
+                if not value or not self.discovering:self.clear_peers()
+                self.discovering=value
             elif command=='subscribe':
                 if obj.get('uuid')=='9895':self.notify('ready',obj.get('central'))
             elif command=='write':await self.receive_write(obj)

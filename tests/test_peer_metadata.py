@@ -10,7 +10,7 @@ from engine import Engine, bu
 
 class PeerMetadataTests(unittest.TestCase):
     def test_phone_and_tablet_same_account_stay_separate(self):
-        engine = Engine()
+        engine = Engine(); engine.discovering = True
         for identifier, flags, advertised_id in [('phone-endpoint', 9, '112233445566'), ('tablet-endpoint', 11, '223344556677')]:
             ad = SimpleNamespace(service_data={bu('3333'): f'{advertised_id}-r--1-11-{flags}'.encode(), bu('3334'): b'Shared account'}, local_name=None)
             engine.discovered(SimpleNamespace(address=identifier), ad)
@@ -31,7 +31,7 @@ class PeerMetadataTests(unittest.TestCase):
         self.assertEqual(parse_peer_metadata('id-r--1-11-19'), {'brand':'realme','kind':'tablet'})
 
     def test_rediscovery_refreshes_metadata_without_duplicate(self):
-        engine = Engine()
+        engine = Engine(); engine.discovering = True
         device = SimpleNamespace(address='same-endpoint')
         for label in [b'Before', b'After']:
             engine.discovered(device, SimpleNamespace(service_data={bu('3333'): b'000000000000-r--1-11-9',bu('3334'):label},local_name=None))
@@ -39,7 +39,7 @@ class PeerMetadataTests(unittest.TestCase):
         self.assertEqual(engine.peers[device.address]['name'], 'After')
 
     def test_address_rotation_keeps_one_recipient_and_updates_route(self):
-        engine = Engine()
+        engine = Engine(); engine.discovering = True
         ad = SimpleNamespace(service_data={bu('3333'): b'112233445566-r--1-11-9', bu('3334'): b'Shared account'}, local_name=None)
         first, second = SimpleNamespace(address='old-route'), SimpleNamespace(address='new-route')
         engine.discovered(first, ad)

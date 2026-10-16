@@ -68,6 +68,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private var process: Process?
     private var input: FileHandle?
     private var outputBuffer = Data()
+    private var lastPeerUpdate: ContinuousClock.Instant?
     private var timer: Timer?
     private var serviceReady = false
     private var terminating = false
@@ -121,7 +122,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         addFiles(filenames.map { URL(fileURLWithPath: $0) }); showRecipients(); sender.reply(toOpenOrPrint: .success)
     }
-    @objc func woke() { refreshEnvironment(); advertise() }
+    @objc func woke() { clearPeers(); refreshEnvironment(); advertise() }
     private func setupMenus() {
         let menu = NSMenu(); let appItem = NSMenuItem(); menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
@@ -233,6 +234,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func closeRecipients() { recipientPanel?.close() }
     func showRecipients() {
+        if recipientPanel?.isVisible != true { clearPeers() }
         command(["command": "scan", "value": true])
         if recipientPanel == nil {
             let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 360), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
@@ -269,9 +271,18 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         UserDefaults.standard.set(peerAliases, forKey: "peerAliases")
     }
     func windowWillClose(_ notification: Notification) {
-        if let closed = notification.object as? NSWindow, closed === recipientPanel { command(["command": "scan", "value": false]) }
+        if let closed = notification.object as? NSWindow, closed === recipientPanel {
+            clearPeers(); command(["command": "scan", "value": false])
+        }
+    }
+    private func clearPeers() {
+        peers = []; selectedPeer = nil; lastPeerUpdate = nil
+    }
+    private func expirePeerUpdates() {
+        if let lastPeerUpdate, lastPeerUpdate.duration(to: .now) >= .seconds(6) { clearPeers() }
     }
     private func startEngine() {
+        clearPeers(); outputBuffer.removeAll()
         guard let resource = Bundle.main.resourceURL else { return }
         let executable = resource.appendingPathComponent("Engine/anDropEngine")
         let p = Process(); p.executableURL = executable
@@ -292,7 +303,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             let code = proc.terminationStatus
             Task { @MainActor [weak self] in
                 guard let self, !self.terminating else { return }
-                self.engineReady = false
+                self.engineReady = false; self.clearPeers()
                 for i in self.transfers.indices where self.transfers[i].active { self.transfers[i].state = "failed"; self.transfers[i].detail = L("The connection restarted. Please try again.", "连接已重新启动，请重试。") }
                 self.error = L("Sharing service stopped (\(code))", "共享服务已停止（\(code)）")
                 self.saveHistory()
@@ -330,18 +341,25 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 }
             }
             switch event {
-            case "ready": engineReady = true; error = ""; advertise()
+            case "ready":
+                engineReady = true; error = ""; advertise()
+                if recipientPanel?.isVisible == true { command(["command": "scan", "value": true]) }
             case "ble_read":
                 if let obj = value["value"] { readValue = (try? JSONSerialization.data(withJSONObject: obj)) ?? Data() }
             case "ble_notify":
                 if let encoded = value["data"] as? String, let bytes = Data(base64Encoded: encoded) { notifyQueue.append((bytes, value["central"] as? String)); flushNotifications() }
             case "peers":
+                guard recipientPanel?.isVisible == true, receiving, engineReady else { clearPeers(); continue }
+                lastPeerUpdate = .now
                 peers = (value["peers"] as? [[String: String]] ?? []).compactMap { obj in
                     guard let id = obj["id"], let name = obj["name"] else { return nil }; return Peer(id: id, name: name, brand: obj["brand"] ?? "", kind: Peer.Kind(rawValue: obj["kind"] ?? "") ?? .unknown)
                 }
+                if !peers.contains(where: { $0.id == selectedPeer }) { selectedPeer = nil }
                 if selectedPeer == nil, peers.count == 1 { selectedPeer = peers[0].id }
             case "transfer": updateTransfer(value)
-            case "error", "scan_status": error = value["detail"] as? String ?? L("Something went wrong.", "发生错误。"); rebuildMenu()
+            case "scan_status":
+                clearPeers(); error = value["detail"] as? String ?? L("Check Bluetooth.", "请检查蓝牙。"); rebuildMenu()
+            case "error": error = value["detail"] as? String ?? L("Something went wrong.", "发生错误。"); rebuildMenu()
             default: break
             }
         }
@@ -400,17 +418,19 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if panel.runModal() == .OK, let url = panel.url { destination = url.path; UserDefaults.standard.set(url.path, forKey: "destination"); configureEngine() }
     }
     func send() {
+        expirePeerUpdates()
         guard let selectedPeer, let peer = peers.first(where: { $0.id == selectedPeer }), !selectedFiles.isEmpty, !busy, receiving else { return }
         var label = [peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh")].filter { !$0.isEmpty }.joined(separator: " · ")
         if peerIsAmbiguous(peer) { label += " · " + peer.distinguishingCode(among: peers) }
-        recipientPanel?.close(); error = ""; command(["command": "send", "peer": selectedPeer, "peer_label": label, "paths": selectedFiles.map(\.path)])
+        error = ""; command(["command": "send", "peer": selectedPeer, "peer_label": label, "paths": selectedFiles.map(\.path)])
+        recipientPanel?.close()
     }
     func decide(_ transfer: Transfer, accept: Bool) {
         command(["command": "decision", "id": transfer.id, "accept": accept]); UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [transfer.id])
     }
     func cancel(_ transfer: Transfer) { command(["command": "cancel", "id": transfer.id]) }
     func reveal(_ transfer: Transfer) { NSWorkspace.shared.activateFileViewerSelecting(transfer.paths.map { URL(fileURLWithPath: $0) }) }
-    func changeReceiving(_ value: Bool) { receiving = value; UserDefaults.standard.set(value, forKey: "enabled"); command(["command":"enabled", "value": value]); advertise(); rebuildMenu() }
+    func changeReceiving(_ value: Bool) { receiving = value; if !value { clearPeers() }; UserDefaults.standard.set(value, forKey: "enabled"); command(["command":"enabled", "value": value]); advertise(); rebuildMenu() }
     func changeLanguage(_ value: String) {
         language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu()
         if let appMenu = NSApp.mainMenu?.items.first?.submenu {
@@ -426,6 +446,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         catch { self.error = L("Could not change login settings: \(error.localizedDescription)", "无法更改登录设置：\(error.localizedDescription)") }
     }
     private func refreshEnvironment() {
+        expirePeerUpdates()
         if configuredName != deviceName && !busy { configureEngine(); advertise() }
         let petal = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.EMUIInterconnect.app" }
         if petal != petalRunning {
@@ -446,7 +467,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         guard peripheral.state == .poweredOn else {
             bluetooth = peripheral.state == .unauthorized ? L("Allow Bluetooth access in System Settings.", "请在系统设置中允许使用蓝牙。") : L("Turn on Bluetooth.", "请打开蓝牙。")
-            serviceReady = false; advertisedName = ""; return
+            clearPeers(); serviceReady = false; advertisedName = ""; return
         }
         bluetooth = L("Ready to share with nearby Android devices", "可以与附近的安卓设备共享文件"); peripheral.removeAllServices(); chars.removeAll()
         let service = CBMutableService(type: CBUUID(string: "9999"), primary: true)
