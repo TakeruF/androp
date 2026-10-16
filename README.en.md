@@ -10,6 +10,8 @@ anDrop is a macOS menu bar app for the **互传联盟 (Mutual Transfer Alliance)
 
 Version 1.0.0 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. An OPPO phone has been tested in both directions; one OPPO tablet has been tested sending to the Mac. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
 
+The main branch includes **1.0.1 connection and trusted-device fixes**, which have not yet been released as a new installer. The download above is still 1.0.0. See the [test record](docs/testing.md) for verified scenarios and limitations.
+
 ## Install and get started
 
 1. Download the `.dmg`, open it and drag **anDrop** into **Applications**.
