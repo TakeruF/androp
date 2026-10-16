@@ -1,57 +1,129 @@
 # anDrop
 
-[简体中文](README.zh-CN.md)
+**用手机、平板自带的互传，把文件发送到 Mac，也能从 Mac 发回去。**
 
-anDrop is a macOS menu bar app for sending and receiving files with devices in the **互传联盟 (Mutual Transfer Alliance)** ecosystem. This repository is named **cn-android-share**; the app is named **anDrop**.
+简体中文 · [English](README.en.md)
 
-Use a device's built-in compatible sharing feature, without first connecting to a vendor desktop app. Both devices need Bluetooth enabled and the same local Wi-Fi network. No extra phone app, account, cloud service or USB connection is required at runtime.
+anDrop 是一个常驻 macOS 菜单栏的文件共享应用，面向 **互传联盟（Mutual Transfer Alliance）** 生态。无需提前连接厂商电脑端应用，运行时无需额外手机应用、账号、云服务或 USB。**两台设备仍需开启蓝牙，并连接同一局域网 Wi-Fi。**
 
-互传联盟 is a cross-brand ecosystem used by Chinese device manufacturers, including Xiaomi, HONOR, OPPO and vivo. It is separate from Google Quick Share and is not an Android-wide standard. See [HONOR's official cross-brand sharing guide](https://www.honor.com/cn/support/content/zh-cn15883773/).
+> **当前为 0.1.1 开发版本，尚未提供可直接下载的安装包。** 目前需要[从源码构建](#从源码构建)。OPPO 手机已验证双向传输，一台 OPPO 平板已验证向 Mac 发送；其他品牌和机型尚未实机验证。下方画面使用虚构数据，不代表其中所有品牌已通过兼容性测试。
 
-## Features
+## 看看它怎么用
 
-- Menu bar On/Off, transfer progress, cancellation, recent transfers and Settings.
-- Finder **Share → anDrop** and a compact recipient grid with official brand logos in circles, phone/tablet badges and shared names.
-- Optional device names saved only on this Mac; devices sharing an account name stay separate.
-- Incoming-transfer approval and completion notifications through macOS Notification Center.
-- Receive directly in **Downloads** by default; choose another folder in Settings.
-- English, Simplified Chinese and System Default language options.
-- Device name follows the Mac's system Computer Name.
+以下画面由实际应用界面生成，设备名称、文件名、电脑名称和进度均为演示数据，不包含真实账号、设备记录或传输内容。
 
-## Compatibility and current status
+### 1. 选设备，发送文件
 
-**Development version 0.1.1.** Physical-device send/receive verification: **OPPO Find X9 Pro**. An additional OPPO tablet was verified for discovery/type display and one tablet-to-Mac file receipt; Mac-to-tablet remains untested. **Other brands and models: untested.** This is the tested device, not a restriction to OPPO. Alliance membership does not establish compatibility with this implementation.
+在 Finder 中选中文件，点击 **共享 → anDrop**。圆形品牌图标旁的角标区分手机和平板；点击设备即可发送，点击铅笔可设置仅在此 Mac 上使用的名称。
 
-Petal Interconnect coexistence is **experimental**. Transfers have succeeded with both apps running, but discovery conflicts can recur; the manual repair is not a guaranteed fix. Same-Wi-Fi transfer is implemented; Wi-Fi Direct and Huawei Share are not implemented.
+<img src="docs/images/recipients-zh.png" alt="发送设备选择：使用工作手机、旅行平板等虚构名称，展示品牌图标、设备类型角标和铅笔按钮" width="600">
 
-See the [compatibility matrix](docs/compatibility.md), [test report](docs/testing.md) and [usage and troubleshooting guide](docs/usage.md).
+### 2. 看进度，继续做别的事
 
-## Build
+发送时，蓝色圆环和百分比显示文件发送进度。准备、等待接收、连接时显示对应状态；收到对方的完成确认后才显示“已发送”。
 
-On macOS with Python 3.14 and a Swift 6.2+ compiler:
+<img src="docs/images/sending-zh.png" alt="模拟发送进度：工作手机正在发送，蓝色进度环显示 42%，底部可取消传输或关闭窗口" width="600">
+
+发送中点击其他窗口，anDrop 会退到后面，传输继续。也可以点“关闭”，之后从菜单栏查看进度。发送成功后，点击窗口外即可收起。
+
+### 3. 按自己的习惯设置
+
+接收位置默认是“下载”文件夹本身。菜单栏提供开启／关闭、发送文件、传输进度、最近记录和设置，无需常开主窗口。
+
+<details>
+<summary>查看设置画面（演示数据）</summary>
+
+<img src="docs/images/settings-zh.png" alt="设置示例：保存至下载文件夹、语言、登录时启动、通知状态、附近设备名称和清除记录" width="600">
+
+</details>
+
+## 开始使用
+
+### 先准备好
+
+- 一台运行 anDrop 的 Mac，以及带有**兼容互传联盟功能**的手机或平板。
+- 两台设备开启蓝牙、连接同一局域网 Wi-Fi。访客网络或开启设备隔离的网络可能无法传输。
+- 首次启动时，按需允许蓝牙、本地网络、通知及保存文件夹访问。菜单栏中保持 anDrop 开启。
+
+### Mac → 手机／平板
+
+1. 在接收设备打开互传，并允许附近设备发现。必要时临时选择“所有人”；部分系统会在几分钟后自动关闭这一状态。
+2. 在 Finder 中选中文件 → **共享 → anDrop**，或使用 anDrop 菜单栏的“发送文件”。
+3. 选择设备，在手机／平板上确认接收。
+
+### 手机／平板 → Mac
+
+1. 在手机／平板中选中文件，打开自带的兼容互传功能，选择 Mac。
+2. 在 anDrop 的通知或菜单栏中确认接收。每次接收都需要确认。
+3. 文件直接保存在“下载”中。同名文件会添加序号，不会覆盖已有文件，也不会自动打开。
+
+一次进行一项传输。文件夹请先压缩；同一批中具有相同文件名的文件请分开发送。
+
+## 常见问题
+
+| 遇到的情况 | 可以怎么做 |
+| --- | --- |
+| Finder 的共享菜单里没有 anDrop | 先打开一次 anDrop，再在 macOS 设置中启用它的共享扩展；也可从菜单栏发送文件。 |
+| Mac 找不到手机／平板 | 解锁接收设备，重新开启互传及“所有人可发现”，确认同一 Wi-Fi。部分设备的公开状态会自动到期。 |
+| 设备关闭可发现后，名字还在列表里 | 正常情况下，收到最后一次蓝牙广播后约 10–11 秒会移除；Mac 无法读取对方系统的公开倒计时。 |
+| 两台设备显示同一个人的名字 | 共享名称可能来自账号。用手机／平板角标区分，点铅笔设置“工作手机”等本地名称；完全重名时先只公开一台再命名。 |
+| 没弹出通知 | 检查 macOS 通知和专注模式；接收确认及进度仍可从菜单栏查看。 |
+| 同时使用 Petal，手机找不到 Mac | 共存仍属实验性支持。先结束 Petal 传输，再到 anDrop 设置手动修复；修复会重启 Petal，必要时退出 Petal 后再接收。 |
+
+名称与隐私：本地别名最多 **40 个字符**，不会修改手机或账号名称。Mac 名称默认来自系统电脑名称；附近广播最多 **15 个 UTF-8 字节**（通常 5 个汉字或 15 个 ASCII 字符），传输确认使用完整名称。附近设备可以看到广播名称。传输记录保存在本机，可在设置中清除。Petal 运行时，附近名称暂用 `A`，并保留 Dock 图标以改善共存。
+
+## 哪些设备可以用？
+
+互传联盟是小米、荣耀、OPPO、vivo 等厂商参与的跨品牌共享体系，**并非 Android 通用标准，也不同于 Google Quick Share**。参见[荣耀官方介绍](https://www.honor.com/cn/support/content/zh-cn15883773/)。具体兼容性取决于机型、地区及系统版本；联盟成员或显示了品牌图标，都不代表已通过 anDrop 测试。
+
+| 已检查的项目 | 当前结果 |
+| --- | --- |
+| OPPO Find X9 Pro | 同一 Wi-Fi 下双向实机传输已验证，并检查了文件哈希。 |
+| 一台 OPPO 平板 | 发现、平板类型显示及平板 → Mac 已验证；Mac → 该平板未验证。 |
+| 小米、荣耀、vivo 等其他品牌／机型 | 目标生态中的兼容设备，尚未实机验证。 |
+| Apple Silicon Mac，macOS 27.0.1 | 已验证开发环境；Intel 及更早 macOS 尚未验证。应用声明的最低版本 macOS 14 不等于已测试范围。 |
+| Petal Interconnect 共存 | 实验性；曾成功传输，但发现冲突可能再次出现。 |
+| Wi-Fi Direct、Google Quick Share、Huawei Share | 尚未实现；HarmonyOS 设备尚未验证。 |
+
+完整记录见[兼容性表](docs/compatibility.md)与[测试报告](docs/testing.md)。品牌和设备类型识别不等于精确机型识别。
+
+## 从源码构建
+
+适合开发者或愿意自行安装构建工具的用户。**仓库当前不提供一键安装包**；不熟悉终端的用户可先查看上面的使用方式与兼容性，等待后续发行版本。
+
+需要 macOS、Xcode 命令行工具、Swift 6.2+ 和 Python 3.14。已记录的环境为 Apple Silicon、macOS 27.0.1、Swift 6.4、Python 3.14.7。
+
+在下载或克隆本仓库后，进入仓库目录执行：
 
 ```sh
 python3.14 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python build.py
-.venv/bin/python -m unittest discover -s tests -v
-swift test
 ```
 
-The result is `build/anDrop.app`, ad-hoc signed by default. The recorded development environment used Apple Silicon, macOS 27.0.1, Swift 6.4 and Python 3.14.7. Other toolchain/OS combinations need verification. See [build instructions](docs/building.md) for signing and installation.
+输出为 `build/anDrop.app`。退出旧版本，将应用放入“应用程序”后打开。默认使用临时签名；本仓库不提供自动公证。请使用 macOS 正常的打开与授权流程，不需要关闭系统安全功能。详见[构建、签名与安装](docs/building.md)。
 
-## Repository
+<details>
+<summary>开发者：测试、原理和文档图片生成</summary>
 
-| Path | Purpose |
-| --- | --- |
-| `Sources/` | Native menu bar app, Finder extension, localization and transfer engine |
-| `tests/` | Protocol, file handling, local-network retry and recipient identity tests |
-| `docs/` | Usage, compatibility, validation, architecture and distribution notes |
-| `build.py` | Builds and signs the native app and bundled engine |
-| `ThirdPartyNotices/` | Dependency license texts and research-reference notices |
+```sh
+.venv/bin/python -m unittest discover -s tests -v
+swift test
+python3 scripts/render-docs.py
+```
 
-## License
+- [架构与协议边界](docs/architecture.md)：蓝牙用于发现和协商，文件通过现有局域网传输。
+- [详细使用与排查](docs/usage.md)：发现超时、别名、进度、Petal 和接收错误。
+- [设备识别调查](docs/device-identification.md)：品牌／设备类型的依据与限制。
+- [图片生成说明](docs/images/README.md)：使用生产界面和虚构数据，可在 Mac 上重新生成。
+- `Sources/`：原生菜单栏应用、Finder 扩展和传输引擎；`tests/`：相关测试。
 
-Project-authored source, documentation and icon assets are licensed under **GPL-3.0-only**. See [LICENSE](LICENSE), [NOTICE.md](NOTICE.md) and [licensing details](docs/licensing.md). Third-party components retain their own licenses. [Official brand artwork](Resources/BrandLogos/README.md) has separate rights and is excluded from the project license grant.
+这些技术文档目前主要为英文。仓库名是 **cn-android-share**，应用名是 **anDrop**。
 
-This project is not affiliated with, certified by or endorsed by the device manufacturers or Apple. Device logs, screenshots, vendor APKs, decompiled vendor source, credentials and signing material are excluded from this repository.
+</details>
+
+## 许可证与项目关系
+
+本项目原创源代码、文档和应用图标使用 **GPL-3.0-only**。第三方组件保留各自许可证；[官方品牌图片](Resources/BrandLogos/README.md)的版权和商标权归各自所有者，不属于本项目的 GPL 授权范围，文档画面中的品牌标识也不例外。参见 [LICENSE](LICENSE)、[NOTICE.md](NOTICE.md) 和[许可证说明](docs/licensing.md)。
+
+本项目未获设备厂商或 Apple 官方认证或背书。仓库中的演示图片仅使用虚构数据；真实设备日志、私人截图、厂商 APK、反编译厂商源码、凭据及签名材料不包含在仓库中。
