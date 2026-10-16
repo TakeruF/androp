@@ -41,7 +41,7 @@ if let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns").fla
 let imageDirectory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 for language in ["zh", "en"] {
     UserDefaults.standard.setVolatileDomain([
-        "language": language, "peerAliases": [String: String](),
+        "language": language, "customSharingName": "", "peerAliases": [String: String](),
         "destination": "~/Downloads", "enabled": true,
     ], forName: UserDefaults.argumentDomain)
     let model = AppModel()

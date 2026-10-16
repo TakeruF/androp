@@ -22,7 +22,7 @@ For the examined version-11 advertisement, the app uses its advertised device ID
 
 ## Device name limit
 
-The default name follows macOS Computer Name. Nearby names have a **15 UTF-8 byte** limit: up to 15 ASCII characters, typically 5 Chinese characters, or fewer emoji. Shortening preserves complete characters. Transfer confirmations use the full Computer Name. The settings UI also explains this limit.
+The default name follows macOS Computer Name. Nearby names have a **15 UTF-8 byte** limit: up to 15 ASCII characters, typically 5 Chinese characters, or fewer emoji. Shortening preserves complete characters. Click the pencil beside the nearby name in Settings to set a custom sharing name of up to 15 UTF-8 bytes. Leave it blank to restore the system name; this does not rename your Mac. Transfer confirmations use the full sharing name. The settings UI also explains this limit.
 
 ## Device not found
 

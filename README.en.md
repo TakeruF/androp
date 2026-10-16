@@ -70,7 +70,7 @@ One transfer runs at a time. Compress folders first. Send files with identical b
 | No notification appears | Check macOS notification and Focus settings. Approval and progress are also available in the menu bar. |
 | The phone cannot find the Mac while Petal is running | Coexistence is experimental. Finish Petal transfers before trying anDrop’s manual repair in Settings, which restarts Petal. If needed, quit Petal while receiving. |
 
-Names and privacy: local device names allow **40 characters** and do not rename the phone or account. The Mac uses its system Computer Name by default. Nearby advertisements allow **15 UTF-8 bytes**—15 ASCII characters or typically 5 Chinese characters—while transfer confirmations use the full name. Nearby devices can see the advertised name. Transfer history stays on this Mac and can be cleared in Settings. While Petal runs, anDrop temporarily uses `A` nearby and keeps a Dock icon to improve coexistence.
+Names and privacy: local device names allow **40 characters** and do not rename the phone or account. The Mac uses its system Computer Name by default. Click the pencil beside the nearby name in Settings to set a custom sharing name (up to 15 UTF-8 bytes); leave it blank to restore the default. This does not rename your Mac. Nearby advertisements allow **15 UTF-8 bytes**—15 ASCII characters or typically 5 Chinese characters—while transfer confirmations use the full name. Nearby devices can see the advertised name. Transfer history stays on this Mac and can be cleared in Settings. While Petal runs, anDrop temporarily uses `A` nearby and keeps a Dock icon to improve coexistence.
 
 ## Which devices work?
 

@@ -56,6 +56,7 @@ final class RecipientPanel: NSPanel {
 
 @MainActor
 final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
+    @Published private(set) var customSharingName = UserDefaults.standard.string(forKey: "customSharingName") ?? ""
     @Published var language = UserDefaults.standard.string(forKey: "language") ?? "system"
     @Published var peers: [Peer] = []
     @Published private(set) var peerAliases = UserDefaults.standard.dictionary(forKey: "peerAliases") as? [String: String] ?? [:]
@@ -102,11 +103,12 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private var advertisedName = ""
     private var configuredName = ""
     var deviceName: String { Host.current().localizedName ?? ProcessInfo.processInfo.hostName }
+    var sharingName: String { customSharingName.isEmpty ? deviceName : customSharingName }
     var displayName: String {
         if compactName { return "A" }
         // Keep the protocol prefix and name inside a legacy BLE advertisement.
         var name = ""
-        for character in deviceName {
+        for character in sharingName {
             let next = name + String(character)
             if next.utf8.count > 15 { break }
             name = next
@@ -393,7 +395,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         do { try input.write(contentsOf: bytes + Data([10])); return true }
         catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。"); return false }
     }
-    func configureEngine() { configuredName = deviceName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage()]); command(["command": "enabled", "value": receiving]) }
+    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage()]); command(["command": "enabled", "value": receiving]) }
     private func consume(_ data: Data) {
         outputBuffer.append(data)
         if outputBuffer.count > 4_194_304 { outputBuffer.removeAll(); error = L("The sharing service returned an invalid response.", "共享服务返回了无效响应。"); return }
@@ -514,6 +516,15 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func cancel(_ transfer: Transfer) { command(["command": "cancel", "id": transfer.id]) }
     func reveal(_ transfer: Transfer) { NSWorkspace.shared.activateFileViewerSelecting(transfer.paths.map { URL(fileURLWithPath: $0) }) }
     func changeReceiving(_ value: Bool) { receiving = value; if !value { clearPeers() }; UserDefaults.standard.set(value, forKey: "enabled"); command(["command":"enabled", "value": value]); advertise(); rebuildMenu() }
+    @discardableResult
+    func changeSharingName(_ value: String) -> Bool {
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !busy, name.utf8.count <= 15, !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { return false }
+        customSharingName = name
+        UserDefaults.standard.set(name, forKey: "customSharingName")
+        configureEngine(); advertise(); rebuildMenu()
+        return true
+    }
     func changeLanguage(_ value: String) {
         language = value; UserDefaults.standard.set(value, forKey: "language"); configureEngine(); setupNotifications(); rebuildMenu()
         if let appMenu = NSApp.mainMenu?.items.first?.submenu {
@@ -530,7 +541,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     private func refreshEnvironment() {
         expirePeerUpdates()
-        if configuredName != deviceName && !busy { configureEngine(); advertise() }
+        if configuredName != sharingName && !busy { configureEngine(); advertise() }
         let petal = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.EMUIInterconnect.app" }
         if petal != petalRunning {
             petalRunning = petal
@@ -885,6 +896,7 @@ private struct RecipientAvatar: View {
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @State private var editingSharingName = false
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack { Text("anDrop").font(.title2.bold()); Spacer(); Toggle(L("On", "开启"), isOn: Binding(get: { model.receiving }, set: model.changeReceiving)).toggleStyle(.switch).fixedSize() }
@@ -904,8 +916,16 @@ struct SettingsView: View {
             Toggle(L("Open at Login", "登录时启动"), isOn: Binding(get: { model.startAtLogin }, set: model.changeLogin))
             HStack { Text(model.notificationsAllowed ? L("Notifications: On", "通知：已开启") : L("Notifications: Off", "通知：已关闭")); Spacer(); Button(L("Notification Settings…", "通知设置…")) { if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) } } }
             VStack(alignment: .leading, spacing: 6) {
-                Text(model.petalRunning ? L("With Petal · Nearby name “A”", "与 Petal 共存 · 附近设备名称“A”") : L("Discoverable as “\(model.displayName)”", "在设备上显示为“\(model.displayName)”"))
-                Text(L("Nearby device names: up to 15 UTF-8 bytes (15 ASCII characters or typically 5 Chinese characters). Transfer confirmations use the full Mac name.", "附近设备名称上限：15 个 UTF-8 字节（15 个半角英数字符，或通常 5 个汉字）。传输确认使用完整电脑名称。"))
+                HStack {
+                    Text(model.petalRunning ? L("With Petal · Nearby name “A”", "与 Petal 共存 · 附近设备名称“A”") : L("Discoverable as “\(model.displayName)”", "在设备上显示为“\(model.displayName)”"))
+                    Spacer()
+                    Button { editingSharingName = true } label: { Image(systemName: "pencil") }
+                        .buttonStyle(.borderless)
+                        .help(L("Change sharing name", "更改共享名称"))
+                        .accessibilityLabel(L("Change sharing name", "更改共享名称"))
+                        .disabled(model.busy)
+                }
+                Text(L("Nearby device names: up to 15 UTF-8 bytes (15 ASCII characters or typically 5 Chinese characters). Transfer confirmations use the full sharing name. Leave the custom name blank to use the Mac name.", "附近设备名称上限：15 个 UTF-8 字节（15 个半角英数字符，或通常 5 个汉字）。传输确认使用完整共享名称。自定义名称留空时使用系统电脑名称。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if model.petalRunning {
                     Text(L("Experimental: discovery may fail with Petal. Repair restarts Petal, but may not resolve every conflict. If it persists, quit Petal while receiving.", "实验性支持：与 Petal 同时运行时可能无法被发现。修复会重启 Petal，但不保证解决每次冲突。若仍无法发现，可在接收时退出 Petal。"))
@@ -916,6 +936,46 @@ struct SettingsView: View {
             HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text("0.1.1").font(.caption).foregroundStyle(.secondary) }
             Text(L("Mutual Transfer Alliance (互传联盟) · Same Wi-Fi required.", "互传联盟 · 需连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
         }.padding(24).frame(width: 460)
+            .sheet(isPresented: $editingSharingName) {
+                SharingNameView(model: model)
+            }
+    }
+}
+
+struct SharingNameView: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @FocusState private var nameFocused: Bool
+
+    init(model: AppModel) {
+        self.model = model
+        _name = State(initialValue: model.customSharingName)
+    }
+    private var normalizedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var valid: Bool {
+        normalizedName.utf8.count <= 15 && !normalizedName.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+    }
+    private func save() { if model.changeSharingName(name) { dismiss() } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L("Sharing Name", "共享名称")).font(.headline)
+            Text(L("Visible to nearby devices. Leave blank to follow this Mac’s system name. This does not rename your Mac.", "附近设备可见。留空时跟随本机的系统名称，不会修改 Mac 的系统名称。"))
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            TextField(model.deviceName, text: $name).textFieldStyle(.roundedBorder).focused($nameFocused).onSubmit(save)
+            Text(L("\(normalizedName.utf8.count)/15 UTF-8 bytes · 15 ASCII characters or typically 5 Chinese characters.", "\(normalizedName.utf8.count)/15 个 UTF-8 字节 · 15 个半角英数字符或通常 5 个汉字。"))
+                .font(.caption).foregroundStyle(valid ? Color.secondary : Color.red).fixedSize(horizontal: false, vertical: true)
+            if model.petalRunning {
+                Text(L("While Petal runs, the nearby name remains “A”. Your sharing name is used in transfer confirmations and restored nearby when Petal quits.", "Petal 运行时，附近名称仍为“A”。传输确认使用此共享名称，退出 Petal 后附近名称也会恢复。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Button(L("Use Mac Name", "使用 Mac 名称")) { name = "" }
+                Spacer()
+                Button(L("Cancel", "取消")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L("Save", "保存"), action: save).keyboardShortcut(.defaultAction).disabled(!valid || model.busy)
+            }
+        }.padding(20).frame(width: 360).onAppear { nameFocused = true }
     }
 }
 
