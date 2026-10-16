@@ -54,3 +54,22 @@ import Testing
     let aliases = [first.aliasKey: "Work", second.aliasKey: "Work"]
     #expect(first.isAmbiguous(among: [first, second], aliases: aliases, chinese: false))
 }
+
+@Test func generatedStoredDeviceTypesFollowUILanguage() {
+    let phone = Peer(id: "phone", name: "Example · OPPO Phone", brand: "OPPO", kind: .phone)
+    let tablet = Peer(id: "tablet", name: "Example · OPPO Tablet", brand: "OPPO", kind: .tablet)
+    #expect(phone.title(aliases: [:], chinese: true) == "Example · OPPO 手机")
+    #expect(tablet.title(aliases: [:], chinese: true) == "Example · OPPO 平板")
+    #expect(phone.title(aliases: [:], chinese: false) == "Example · OPPO Phone")
+    let savedChinese = Peer(id: "tablet", name: "Example · OPPO 平板", brand: "OPPO", kind: .tablet)
+    #expect(savedChinese.title(aliases: [:], chinese: false) == "Example · OPPO Tablet")
+}
+
+@Test func typeLocalizationPreservesUserNamesAndAliases() {
+    let phone = Peer(id: "phone", name: "Work Phone", brand: "OPPO", kind: .phone)
+    #expect(phone.title(aliases: [:], chinese: true) == "Work Phone")
+    let stored = Peer(id: "stored", name: "Example · OPPO Phone", brand: "OPPO", kind: .phone)
+    #expect(stored.title(aliases: [stored.aliasKey: "Travel Tablet"], chinese: true) == "Travel Tablet")
+    let unknown = Peer(id: "unknown", name: "Example · OPPO Phone")
+    #expect(unknown.title(aliases: [:], chinese: true) == "Example · OPPO Phone")
+}

@@ -1254,7 +1254,7 @@ struct TrustedDevicesView: View {
             RecipientAvatar(peer: device.peer)
                 .scaleEffect(0.64).frame(width: 44, height: 44).padding(.trailing, 6)
             VStack(alignment: .leading) {
-                Text(device.name).lineLimit(2)
+                Text(model.peerTitle(device.peer)).lineLimit(2)
                 Text(String(device.id.suffix(8))).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
             Spacer()

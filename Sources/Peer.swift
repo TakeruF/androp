@@ -31,14 +31,26 @@ struct Peer: Identifiable, Equatable {
         }
         return [brand, type].filter { !$0.isEmpty }.joined(separator: " ")
     }
+    // Older transfer history saved anDrop's generated type suffix with the name.
+    // Localize that exact suffix using metadata, while keeping user names/aliases.
+    func localizedName(chinese: Bool) -> String {
+        guard kind != .unknown else { return name }
+        for label in [deviceLabel(chinese: false), deviceLabel(chinese: true)] {
+            let suffix = " · " + label
+            if !label.isEmpty, name.hasSuffix(suffix) {
+                return String(name.dropLast(suffix.count)) + " · " + deviceLabel(chinese: chinese)
+            }
+        }
+        return name
+    }
     func title(aliases: [String: String], chinese: Bool) -> String {
         if let alias = aliases[aliasKey], !alias.isEmpty { return alias }
         let label = deviceLabel(chinese: chinese)
-        return name.isEmpty ? label : name
+        return name.isEmpty ? label : localizedName(chinese: chinese)
     }
     func subtitle(aliases: [String: String], chinese: Bool) -> String {
         let title = title(aliases: aliases, chinese: chinese)
-        return [deviceLabel(chinese: chinese), name].reduce(into: [String]()) { result, value in
+        return [deviceLabel(chinese: chinese), localizedName(chinese: chinese)].reduce(into: [String]()) { result, value in
             if !value.isEmpty, value != title, !result.contains(value) { result.append(value) }
         }.joined(separator: " · ")
     }
