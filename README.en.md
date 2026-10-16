@@ -89,6 +89,12 @@ Disable automatic checks or downloads in Settings → Updates, or check manually
 
 Names and privacy: local device aliases allow **40 characters** and do not rename the phone or account. The Mac uses its system Computer Name by default; change the sharing name with the pencil in Settings, or leave it blank to restore the default. Nearby names allow **15 UTF-8 bytes** (15 ASCII characters or typically 5 Chinese characters); transfer confirmations use the full sharing name. Nearby devices can see the advertised name. History stays on this Mac and can be cleared in Settings. While Petal runs, the nearby name temporarily becomes `A`.
 
+## Logs and bug reports (1.0.1 development build)
+
+After a transfer fails, choose **Show Logs** in its notification, or open **Diagnostics & Bug Report…** in Settings. Preview the report, reveal it in Finder, or choose **Report a Bug…** to compose an email to `support@takeruf.com` with the log attached. Add reproduction steps and the other device’s model and OS version, then review and send it yourself. anDrop does not send reports automatically. If composing mail fails, attach the log manually.
+
+Reports contain transfer stages, error codes, file types and count, device manufacturer and type, Mac/anDrop versions, and names and identifiers of Mac apps running when the transfer started and failed. They exclude file names, contents, device names, network addresses and credentials. Logs stay on this Mac, retaining up to 300 recent events, 20 failure snapshots and 10 exported reports. Older failures may have no detailed log. See [diagnostic fields and limitations](docs/diagnostics.md) for developers.
+
 ## Which devices work?
 
 The Mutual Transfer Alliance is a cross-brand ecosystem used by Xiaomi, HONOR, OPPO, vivo and other manufacturers. **It is separate from Google Quick Share and is not an Android-wide standard.** See [HONOR’s official overview](https://www.honor.com/cn/support/content/zh-cn15883773/). Compatibility depends on model, region and software version. Alliance membership or a displayed logo does not establish anDrop compatibility.

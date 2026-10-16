@@ -34,7 +34,7 @@ ext=APP/'Contents/PlugIns/anDropShare.appex'
 extinfo={'CFBundleIconFile':'ShareIcon','CFBundleIconName':'AppIconPaperplane','CFBundleExecutable':'anDropShare','CFBundleIdentifier':BUNDLE_ID+'.Share','CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'XPC!','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationDictionaryVersion':2,'NSExtensionActivationSupportsFileWithMaxCount':1000,'NSExtensionActivationSupportsImageWithMaxCount':1000,'NSExtensionActivationSupportsMovieWithMaxCount':1000}}}}
 (ext/'Contents/Info.plist').write_bytes(plistlib.dumps(extinfo))
 cache=ROOT/'build/module-cache';cache.mkdir(parents=True,exist_ok=True)
-host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','BrandLogos.swift','main.swift']]
+host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','Diagnostics.swift','BrandLogos.swift','main.swift']]
 framework_flags=[]
 if not APP_STORE:
  (APP/'Contents/Frameworks').mkdir()

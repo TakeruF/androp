@@ -71,8 +71,15 @@ final class RecipientPanel: NSPanel {
 }
 
 @MainActor
-final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
+final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSSharingServiceDelegate, NSMenuDelegate, NSWindowDelegate {
     let updates = AppUpdates()
+    private let diagnostics = DiagnosticsStore(folder: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("anDrop/Diagnostics"))
+    @Published var showingDiagnostics = false
+    @Published private(set) var diagnosticText = ""
+    @Published private(set) var diagnosticFile: URL?
+    @Published var diagnosticMessage = ""
+    private var reportMailService: NSSharingService?
+
     @Published private(set) var forgottenDeviceIdentifiers = Set(UserDefaults.standard.stringArray(forKey: "forgottenDeviceIdentifiers") ?? [])
     @Published private(set) var trustedOnly = UserDefaults.standard.bool(forKey: "trustedOnly")
     @Published private(set) var trustedDevices: [RememberedDevice] = {
@@ -258,6 +265,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @objc func pickAndSend() { chooseFiles(); if !selectedFiles.isEmpty { showRecipients() } }
     @objc func showSendProgress() { showRecipients() }
     @objc func cancelMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { cancel(t) } }
+    @objc func diagnosticsMenu(_ sender: NSMenuItem) { showDiagnostics(for: sender.representedObject as? String) }
     @objc func revealMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { reveal(t) } }
     @objc func acceptMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { decide(t, accept: true) } }
     @objc func declineMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { decide(t, accept: false) } }
@@ -288,7 +296,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             let row = NSMenuItem(title: L("Recent Transfers", "最近传输"), action: nil, keyEquivalent: ""); let submenu = NSMenu(); row.submenu = submenu
             for t in recent {
                 let label = "\(t.historyName) — \(t.label)"
-                let entry = NSMenuItem(title: label, action: t.paths.isEmpty ? nil : #selector(revealMenu(_:)), keyEquivalent: ""); entry.target = self; entry.representedObject = t.id
+                let entry = NSMenuItem(title: label, action: t.state == "failed" ? #selector(diagnosticsMenu(_:)) : (t.paths.isEmpty ? nil : #selector(revealMenu(_:))), keyEquivalent: ""); entry.target = self; entry.representedObject = t.id
                 entry.image = NSImage(systemSymbolName: t.historySymbol, accessibilityDescription: t.direction == "send" ? L("Sent", "已发送") : L("Received", "已接收"))
                 entry.image?.size = NSSize(width: 18, height: 18)
                 submenu.addItem(entry)
@@ -472,7 +480,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             Task { @MainActor [weak self] in
                 guard let self, !self.terminating else { return }
                 self.engineReady = false; self.clearPeers()
-                for i in self.transfers.indices where self.transfers[i].active { self.transfers[i].state = "failed"; self.transfers[i].detail = L("The connection restarted. Please try again.", "连接已重新启动，请重试。") }
+                for transfer in self.transfers.filter(\.active) {
+                    self.diagnostics.record(["event": "diagnostic", "transfer_id": transfer.id, "detail": "engine_stopped", "errno": Int(code)])
+                    self.updateTransfer(["id": transfer.id, "state": "failed", "detail": L("The connection restarted. Please try again.", "连接已重新启动，请重试。")])
+                }
                 self.error = L("Sharing service stopped (\(code))", "共享服务已停止（\(code)）")
                 self.saveHistory()
                 if self.restartCount < 2 { self.restartCount += 1; self.startEngine() }
@@ -494,6 +505,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         while let end = outputBuffer.firstIndex(of: 10) {
             let line = outputBuffer[..<end]; outputBuffer.removeSubrange(...end)
             guard let value = try? JSONSerialization.jsonObject(with: line) as? [String: Any], let event = value["event"] as? String else { continue }
+            diagnostics.record(value)
             if ["ready", "peers", "scan_status", "error", "transfer", "diagnostic"].contains(event) {
                 let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("anDrop")
                 try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -556,6 +568,18 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if let v = obj["device_kind"] as? String { transfers[index].deviceKind = v }
         if let v = obj["device_brand"] as? String { transfers[index].deviceBrand = v }
         let t = transfers[index]
+        // UI-generated failures (including engine restarts) follow the same log path.
+        diagnostics.record(["event": "transfer", "id": t.id, "direction": t.direction, "state": t.state])
+        let filenames: [String]
+        if t.direction == "send", outgoing?.id == t.id { filenames = outgoing?.files.map(\.lastPathComponent) ?? [] }
+        else if !t.paths.isEmpty { filenames = t.paths.map { URL(fileURLWithPath: $0).lastPathComponent } }
+        else { filenames = [t.name].filter { ![L("Files", "文件"), "Files", "文件"].contains($0) } }
+        let apps = diagnostics.needsAppSnapshot(id: t.id, state: t.state) ? NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy != .prohibited }
+            .map { DiagnosticsStore.RunningApp(name: $0.localizedName ?? "Unknown", bundleID: $0.bundleIdentifier) }
+            .sorted { ($0.bundleID ?? $0.name) < ($1.bundleID ?? $1.name) } : []
+        diagnostics.recordContext(id: t.id, direction: t.direction, state: t.state, filenames: filenames, count: t.count,
+            allTypesKnown: !filenames.isEmpty && (t.count == 1 || filenames.count == t.count), brand: t.deviceBrand, kind: t.deviceKind, apps: apps)
         if t.direction == "receive", t.state == "complete", let identifier = t.deviceIdentifier, ReceiveAccessPolicy.persistentID(identifier) {
             forgottenDeviceIdentifiers.remove(identifier)
             UserDefaults.standard.set(Array(forgottenDeviceIdentifiers), forKey: "forgottenDeviceIdentifiers")
@@ -581,7 +605,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 sendNotification(t, category: "complete", title: t.label, body: L("\(t.peer) · \(fileCountLabel(t.count))", "\(t.peer) · \(t.count) 个文件"))
                 if t.direction == "send" { selectedFiles = [] }
             } else if t.state == "failed" {
-                sendNotification(t, category: "manage", title: t.label, body: t.detail)
+                sendNotification(t, category: "failed", title: t.label, body: t.detail)
             } else if t.state == "transferring" {
                 sendNotification(t, category: "manage", title: t.label, body: L("\(t.peer) · View progress in the menu bar", "\(t.peer) · 在菜单栏查看进度"))
             } else if !t.active { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id]) }
@@ -756,10 +780,43 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             guard peripheral.updateValue(first.0, for: char, onSubscribedCentrals: target) else { return }; notifyQueue.removeFirst()
         }
     }
+    func showDiagnostics(for transferID: String? = nil) {
+        diagnosticMessage = ""
+        let id = transferID ?? transfers.first(where: { $0.state == "failed" })?.id
+        do {
+            let report = try diagnostics.makeReport(transfer: id, appVersion: applicationVersion + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") + ")")
+            diagnosticFile = report.url; diagnosticText = report.text
+        } catch {
+            diagnosticFile = nil; diagnosticText = ""
+            diagnosticMessage = L("Could not save the diagnostic report. Check available disk space and folder access.", "无法保存诊断报告，请检查可用磁盘空间及文件夹访问权限。")
+        }
+        showSettings(); showingDiagnostics = true
+    }
+    func revealDiagnosticLog() {
+        if let diagnosticFile { NSWorkspace.shared.activateFileViewerSelecting([diagnosticFile]) }
+    }
+    func reportBug() {
+        guard let file = diagnosticFile else { return }
+        let body = L("What happened and how to reproduce it:\n\nExpected behavior:\n\nOther device model:\nOther device OS and version (if known; e.g. Android 16 / ColorOS 16):\nWas a VPN or a device-connectivity app running? If so, which one?\n\nThe attached anDrop diagnostic report includes file types, device metadata and running Mac apps. Please review it before sending.", "遇到的问题及复现步骤：\n\n预期结果：\n\n对方设备型号：\n对方设备的系统及版本（如知道，请填写，例如 Android 16 / ColorOS 16）：\n当时是否开启 VPN 或设备互联应用？如有，请填写名称：\n\n附件为 anDrop 诊断报告，包含文件类型、设备信息及 Mac 上运行的应用。请检查后再发送。")
+        guard let service = NSSharingService(named: .composeEmail), service.canPerform(withItems: [body, file]) else {
+            diagnosticMessage = L("Could not open an email draft. Use Show in Finder and attach the log to an email to support@takeruf.com.", "无法打开邮件草稿。请点击“在访达中显示”，将日志作为附件发送至 support@takeruf.com。")
+            return
+        }
+        service.recipients = ["support@takeruf.com"]
+        service.subject = "anDrop " + applicationVersion + L(" — Bug report", " — 问题反馈")
+        service.delegate = self; reportMailService = service
+        diagnosticMessage = L("Review the draft and attachment in Mail, then send it when ready.", "请在邮件中检查草稿和附件，确认后再发送。")
+        service.perform(withItems: [body, file])
+    }
+    func sharingService(_ sharingService: NSSharingService, didFailToShareItems items: [Any], error: any Error) {
+        diagnosticMessage = L("The email draft could not be opened. Use Show in Finder and send the log to support@takeruf.com manually.", "未能打开邮件草稿。请在访达中找到日志，手动发送至 support@takeruf.com。")
+        reportMailService = nil
+    }
     private func setupNotifications() {
         let center = UNUserNotificationCenter.current(); center.delegate = self
         center.setNotificationCategories([
             UNNotificationCategory(identifier: "receive", actions: [UNNotificationAction(identifier: "accept", title: L("Accept", "接收")), UNNotificationAction(identifier: "decline", title: L("Decline", "拒绝"))], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "failed", actions: [UNNotificationAction(identifier: "logs", title: L("Show Logs", "查看日志"), options: [.foreground])], intentIdentifiers: []),
             UNNotificationCategory(identifier: "complete", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"), options: [.foreground])], intentIdentifiers: []),
             UNNotificationCategory(identifier: "manage", actions: [UNNotificationAction(identifier: "manage", title: L("Show Transfers", "查看传输"), options: [.foreground]), UNNotificationAction(identifier: "cancel", title: L("Cancel", "取消"))], intentIdentifiers: [])
         ])
@@ -774,8 +831,13 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping @Sendable () -> Void) {
         let id = response.notification.request.identifier
         let action = response.actionIdentifier
+        let category = response.notification.request.content.categoryIdentifier
         Task { @MainActor in
-        if let t = self.transfers.first(where: { $0.id == id }) {
+        guard action != UNNotificationDismissActionIdentifier else { completionHandler(); return }
+        if action == "logs" || (action != UNNotificationDismissActionIdentifier &&
+            (category == "failed" || self.transfers.first(where: { $0.id == id })?.state == "failed")) {
+            showDiagnostics(for: id)
+        } else if let t = self.transfers.first(where: { $0.id == id }) {
             switch action {
             case "accept": decide(t, accept: true)
             case "decline": decide(t, accept: false)
@@ -1120,6 +1182,7 @@ struct SettingsView: View {
             }
             if model.petalRunning { Button(model.petalRepairing ? L("Restarting Petal…", "正在重启 Petal…") : L("Repair Discovery with Petal", "修复与 Petal 的发现冲突"), action: model.repairPetal).disabled(model.busy || model.petalRepairing) }
             UpdateSettingsView(updates: model.updates, chinese: appLanguage() == "zh", busy: model.busy)
+            Button(L("Diagnostics & Bug Report…", "诊断与问题反馈…")) { model.showDiagnostics() }
             HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text(applicationVersion).font(.caption).foregroundStyle(.secondary) }
             Text(L("Mutual Transfer Alliance (互传联盟) · Same Wi-Fi required.", "互传联盟 · 需连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 16) {
@@ -1132,6 +1195,35 @@ struct SettingsView: View {
                 SharingNameView(model: model)
             }
             .sheet(isPresented: $managingTrustedDevices) { TrustedDevicesView(model: model) }
+            .sheet(isPresented: $model.showingDiagnostics) { DiagnosticsView(model: model) }
+    }
+}
+
+struct DiagnosticsView: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L("Diagnostics & Bug Report", "诊断与问题反馈")).font(.headline)
+            Text(L("Review this log before emailing support@takeruf.com. It contains transfer stages, errors, file types, device information and running Mac apps. File names, file contents, device names, network addresses and credentials are excluded.", "请检查日志内容后再发送至 support@takeruf.com。日志包含传输阶段、错误、文件类型、设备信息及 Mac 上运行的应用；不包含文件名、文件内容、设备名称、网络地址或密钥。"))
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(L("Older failures may have no detailed log. Reproduce the issue to collect one.", "旧版或较早的失败记录可能没有详细日志，重现问题后可生成新日志。"))
+                .font(.caption).foregroundStyle(.secondary)
+            ScrollView([.vertical, .horizontal]) {
+                Text(model.diagnosticText).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+            }.frame(height: 220).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            if let file = model.diagnosticFile {
+                Text((file.path as NSString).abbreviatingWithTildeInPath).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            if !model.diagnosticMessage.isEmpty { Text(model.diagnosticMessage).font(.callout).fixedSize(horizontal: false, vertical: true) }
+            HStack {
+                Button(L("Show in Finder", "在访达中显示"), action: model.revealDiagnosticLog).disabled(model.diagnosticFile == nil)
+                Spacer()
+                Button(L("Report a Bug…", "向开发者报告问题…"), action: model.reportBug).disabled(model.diagnosticFile == nil)
+                Button(L("Done", "完成")) { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }.padding(20).frame(width: 500)
     }
 }
 

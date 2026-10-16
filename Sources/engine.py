@@ -615,9 +615,12 @@ class Engine:
                 await asyncio.sleep(.6)
         except asyncio.CancelledError:self.update(s,'cancelled')
         except TimeoutError:
+            emit('diagnostic',detail='send_failed',transfer_id=s['id'],phase=s.get('state'),error_type='TimeoutError')
             detail=t('No response. Keep the other device unlocked, enable sharing, and accept its transfer request.', '未收到回应。请解锁对方设备、开启互传，并确认接收请求。') if s.get('state')=='waiting' else t('The transfer connection timed out. Check local-network access, VPN routing, and other interconnect sessions, then try again.','传输连接超时。请检查局域网访问权限、VPN 路由及其他设备互联连接后重试。')
             self.update(s,'failed',detail=detail)
-        except Exception as e:self.update(s,'failed',detail=transfer_error_detail(e,receiving=False))
+        except Exception as e:
+            emit('diagnostic',detail='send_failed',transfer_id=s['id'],phase=s.get('state'),error_type=type(e).__name__,errno=getattr(e,'errno',None))
+            self.update(s,'failed',detail=transfer_error_detail(e,receiving=False))
         finally:
             if client and client.is_connected:
                 if s.get('state')!='complete':
