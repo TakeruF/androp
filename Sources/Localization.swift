@@ -8,3 +8,7 @@ import Foundation
     return selected == "system" ? (Locale.preferredLanguages.first?.hasPrefix("zh") == true ? "zh" : "en") : selected
 }
 @MainActor func L(_ english: String, _ chinese: String) -> String { appLanguage() == "zh" ? chinese : english }
+
+@MainActor func fileCountLabel(_ count: Int) -> String {
+    L("\(count) \(count == 1 ? "file" : "files")", "\(count) 个文件")
+}

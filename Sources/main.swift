@@ -21,6 +21,18 @@ struct Transfer: Identifiable, Codable {
     var date = Date()
     var active: Bool { !["complete", "failed", "declined", "cancelled"].contains(state) }
     var progress: TransferProgress { TransferProgress(state: state, completed: completed, total: total) }
+    var historyName: String {
+        if count != 1 || name == "1 files" || name == "1 file" || name == "1 个文件" {
+            return fileCountLabel(count)
+        }
+        return name
+    }
+    var historySymbol: String {
+        if direction == "send" {
+            return count > 1 ? "square.and.arrow.up.on.square" : "square.and.arrow.up"
+        }
+        return count > 1 ? "square.and.arrow.down.on.square" : "square.and.arrow.down"
+    }
     var label: String {
         switch state {
         case "request": L("Incoming files", "接收确认")
@@ -190,7 +202,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             let progress = t.state == "transferring" ? t.progress.percent.map { " \($0)%" } ?? "" : ""
             add("\(t.peer) — \(t.label)\(progress)")
             if t.direction == "send", t.id == outgoing?.id { add(L("Show Progress…", "查看进度…"), #selector(showSendProgress)) }
-            if t.state == "request" { add(L("Accept \(t.count) files", "接收 \(t.count) 个文件"), #selector(acceptMenu(_:)), id: t.id); add(L("Decline", "拒绝"), #selector(declineMenu(_:)), id: t.id) }
+            if t.state == "request" { add(L("Accept \(fileCountLabel(t.count))", "接收 \(t.count) 个文件"), #selector(acceptMenu(_:)), id: t.id); add(L("Decline", "拒绝"), #selector(declineMenu(_:)), id: t.id) }
             else { add(L("Cancel This Transfer", "取消此次传输"), #selector(cancelMenu(_:)), id: t.id) }
         }
         let recent = transfers.filter { !$0.active }.prefix(8)
@@ -198,8 +210,11 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             menu.addItem(.separator())
             let row = NSMenuItem(title: L("Recent Transfers", "最近传输"), action: nil, keyEquivalent: ""); let submenu = NSMenu(); row.submenu = submenu
             for t in recent {
-                let label = "\(t.direction == "send" ? "↑" : "↓") \(t.name) — \(t.label)"
-                let entry = NSMenuItem(title: label, action: t.paths.isEmpty ? nil : #selector(revealMenu(_:)), keyEquivalent: ""); entry.target = self; entry.representedObject = t.id; submenu.addItem(entry)
+                let label = "\(t.historyName) — \(t.label)"
+                let entry = NSMenuItem(title: label, action: t.paths.isEmpty ? nil : #selector(revealMenu(_:)), keyEquivalent: ""); entry.target = self; entry.representedObject = t.id
+                entry.image = NSImage(systemSymbolName: t.historySymbol, accessibilityDescription: t.direction == "send" ? L("Sent", "已发送") : L("Received", "已接收"))
+                entry.image?.size = NSSize(width: 18, height: 18)
+                submenu.addItem(entry)
             }
             menu.addItem(row)
         }
@@ -442,14 +457,14 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         let t = transfers[index]
         if t.state != previous || t.state == "request" {
             if t.state == "request" {
-                sendNotification(t, category: "receive", title: L("Files from \(t.peer)", "来自 \(t.peer) 的文件"), body: L("Accept \(t.count) files?", "接收 \(t.count) 个文件？"))
+                sendNotification(t, category: "receive", title: L("Files from \(t.peer)", "来自 \(t.peer) 的文件"), body: L("Accept \(fileCountLabel(t.count))?", "接收 \(t.count) 个文件？"))
                 if !notificationsAllowed {
-                    let alert = NSAlert(); alert.messageText = L("\(t.count) files from \(t.peer)", "来自 \(t.peer) 的 \(t.count) 个文件"); alert.informativeText = L("Save these files to your selected folder?", "将这些文件保存到所选文件夹？"); alert.addButton(withTitle: L("Accept", "接收")); alert.addButton(withTitle: L("Decline", "拒绝"))
+                    let alert = NSAlert(); alert.messageText = L("\(fileCountLabel(t.count)) from \(t.peer)", "来自 \(t.peer) 的 \(t.count) 个文件"); alert.informativeText = L("Save these files to your selected folder?", "将这些文件保存到所选文件夹？"); alert.addButton(withTitle: L("Accept", "接收")); alert.addButton(withTitle: L("Decline", "拒绝"))
                     NSApp.activate(ignoringOtherApps: true); decide(t, accept: alert.runModal() == .alertFirstButtonReturn)
                 }
             } else if t.state == "complete" {
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
-                sendNotification(t, category: "complete", title: t.label, body: L("\(t.peer) · \(t.count) files", "\(t.peer) · \(t.count) 个文件"))
+                sendNotification(t, category: "complete", title: t.label, body: L("\(t.peer) · \(fileCountLabel(t.count))", "\(t.peer) · \(t.count) 个文件"))
                 if t.direction == "send" { selectedFiles = [] }
             } else if t.state == "failed" {
                 sendNotification(t, category: "manage", title: t.label, body: t.detail)
@@ -875,7 +890,7 @@ struct SettingsView: View {
             HStack { Text("anDrop").font(.title2.bold()); Spacer(); Toggle(L("On", "开启"), isOn: Binding(get: { model.receiving }, set: model.changeReceiving)).toggleStyle(.switch).fixedSize() }
             if let incoming = model.transfers.first(where: { $0.state == "request" }) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L("\(incoming.count) files from \(incoming.peer)", "来自 \(incoming.peer) 的 \(incoming.count) 个文件")).font(.headline)
+                    Text(L("\(fileCountLabel(incoming.count)) from \(incoming.peer)", "来自 \(incoming.peer) 的 \(incoming.count) 个文件")).font(.headline)
                     HStack { Button(L("Accept", "接收")) { model.decide(incoming, accept: true) }; Button(L("Decline", "拒绝")) { model.decide(incoming, accept: false) } }
                 }
             }
