@@ -69,3 +69,5 @@ A compatible sender may label the recipient as having rejected a transfer when a
 If receiving still fails, keep the sender's sharing screen open and verify both devices use the same Wi-Fi, then send again. Notifications show an actionable explanation; local diagnostics identify the failing stage without putting IP addresses or internal Python objects into the notification.
 
 The rename control uses the SF Symbols `pencil` beside the recipient name, including names wrapping onto two lines. Clicking the icon or name sends files; clicking the pencil opens the local-name editor.
+
+The name itself is centered below the avatar, with the pencil immediately to its right. Short names such as “Example” fit on one line; longer names use up to two lines. The popup grows with the grid up to a bounded height, then scrolls only the recipient list while keeping the header and actions visible. The local-name editor is a compact sheet without an app-icon header.

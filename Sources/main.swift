@@ -49,6 +49,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @Published private(set) var peerAliases = UserDefaults.standard.dictionary(forKey: "peerAliases") as? [String: String] ?? [:]
     @Published var transfers: [Transfer] = []
     @Published var outgoing: OutgoingPresentation?
+    @Published var renamingPeer: Peer?
     var outgoingTransfer: Transfer? { transfers.first { $0.id == outgoing?.id } }
     var recipientFiles: [URL] { outgoing?.files ?? selectedFiles }
     var visiblePeers: [Peer] { outgoing.map { [$0.peer] } ?? sortedPeers }
@@ -252,12 +253,15 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if recipientPanel?.isVisible != true { clearPeers() }
         command(["command": "scan", "value": outgoing == nil])
         if recipientPanel == nil {
-            let panel = RecipientPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 320), styleMask: [.borderless], backing: .buffered, defer: false)
+            let panel = RecipientPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 280), styleMask: [.borderless], backing: .buffered, defer: false)
             panel.title = L("Choose a Recipient", "选择接收设备"); panel.isReleasedWhenClosed = false; panel.hidesOnDeactivate = false; panel.delegate = self
             panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
             panel.isMovableByWindowBackground = true
             panel.isFloatingPanel = false; panel.level = .normal
-            panel.contentView = NSHostingView(rootView: RecipientView(model: self)); panel.center(); recipientPanel = panel
+            let hosting = NSHostingView(rootView: RecipientView(model: self))
+            hosting.sizingOptions = []
+            hosting.autoresizingMask = [.width, .height]
+            panel.contentView = hosting; panel.center(); recipientPanel = panel
         }
         recipientPanel?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         updateCompletedRecipientDismissal()
@@ -271,23 +275,32 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             return left == right ? lhs.id < rhs.id : left.localizedStandardCompare(right) == .orderedAscending
         }
     }
+    var maximumRecipientGridHeight: CGFloat {
+        let visibleHeight = recipientPanel?.screen?.visibleFrame.height ?? NSScreen.main?.visibleFrame.height ?? 720
+        return min(300, max(96, visibleHeight - 220))
+    }
+    func resizeRecipientPanel(to size: CGSize) {
+        guard let panel = recipientPanel, panel.isVisible, size.width > 0, size.height > 0 else { return }
+        let screen = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? panel.frame
+        let width = min(ceil(size.width), screen.width - 24)
+        let height = min(ceil(size.height), screen.height - 24)
+        guard abs(panel.frame.width - width) > 0.5 || abs(panel.frame.height - height) > 0.5 else { return }
+        var origin = NSPoint(x: panel.frame.minX, y: panel.frame.maxY - height)
+        origin.x = min(max(origin.x, screen.minX + 12), screen.maxX - width - 12)
+        origin.y = min(max(origin.y, screen.minY + 12), screen.maxY - height - 12)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
+    }
     func renamePeer(_ peer: Peer) {
-        let alert = NSAlert()
-        alert.messageText = L("Name on This Mac", "在此 Mac 上的名称")
-        alert.informativeText = L("Use a name such as Work phone or Travel tablet. Up to 40 characters. Leave blank to use device details. Saved only on this Mac.", "例如：工作手机、旅行平板。最多 40 个字符。留空则使用设备信息。仅保存在此 Mac。")
-        let input = NSTextField(string: peerAliases[peer.aliasKey] ?? "")
-        input.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
-        input.placeholderString = peer.deviceLabel(chinese: appLanguage() == "zh")
-        alert.accessoryView = input
-        alert.addButton(withTitle: L("Save", "保存")); alert.addButton(withTitle: L("Cancel", "取消"))
-        alert.window.initialFirstResponder = input
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard let name = Peer.normalizedAlias(input.stringValue) else {
-            let error = NSAlert(); error.messageText = L("Use up to 40 characters on one line.", "请使用不超过 40 个字符的单行名称。"); error.runModal(); return
-        }
+        guard !busy else { return }
+        renamingPeer = peer
+    }
+    func savePeerName(_ text: String, for peer: Peer) -> Bool {
+        guard let name = Peer.normalizedAlias(text) else { return false }
         if name.isEmpty { peerAliases.removeValue(forKey: peer.aliasKey) }
         else { peerAliases[peer.aliasKey] = name }
         UserDefaults.standard.set(peerAliases, forKey: "peerAliases")
+        renamingPeer = nil
+        return true
     }
     private func stopCompletedRecipientDismissal() {
         for monitor in completedClickMonitors { NSEvent.removeMonitor(monitor) }
@@ -316,7 +329,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func windowWillClose(_ notification: Notification) {
         if let closed = notification.object as? NSWindow, closed === recipientPanel {
-            stopCompletedRecipientDismissal()
+            stopCompletedRecipientDismissal(); renamingPeer = nil
             clearPeers(); command(["command": "scan", "value": false])
             if outgoingTransfer?.active != true { outgoing = nil; selectedFiles = [] }
         }
@@ -604,9 +617,20 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
 }
 
+private struct RecipientGridHeightKey: PreferenceKey {
+    nonisolated static let defaultValue: CGFloat = 0
+    nonisolated static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+private struct RecipientPopupSizeKey: PreferenceKey {
+    nonisolated static let defaultValue = CGSize.zero
+    nonisolated static func reduce(value: inout CGSize, nextValue: () -> CGSize) { let next = nextValue(); value = CGSize(width: max(value.width, next.width), height: max(value.height, next.height)) }
+}
+
 struct RecipientView: View {
     @ObservedObject var model: AppModel
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 4)
+    @State private var gridHeight: CGFloat = 124
 
     var body: some View {
         VStack(spacing: 0) {
@@ -624,7 +648,7 @@ struct RecipientView: View {
                         .resizable().scaledToFit().frame(width: 32, height: 40)
                         .accessibilityHidden(true)
                 }
-            }.padding(.bottom, 18)
+            }.padding(.bottom, 12)
             Divider()
             if model.visiblePeers.isEmpty {
                 VStack(spacing: 12) {
@@ -632,14 +656,24 @@ struct RecipientView: View {
                     Text(L("Looking for devices…", "正在查找设备…")).font(.subheadline)
                     Text(L("Turn on 互传 and allow nearby devices to find you. Use the same Wi-Fi.", "请开启互传并允许附近设备发现，连接同一 Wi-Fi。"))
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 270)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.frame(maxWidth: .infinity).frame(height: 128)
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                         ForEach(model.visiblePeers) { peer in
                             RecipientTile(model: model, peer: peer)
                         }
-                    }.padding(.top, 18).padding(.bottom, 12)
+                    }.padding(.top, 12).padding(.bottom, 8)
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: RecipientGridHeightKey.self, value: geometry.size.height)
+                        })
+                }
+                .scrollIndicators(.visible)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(height: min(gridHeight, model.maximumRecipientGridHeight))
+                .clipped()
+                .onPreferenceChange(RecipientGridHeightKey.self) { height in
+                    if height > 0, abs(gridHeight - height) > 0.5 { gridHeight = height }
                 }
             }
             Divider()
@@ -664,9 +698,54 @@ struct RecipientView: View {
                     Button(L("Cancel", "取消")) { model.closeRecipients() }
                         .keyboardShortcut(.cancelAction).controlSize(.large)
                 }
-            }.padding(.top, 16)
-        }.padding(20).frame(width: 420, height: 320)
+            }.padding(.top, 12)
+        }.padding(20).frame(width: 460)
+            .fixedSize(horizontal: false, vertical: true)
             .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: RecipientPopupSizeKey.self, value: geometry.size)
+            })
+            .onPreferenceChange(RecipientPopupSizeKey.self) { size in
+                Task { @MainActor in model.resizeRecipientPanel(to: size) }
+            }
+            .sheet(item: $model.renamingPeer) { peer in RenamePeerView(model: model, peer: peer) }
+    }
+}
+
+private struct RenamePeerView: View {
+    @ObservedObject var model: AppModel
+    let peer: Peer
+    @State private var draft: String
+    @State private var invalid = false
+    @FocusState private var nameFocused: Bool
+
+    init(model: AppModel, peer: Peer) {
+        self.model = model; self.peer = peer
+        _draft = State(initialValue: model.peerAliases[peer.aliasKey] ?? "")
+    }
+    private func save() {
+        invalid = !model.savePeerName(draft, for: peer)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L("Name on This Mac", "在此 Mac 上的名称")).font(.headline)
+            Text(L("Up to 40 characters. Leave blank to use device details. Saved only on this Mac.", "最多 40 个字符。留空则使用设备信息。仅保存在此 Mac。"))
+                .font(.callout).foregroundStyle(.secondary)
+            TextField(peer.deviceLabel(chinese: appLanguage() == "zh"), text: $draft)
+                .textFieldStyle(.roundedBorder).focused($nameFocused)
+                .accessibilityLabel(L("Device name", "设备名称"))
+                .onSubmit(save)
+            if invalid {
+                Text(L("Use up to 40 characters on one line.", "请使用不超过 40 个字符的单行名称。"))
+                    .font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button(L("Cancel", "取消")) { model.renamingPeer = nil }.keyboardShortcut(.cancelAction)
+                Button(L("Save", "保存"), action: save).keyboardShortcut(.defaultAction)
+            }
+        }.padding(20).frame(width: 340)
+            .task { nameFocused = true }
     }
 }
 
@@ -690,10 +769,10 @@ private struct RecipientTile: View {
     }
     private func send() { model.selectedPeer = peer.id; model.send() }
     var body: some View {
-        VStack(spacing: 9) {
+        VStack(spacing: 6) {
             if let transfer {
                 avatar.accessibilityHidden(true)
-                name.frame(height: 30, alignment: .top).accessibilityLabel(accessibleName)
+                name.accessibilityLabel(accessibleName)
                 Text(transfer.progress.label(chinese: appLanguage() == "zh"))
                     .font(.system(size: 11)).monospacedDigit()
                     .foregroundStyle(transfer.state == "failed" ? Color.red : Color.blue)
@@ -704,6 +783,10 @@ private struct RecipientTile: View {
                     .buttonStyle(.plain).disabled(model.busy || !model.receiving)
                     .accessibilityLabel(accessibleName)
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    // Balance the edit control so the name itself stays centered.
+                    Color.clear.frame(width: 16, height: 16)
+                        .alignmentGuide(.firstTextBaseline) { _ in 0 }
+                        .accessibilityHidden(true)
                     Button(action: send) { name }
                         .buttonStyle(.plain).disabled(model.busy || !model.receiving)
                         .layoutPriority(1)
@@ -718,13 +801,13 @@ private struct RecipientTile: View {
                     .help(L("Name on This Mac", "在此 Mac 上的名称"))
                     .accessibilityLabel(L("Name \(model.peerTitle(peer)) on this Mac", "为 \(model.peerTitle(peer)) 设置本机名称"))
                     .disabled(model.busy)
-                }.frame(height: 30, alignment: .top)
+                }.fixedSize(horizontal: false, vertical: true)
             }
             if model.peerIsAmbiguous(peer) {
                 Text(peer.distinguishingCode(among: model.peers)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 5)
+        .frame(maxWidth: .infinity).padding(.vertical, 4)
         .help([model.peerTitle(peer), model.peerSubtitle(peer)].filter { !$0.isEmpty }.joined(separator: " · "))
         .contextMenu { if transfer == nil { Button(L("Name on This Mac…", "设置本机名称…")) { model.renamePeer(peer) } } }
         .onHover { hovered = $0 }
