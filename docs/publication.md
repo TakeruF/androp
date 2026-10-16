@@ -11,3 +11,5 @@ Keep local logs, screenshots, captures, fixtures and release artifacts in ignore
 The source does not contain a fixed personal Computer Name. At runtime the app intentionally follows the user's system Computer Name and advertises it to nearby devices, as described in [usage](usage.md).
 
 Upstream authors' copyright names and notices in `ThirdPartyNotices` are retained for attribution. They are not the project owner's personal metadata.
+
+Official brand artwork has separate provenance and rights in `Resources/BrandLogos/README.md`; include it in the publication review. The source-code license does not grant rights to those logos.

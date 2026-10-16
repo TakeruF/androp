@@ -5,6 +5,7 @@ Last physical-device test: **2026-10-16**. Validation status belongs in this rep
 | Device or feature | Status | Evidence / limitation |
 | --- | --- | --- |
 | OPPO Find X9 Pro, Chinese ColorOS 17 / Android 17, 互传 17.2.36 | **Physically tested / 已实机验证** | Same-Wi-Fi file transfer in both directions; matching hashes |
+| OPPO tablet (exact model not established) | **Discovery/type display only / 仅验证发现和类型显示** | Same account name as the phone; tablet flag and separate identity observed. File transfer untested |
 | Other OPPO models | **Untested / 未验证** | No compatibility guarantee from the tested model |
 | Xiaomi / 小米 | **Untested / 未验证** | Compatible 互传联盟 devices are a target |
 | HONOR / 荣耀 | **Untested / 未验证** | Compatible 互传联盟 devices are a target |
@@ -25,4 +26,4 @@ For a new compatibility report, include only device model, OS/share-service vers
 
 ## Manufacturer and model metadata
 
-A follow-up read-only investigation confirmed passive OPPO brand identification from the test phone's Bluetooth advertisement. Exact model information was not obtained through the examined wireless sharing path. See [the device-identification report](device-identification.md); this is separate from cross-brand transfer compatibility.
+A follow-up read-only investigation confirmed passive OPPO brand identification and distinguished a phone and tablet sharing the same account name. Exact model information was not obtained through the examined wireless sharing path. See [the device-identification report](device-identification.md); this is separate from cross-brand transfer compatibility.

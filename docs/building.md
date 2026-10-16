@@ -33,6 +33,7 @@ Developer ID signatures expose the signing certificate's identity. A source repo
 ```sh
 .venv/bin/python collect-licenses.py
 .venv/bin/python -m unittest discover -s tests -v
+swift test
 codesign --verify --deep --strict build/anDrop.app
 ```
 

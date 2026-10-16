@@ -7,7 +7,6 @@ import CoreBluetooth
 import UserNotifications
 import ServiceManagement
 
-struct Peer: Identifiable { let id: String; let name: String }
 struct Transfer: Identifiable, Codable {
     var id: String
     var direction = "receive"
@@ -40,6 +39,7 @@ struct Transfer: Identifiable, Codable {
 final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @preconcurrency CBPeripheralManagerDelegate, @preconcurrency UNUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
     @Published var language = UserDefaults.standard.string(forKey: "language") ?? "system"
     @Published var peers: [Peer] = []
+    @Published private(set) var peerAliases = UserDefaults.standard.dictionary(forKey: "peerAliases") as? [String: String] ?? [:]
     @Published var transfers: [Transfer] = []
     @Published var selectedFiles: [URL] = []
     @Published var selectedPeer: String?
@@ -142,7 +142,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     @objc func about() {
         let alert = NSAlert()
-        alert.messageText = "anDrop 0.1.0"
+        alert.messageText = "anDrop 0.1.1"
         alert.informativeText = L("File sharing for the Mutual Transfer Alliance (互传联盟) ecosystem.\nNo prior connection. Use the same Wi-Fi.\n\n© 2026 anDrop contributors\nGPL-3.0-only · No warranty.\nRedistribution is permitted under the license.", "面向互传联盟生态的文件共享。\n无需预先连接，请使用同一 Wi-Fi。\n\n© 2026 anDrop contributors\nGPL-3.0-only · 不提供担保。\n可按许可证条款再分发。")
         alert.addButton(withTitle: L("Close", "关闭"))
         alert.addButton(withTitle: L("Licenses…", "许可证…"))
@@ -231,14 +231,42 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
+    func closeRecipients() { recipientPanel?.close() }
     func showRecipients() {
         command(["command": "scan", "value": true])
         if recipientPanel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 320), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 360), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = L("Choose a Recipient", "选择接收设备"); panel.isReleasedWhenClosed = false; panel.hidesOnDeactivate = false; panel.delegate = self
             panel.contentView = NSHostingView(rootView: RecipientView(model: self)); panel.center(); recipientPanel = panel
         }
         recipientPanel?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+    func peerTitle(_ peer: Peer) -> String { peer.title(aliases: peerAliases, chinese: appLanguage() == "zh") }
+    func peerSubtitle(_ peer: Peer) -> String { peer.subtitle(aliases: peerAliases, chinese: appLanguage() == "zh") }
+    func peerIsAmbiguous(_ peer: Peer) -> Bool { peer.isAmbiguous(among: peers, aliases: peerAliases, chinese: appLanguage() == "zh") }
+    var sortedPeers: [Peer] {
+        peers.sorted { lhs, rhs in
+            let left = peerSubtitle(lhs) + peerTitle(lhs), right = peerSubtitle(rhs) + peerTitle(rhs)
+            return left == right ? lhs.id < rhs.id : left.localizedStandardCompare(right) == .orderedAscending
+        }
+    }
+    func renamePeer(_ peer: Peer) {
+        let alert = NSAlert()
+        alert.messageText = L("Name on This Mac", "在此 Mac 上的名称")
+        alert.informativeText = L("Use a name such as Work phone or Travel tablet. Up to 40 characters. Leave blank to use device details. Saved only on this Mac.", "例如：工作手机、旅行平板。最多 40 个字符。留空则使用设备信息。仅保存在此 Mac。")
+        let input = NSTextField(string: peerAliases[peer.aliasKey] ?? "")
+        input.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
+        input.placeholderString = peer.deviceLabel(chinese: appLanguage() == "zh")
+        alert.accessoryView = input
+        alert.addButton(withTitle: L("Save", "保存")); alert.addButton(withTitle: L("Cancel", "取消"))
+        alert.window.initialFirstResponder = input
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard let name = Peer.normalizedAlias(input.stringValue) else {
+            let error = NSAlert(); error.messageText = L("Use up to 40 characters on one line.", "请使用不超过 40 个字符的单行名称。"); error.runModal(); return
+        }
+        if name.isEmpty { peerAliases.removeValue(forKey: peer.aliasKey) }
+        else { peerAliases[peer.aliasKey] = name }
+        UserDefaults.standard.set(peerAliases, forKey: "peerAliases")
     }
     func windowWillClose(_ notification: Notification) {
         if let closed = notification.object as? NSWindow, closed === recipientPanel { command(["command": "scan", "value": false]) }
@@ -309,7 +337,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 if let encoded = value["data"] as? String, let bytes = Data(base64Encoded: encoded) { notifyQueue.append((bytes, value["central"] as? String)); flushNotifications() }
             case "peers":
                 peers = (value["peers"] as? [[String: String]] ?? []).compactMap { obj in
-                    guard let id = obj["id"], let name = obj["name"] else { return nil }; return Peer(id: id, name: name)
+                    guard let id = obj["id"], let name = obj["name"] else { return nil }; return Peer(id: id, name: name, brand: obj["brand"] ?? "", kind: Peer.Kind(rawValue: obj["kind"] ?? "") ?? .unknown)
                 }
                 if selectedPeer == nil, peers.count == 1 { selectedPeer = peers[0].id }
             case "transfer": updateTransfer(value)
@@ -372,8 +400,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if panel.runModal() == .OK, let url = panel.url { destination = url.path; UserDefaults.standard.set(url.path, forKey: "destination"); configureEngine() }
     }
     func send() {
-        guard let selectedPeer, !selectedFiles.isEmpty, !busy else { return }
-        recipientPanel?.close(); error = ""; command(["command": "send", "peer": selectedPeer, "paths": selectedFiles.map(\.path)])
+        guard let selectedPeer, let peer = peers.first(where: { $0.id == selectedPeer }), !selectedFiles.isEmpty, !busy, receiving else { return }
+        var label = [peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh")].filter { !$0.isEmpty }.joined(separator: " · ")
+        if peerIsAmbiguous(peer) { label += " · " + peer.distinguishingCode(among: peers) }
+        recipientPanel?.close(); error = ""; command(["command": "send", "peer": selectedPeer, "peer_label": label, "paths": selectedFiles.map(\.path)])
     }
     func decide(_ transfer: Transfer, accept: Bool) {
         command(["command": "decision", "id": transfer.id, "accept": accept]); UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [transfer.id])
@@ -500,31 +530,115 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
 
 struct RecipientView: View {
     @ObservedObject var model: AppModel
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 4)
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack { Image(systemName: "arrow.up.circle.fill").foregroundStyle(.teal); Text(L("Send with anDrop", "通过 anDrop 发送")).font(.headline); Spacer() }
-            Text(L("\(model.selectedFiles.count) files", "\(model.selectedFiles.count) 个文件")).font(.subheadline)
-            Text(model.selectedFiles.prefix(2).map(\.lastPathComponent).joined(separator: "、")).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable().frame(width: 42, height: 42)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("anDrop").font(.system(size: 19, weight: .semibold))
+                    Text(model.selectedFiles.count == 1 ? model.selectedFiles[0].lastPathComponent : L("\(model.selectedFiles.count) files", "\(model.selectedFiles.count) 个文件"))
+                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 12)
+                if let file = model.selectedFiles.first {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: file.path))
+                        .resizable().scaledToFit().frame(width: 32, height: 40)
+                        .accessibilityHidden(true)
+                }
+            }.padding(.bottom, 18)
             Divider()
             if model.peers.isEmpty {
-                HStack { ProgressView().controlSize(.small); Text(L("Looking for devices…", "正在查找设备…")) }
-                Text(L("Enable your phone’s 互传 sharing feature and make it discoverable. Use the same Wi-Fi.", "请开启手机的互传功能并允许附近设备发现，连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
+                VStack(spacing: 12) {
+                    ProgressView().controlSize(.small)
+                    Text(L("Looking for devices…", "正在查找设备…")).font(.subheadline)
+                    Text(L("Turn on 互传 and allow nearby devices to find you. Use the same Wi-Fi.", "请开启互传并允许附近设备发现，连接同一 Wi-Fi。"))
+                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 270)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    VStack(spacing: 8) {
-                        ForEach(model.peers) { peer in
-                            Button { model.selectedPeer = peer.id; model.send() } label: {
-                                HStack { Image(systemName: "smartphone").font(.title2); Text(peer.name).lineLimit(2); Spacer(); Image(systemName: "arrow.up.right") }.padding(12).frame(maxWidth: .infinity).background(.teal.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-                            }.buttonStyle(.plain).disabled(model.busy || !model.receiving)
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                        ForEach(model.sortedPeers) { peer in
+                            RecipientTile(model: model, peer: peer)
                         }
-                    }
+                    }.padding(.top, 18).padding(.bottom, 12)
                 }
             }
-            Spacer(minLength: 0)
-            Text(L("Choose a device to request a transfer.", "选择设备后，对方会收到接收请求。")).font(.caption).foregroundStyle(.secondary)
-        }.padding(20).frame(width: 340, height: 320)
+            Divider()
+            HStack(alignment: .center, spacing: 16) {
+                Text(model.peers.contains(where: model.peerIsAmbiguous)
+                     ? L("Same name? Make one device visible, then name it with the pencil.", "设备重名？请先只让一台可被发现，再点铅笔命名。")
+                     : L("Choose a device to send.", "选择要发送到的设备。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button(L("Cancel", "取消")) { model.closeRecipients() }
+                    .keyboardShortcut(.cancelAction).controlSize(.large)
+            }.padding(.top, 16)
+        }.padding(20).frame(width: 420, height: 320)
     }
 }
+
+private struct RecipientTile: View {
+    @ObservedObject var model: AppModel
+    let peer: Peer
+    @State private var hovered = false
+
+    var body: some View {
+        VStack(spacing: 5) {
+            Button { model.selectedPeer = peer.id; model.send() } label: {
+                VStack(spacing: 9) {
+                    RecipientAvatar(peer: peer)
+                    Text(model.peerTitle(peer)).font(.system(size: 12, weight: .medium))
+                        .multilineTextAlignment(.center).lineLimit(2).frame(height: 30, alignment: .top)
+                    if model.peerIsAmbiguous(peer) {
+                        Text(peer.distinguishingCode(among: model.peers)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                    }
+                }.frame(maxWidth: .infinity).padding(.vertical, 5).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).disabled(model.busy || !model.receiving)
+            .help([model.peerTitle(peer), model.peerSubtitle(peer)].filter { !$0.isEmpty }.joined(separator: " · "))
+            .accessibilityLabel([model.peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh"), model.peerIsAmbiguous(peer) ? peer.distinguishingCode(among: model.peers) : ""].filter { !$0.isEmpty }.joined(separator: ", "))
+            .contextMenu { Button(L("Name on This Mac…", "设置本机名称…")) { model.renamePeer(peer) } }
+            Button { model.renamePeer(peer) } label: { Image(systemName: "pencil").font(.system(size: 10)).frame(width: 24, height: 16) }
+                .buttonStyle(.plain).foregroundStyle(.secondary).opacity(hovered ? 1 : 0.45)
+                .help(L("Name on This Mac", "在此 Mac 上的名称"))
+                .accessibilityLabel(L("Name \(model.peerTitle(peer)) on this Mac", "为 \(model.peerTitle(peer)) 设置本机名称"))
+                .disabled(model.busy)
+        }.onHover { hovered = $0 }
+    }
+}
+
+private struct RecipientAvatar: View {
+    let peer: Peer
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Circle().fill(BrandLogos.image(for: peer.brand) == nil ? Color(nsColor: .quaternaryLabelColor) : .white)
+            .overlay {
+                if let logo = BrandLogos.image(for: peer.brand) {
+                    Image(nsImage: logo).resizable().scaledToFit()
+                        .frame(width: peer.brand == "Xiaomi" ? 44 : 50, height: 44)
+                } else {
+                    Image(systemName: "rectangle.on.rectangle").font(.system(size: 25)).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 62, height: 62)
+            .overlay(Circle().strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 0.5))
+            .overlay(alignment: .bottomTrailing) {
+                Image(systemName: peer.symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: 25, height: 25)
+                    .background(colorScheme == .dark ? Color(white: 0.24) : .white, in: Circle())
+                    .overlay(Circle().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+                    .offset(x: 3, y: 3)
+            }
+            .accessibilityHidden(true)
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     var body: some View {
@@ -555,7 +669,7 @@ struct SettingsView: View {
                 }
             }
             if model.petalRunning { Button(model.petalRepairing ? L("Restarting Petal…", "正在重启 Petal…") : L("Repair Discovery with Petal", "修复与 Petal 的设备发现"), action: model.repairPetal).disabled(model.busy || model.petalRepairing) }
-            HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text("0.1.0").font(.caption).foregroundStyle(.secondary) }
+            HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text("0.1.1").font(.caption).foregroundStyle(.secondary) }
             Text(L("Mutual Transfer Alliance (互传联盟) · Same Wi-Fi required.", "互传联盟 · 需连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
         }.padding(24).frame(width: 460)
     }

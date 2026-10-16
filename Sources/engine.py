@@ -6,6 +6,7 @@ No cloud, saved peer credentials, or USB transport. One transfer at a time.
 """
 import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, socket, ssl, stat, sys, tempfile, time, uuid, zipfile
 from pathlib import Path, PurePosixPath
+from peer_metadata import parse_peer_metadata, peer_identifier
 from aiohttp import web, ClientSession, ClientTimeout, Fingerprint, WSMsgType
 from bleak import BleakClient, BleakScanner
 from cryptography import x509
@@ -251,7 +252,8 @@ class Engine:
         identity=ad.service_data[bu('3333')].decode(errors='ignore')
         if len(identity)<14 or '-r' not in identity:return
         name=ad.service_data.get(bu('3334'),b'').decode(errors='replace').strip('\0') or ad.local_name or 'Android'
-        self.devices[device.address]=device;self.peers[device.address]={'id':device.address,'name':name[:100],'last':time.monotonic()}
+        identifier=peer_identifier(identity,device.address)
+        self.devices[identifier]=device;self.peers[identifier]={'id':identifier,'name':name[:100],'last':time.monotonic(),**parse_peer_metadata(identity)}
     async def scanning(self):
         while True:
             if not self.scan_enabled or not self.discovering:
@@ -260,14 +262,14 @@ class Engine:
                 async with BleakScanner(detection_callback=self.discovered,service_uuids=[bu('3333')]) as scanner:
                     self.scanner=scanner
                     while self.scan_enabled and self.discovering:
-                        now=time.monotonic();emit('peers',peers=[{'id':p['id'],'name':p['name']} for p in self.peers.values() if now-p['last']<15]);await asyncio.sleep(2)
+                        now=time.monotonic();emit('peers',peers=[{k:v for k,v in p.items() if k!='last'} for p in self.peers.values() if now-p['last']<15]);await asyncio.sleep(2)
             except asyncio.CancelledError:raise
             except Exception as e:
                 emit('scan_status',detail=t(f'Check Bluetooth: {e}',f'请检查蓝牙：{e}'));await asyncio.sleep(5)
-    async def send(self,peer_id,paths):
+    async def send(self,peer_id,paths,peer_label=None):
         if self.session:emit('error',detail=t('Wait for the current transfer to finish.','请等待当前传输完成。'));return
         if peer_id not in self.devices:emit('error',detail=t('Choose the recipient again.','请重新选择接收设备。'));return
-        s={'id':uuid.uuid4().hex,'direction':'send','peer':self.peers[peer_id]['name']};self.session=s;s['task']=asyncio.current_task();self.read_state()
+        s={'id':uuid.uuid4().hex,'direction':'send','peer':peer_label[:200] if isinstance(peer_label,str) and peer_label else self.peers[peer_id]['name']};self.session=s;s['task']=asyncio.current_task();self.read_state()
         runner=None;client=None;ws=None
         try:
             self.update(s,'preparing',name=Path(paths[0]).name if paths else '',count=len(paths))
@@ -422,7 +424,7 @@ class Engine:
             elif command=='decision':
                 future=self.decisions.get(obj.get('id'))
                 if future and not future.done():future.set_result(bool(obj.get('accept')))
-            elif command=='send':await self.send(obj['peer'],obj['paths'])
+            elif command=='send':await self.send(obj['peer'],obj['paths'],obj.get('peer_label'))
             elif command=='cancel' and self.session and self.session['id']==obj.get('id'):
                 s=self.session
                 if s.get('task'):s['task'].cancel()

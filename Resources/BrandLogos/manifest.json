@@ -1,0 +1,86 @@
+{
+  "retrieved_on": "2026-10-16",
+  "rights": "Third-party brand artwork; excluded from the project GPL-3.0-only grant. Copyright and trademarks remain with the respective owners. No endorsement or general redistribution license is asserted.",
+  "logos": [
+    {
+      "brand": "OPPO",
+      "file": "oppo.svg",
+      "official_page": "https://www.oppo.com/cn/",
+      "source": "https://www.oppo.com/cn/",
+      "processing": "Inline header SVG extracted without changing its paths.",
+      "sha256": "297c469a60d6be652328c2624ef9b61b0d95ba901e294bd464a857696d1682a0"
+    },
+    {
+      "brand": "Xiaomi",
+      "file": "xiaomi.png",
+      "official_page": "https://www.mi.com/jp/",
+      "source": "https://i02.appmifile.com/i18n/scm/favicon.png",
+      "processing": "Downloaded unchanged from the official site’s 192px brand icon link.",
+      "sha256": "cbd7602e878c987180cbb14e86aa241541e3523e85362e1ac0bc7b896f93ea65"
+    },
+    {
+      "brand": "HONOR",
+      "file": "honor.svg",
+      "official_page": "https://www.honor.com/cn/",
+      "source": "https://www-file.honor.com/content/dam/honor/common/logo/honor-logo-black.svg",
+      "processing": "Downloaded unchanged from the header image URL.",
+      "sha256": "d99021bdd6f4a4ac78c88e27a9dfc74537a2e16d4c1cf9fb29b559f39ee18e0e"
+    },
+    {
+      "brand": "vivo",
+      "file": "vivo.svg",
+      "official_page": "https://www.vivo.com.cn/",
+      "source": "https://asia-exstatic.vivoglobal.com/static/font/icon-font/dist/vivo-icons_fb27c00.svg",
+      "processing": "Exact logo-vivo glyph (U+D018) outlined from the official SVG icon font, preserving coordinates and header color #242933.",
+      "sha256": "66afb5dc6d0866fade7bf0dcb7f68772c9df4ebdd593ae118f71030ad88aab07"
+    },
+    {
+      "brand": "iQOO",
+      "file": "iqoo.svg",
+      "official_page": "https://www.vivo.com.cn/",
+      "source": "https://asia-exstatic.vivoglobal.com/static/font/icon-font/dist/vivo-icons_fb27c00.svg",
+      "processing": "Exact logo-iqoo glyph (U+D016) outlined from the official SVG icon font, preserving coordinates and header color #242933.",
+      "sha256": "dac87541a1193e3dab9a283eba2e8f8b41431486cbb2d4921c74435c33871d85"
+    },
+    {
+      "brand": "realme",
+      "file": "realme.svg",
+      "official_page": "https://www.realme.com/cn/",
+      "source": "https://static2.realme.net/static/index.BkQEyifd.css",
+      "processing": "Decoded the official icon-logo CSS SVG data URI, without redrawing.",
+      "sha256": "42f77077897b2e3876c94eac83974e6b54604303f45e94ce9e0254ddba63eacc"
+    },
+    {
+      "brand": "OnePlus",
+      "file": "oneplus.svg",
+      "official_page": "https://www.oneplus.com/us/press-photos",
+      "source": "https://www.oneplus.com/us/press-photos",
+      "processing": "Inline header SVG extracted without changing its paths.",
+      "sha256": "f052cc58fecc1d9260509a6d20ce2a1081fe1cb3c79a921054fcc3c05b7ea1d1"
+    },
+    {
+      "brand": "Meizu",
+      "file": "meizu.png",
+      "official_page": "https://www.meizu.com/",
+      "source": "https://www.meizu.com/",
+      "processing": "Decoded the meizu-header-logo-img PNG data URI unchanged.",
+      "sha256": "ce1c03299b4caad5827b496fe98dfbd11b4dedb977d4b9528e599cbf8999a0c4"
+    },
+    {
+      "brand": "Lenovo",
+      "file": "lenovo.png",
+      "official_page": "https://www.lenovo.com.cn/",
+      "source": "https://p4.lefile.cn/fes/cms/2021/09/24/skz7mq0zavm0hd8xfaq0nrofxcwje3959207.png",
+      "processing": "Downloaded unchanged from the official header image URL.",
+      "sha256": "44b9ac8dfaffc3bed8106e44af4d700ac12b673c21ededc5792dafcf270a4283"
+    },
+    {
+      "brand": "Samsung",
+      "file": "samsung.svg",
+      "official_page": "https://www.samsung.com.cn/",
+      "source": "https://www.samsung.com.cn/",
+      "processing": "Inline header SVG; added XML namespace and normalized viewBox capitalization.",
+      "sha256": "7764dfbe7fa2ef5fcfe01a008a71a685ab9dfc0cb225c76ed5a42d96d9402913"
+    }
+  ]
+}

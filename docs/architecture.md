@@ -4,12 +4,15 @@
 | --- | --- |
 | `Sources/main.swift` | AppKit menu bar, SwiftUI settings/recipient panel, notifications, login item, CoreBluetooth peripheral and GATT |
 | `Sources/ShareViewController.swift` | Finder Share extension; hands selected file URLs to the native host |
+| `Sources/BrandLogos.swift` | Cached, bundled official manufacturer images; no runtime image downloads |
+| `Sources/Peer.swift` | Recipient presentation, local alias keys and duplicate-name disambiguation |
+| `Sources/peer_metadata.py` | Conservative advertisement metadata parsing and recipient identity across endpoint changes |
 | `Sources/Localization.swift` | English/Simplified Chinese strings and system-language fallback |
 | `Sources/engine.py` | BLE central scanning, protocol negotiation, local HTTPS/WebSocket transfer, archive validation and saving |
 
 The native host and bundled engine communicate through JSON lines over process pipes. No network listener is used for this local IPC.
 
-Discovery uses Bluetooth; file bytes use the existing local network. The receiving Mac advertises service `8881` and exposes the GATT service `9999`. The outgoing path scans compatible phone service data and negotiates with the selected device. Platform and vendor variations still need physical-device tests.
+Discovery uses Bluetooth; file bytes use the existing local network. The receiving Mac advertises service `8881` and exposes the GATT service `9999`. The outgoing path scans compatible device service data and negotiates with the selected device. Platform and vendor variations still need physical-device tests.
 
 The implementation uses P-256 key exchange and the observed protocol's AES-CBC format for negotiation. The sender serves a ZIP archive over HTTPS and exchanges control messages over a TLS WebSocket. The receiver pins the download certificate to the certificate from the same session's WebSocket. This is session consistency, not independently authenticated peer identity.
 

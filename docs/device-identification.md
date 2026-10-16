@@ -1,6 +1,6 @@
 # Device manufacturer and model identification
 
-Investigation date: **2026-10-16**. Tested with the existing OPPO Find X9 Pro on Chinese ColorOS 17 / Android 17, sharing service 17.2.36. This document records findings; the app's recipient UI still displays only the sharing name.
+Investigation date: **2026-10-16**. Tested with the existing OPPO Find X9 Pro on Chinese ColorOS 17 / Android 17, sharing service 17.2.36. A follow-up passive test included an OPPO tablet with the same sharing/account name. Version 0.1.1 uses the observed brand and category metadata in its recipient UI.
 
 ## Results
 
@@ -8,7 +8,7 @@ Investigation date: **2026-10-16**. Tested with the existing OPPO Find X9 Pro on
 | --- | --- | --- |
 | Sharing display name | Available in Bluetooth service data `3334` | A user-selected sharing/account label, not proof of model or real-world identity |
 | Manufacturer/brand | **OPPO identified from the observed `3333` advertisement flags, before connecting** | Self-reported protocol metadata; not authenticated hardware identity |
-| Phone/tablet category | A category flag is available in this advertisement format | A broad category, not a product model |
+| Phone/tablet category | **Phone and tablet distinguished in simultaneous passive discovery** | A broad category, not a product model |
 | Exact hardware model | **Not obtained through the examined wireless sharing path** | No model field in the observed advertisement or sharing status response |
 | Model over USB/ADB | Available as a local diagnostic baseline | Not a solution for anDrop's normal connection-free discovery |
 
@@ -28,6 +28,14 @@ A temporary BLE connection was used to enumerate services and read the existing 
 
 The diagnostic USB model identifier was `PLG110`. The examined Bluetooth advertisements and sharing response did not expose that identifier or the marketing name. Knowledge of the attached test phone must not be used to label arbitrary nearby devices with that model.
 
+## Two devices with one account name
+
+A subsequent passive scan observed an OPPO phone and tablet simultaneously. Both advertised the same sharing name, but they had different protocol device IDs. Their version-11 flags were `9` (`0x09`, phone) and `11` (`0x0B`, tablet), respectively. Neither supplied a Bluetooth local name or peripheral name, so a device-specific friendly name could not be recovered from those fields. The tablet's exact model was not established.
+
+During the observation, macOS Bluetooth endpoint identifiers changed while each advertised protocol device ID remained unchanged. Keeping recipients only by the Bluetooth endpoint briefly produced duplicate rows. Version 0.1.1 groups a recognized version-11, nonzero 12-hex-digit device ID and updates its connection endpoint on rediscovery. Different advertised IDs remain separate even if their account names match. This is evidence of stability during this observation, not a claim of lifetime stability across resets, account changes or firmware updates.
+
+Local aliases are keyed by a SHA-256 hash of that recipient identity. Unknown formats fall back to the Bluetooth endpoint. Identity fields are self-reported and only organize the chooser; they are never used to authenticate a sender or bypass transfer approval.
+
 ## Other brands and formats
 
 The open-source [CatShare discovery implementation](https://github.com/kmod-midori/CatShare/blob/067348d3d9207206e120b2afe2837c6101f73f41/app/src/main/java/moe/reimu/catshare/ShareActivity.kt) decodes a different alliance advertisement format: a six-byte service-data record carries a brand code in its service UUID. Its [brand mapping](https://github.com/kmod-midori/CatShare/blob/067348d3d9207206e120b2afe2837c6101f73f41/app/src/main/java/moe/reimu/catshare/utils/DeviceUtils.kt) includes OPPO, realme, vivo, Xiaomi, OnePlus, Meizu, Samsung and Lenovo. This provides an implementation reference, not physical validation of those brands here. That mapping does not cover HONOR; an unknown code must remain unknown.
@@ -36,8 +44,8 @@ The tested phone emitted the `3333`/`3334` format during this observation, rathe
 
 ## Implications for anDrop
 
-Manufacturer display can be added without requiring prior pairing: parse recognized advertisement formats, use explicit brand evidence, and preserve the existing display name. Keep unrecognized or contradictory metadata unknown rather than guessing from the name or service UUID alone. Support for a format is separate from validation of every manufacturer using it.
+The app now displays official brand logos in circles, a phone/tablet badge and the original sharing name, with optional Mac-local aliases. It parses the examined version-11 format without requiring prior pairing. Unrecognized or contradictory metadata stays unknown rather than being guessed from a name or service UUID alone. Support for a format is separate from validation of every manufacturer using it.
 
 An exact model label requires an explicit model field from a supported protocol, an optional standard Device Information response, or a separately verified model-identification mechanism. A friendly name that happens to contain a product name is not reliable model metadata. Some vendor-specific transfer channels carry more information, but they have not been validated as a model-discovery path usable by this app before a transfer. The current evidence does not establish that exact model discovery is universally impossible; it establishes that the examined path did not provide it.
 
-No vendor APK/source excerpts, device names, addresses, serial numbers or raw protocol captures accompany this report. The existing app source was not changed by this investigation.
+No vendor APK/source excerpts, device names, addresses, serial numbers or raw protocol captures accompany this report. The parsing and identity behavior are covered by synthetic tests; no personal capture is needed to run them.
