@@ -6,8 +6,13 @@ import AppIntents
 nonisolated struct ReceiveSettingsIntent: AppIntent {
     static let title: LocalizedStringResource = "Receive"
     @MainActor func perform() async throws -> some IntentResult {
-        guard NSWorkspace.shared.open(URL(string: "androp://control/receive")!) else { throw ControlError.cannotOpen }
+        var hostURL = Bundle.main.bundleURL
+        if hostURL.pathExtension == "appex" {
+            for _ in 0..<3 { hostURL.deleteLastPathComponent() }
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        _ = try await NSWorkspace.shared.open([URL(string: "androp://control/receive")!], withApplicationAt: hostURL, configuration: configuration)
         return .result()
     }
 }
-nonisolated enum ControlError: Error { case cannotOpen }

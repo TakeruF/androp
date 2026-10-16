@@ -8,8 +8,8 @@ struct ReceiveControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         // Keep the original primary kind so an already-added tile updates in place.
         StaticControlConfiguration(kind: "org.androp.send") {
-            ControlWidgetButton(action: ReceiveSettingsIntent()) { Label("Receive", systemImage: "paperplane") }
-        }.displayName("Receive").description("Manage anDrop receiving and trusted devices.")
+            ControlWidgetButton(action: ReceiveSettingsIntent()) { Label("anDrop", systemImage: "paperplane") }
+        }.displayName("anDrop").description("Manage anDrop receiving and trusted devices.")
     }
 }
 @main struct AnDropControls: WidgetBundle {

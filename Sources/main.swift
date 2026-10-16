@@ -6,6 +6,7 @@ import SwiftUI
 import CoreBluetooth
 import UserNotifications
 import ServiceManagement
+import CoreWLAN
 
 struct Transfer: Identifiable, Codable {
     var id: String
@@ -102,6 +103,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @Published var petalRepairing = false
     private var compactName = false
     let receiving = true
+    @Published private(set) var radiosAvailable = true
+    var receiveSwitchIsOn: Bool { receiving && radiosAvailable }
     @Published var engineReady = false
     @Published var notificationsAllowed = false
     @Published var destination = UserDefaults.standard.string(forKey: "destination") ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
@@ -329,19 +332,21 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
         }
     }
+    func setReceiveSwitch(_ enabled: Bool) {
+        if !enabled { quit() }
+    }
+    private func refreshRadioAvailability() {
+        let available = peripheral?.state == .poweredOn && (CWWiFiClient.shared().interface()?.powerOn() ?? false)
+        if radiosAvailable != available { radiosAvailable = available }
+    }
     @objc func showReceiveControls() {
         if receivePanel == nil {
-            let host = NSHostingView(rootView: ReceiveControlsView(model: self))
-            let size = host.fittingSize
-            let panel = ReceivePanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+            let content = makeReceiveControlsContent(model: self)
+            let panel = ReceivePanel(contentRect: content.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
             panel.title = L("anDrop Receive", "anDrop 接收")
             panel.isReleasedWhenClosed = false; panel.isOpaque = false; panel.backgroundColor = .clear
             panel.hasShadow = true; panel.hidesOnDeactivate = false; panel.level = .floating; panel.delegate = self
-            let material = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
-            material.material = .popover; material.blendingMode = .behindWindow; material.state = .active
-            material.wantsLayer = true; material.layer?.cornerRadius = 16; material.layer?.masksToBounds = true
-            host.frame = material.bounds; host.autoresizingMask = [.width, .height]; material.addSubview(host)
-            panel.contentView = material
+            panel.contentView = content
             receivePanel = panel
         }
         guard let panel = receivePanel else { return }
@@ -668,6 +673,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         catch { self.error = L("Could not change login settings: \(error.localizedDescription)", "无法更改登录设置：\(error.localizedDescription)") }
     }
     private func refreshEnvironment() {
+        refreshRadioAvailability()
         expirePeerUpdates()
         if configuredName != sharingName && !busy { configureEngine(); advertise() }
         let petal = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.EMUIInterconnect.app" }
@@ -687,6 +693,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         peripheral?.startAdvertising([CBAdvertisementDataLocalNameKey: name, CBAdvertisementDataServiceUUIDsKey: [CBUUID(string: "8881")]])
     }
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+        defer { refreshRadioAvailability() }
         guard peripheral.state == .poweredOn else {
             bluetooth = peripheral.state == .unauthorized ? L("Allow Bluetooth access in System Settings.", "请在系统设置中允许使用蓝牙。") : L("Turn on Bluetooth.", "请打开蓝牙。")
             clearPeers(); serviceReady = false; advertisedName = ""; return
@@ -1064,14 +1071,14 @@ struct SettingsView: View {
             Toggle(L("Open at Login", "登录时启动"), isOn: Binding(get: { model.startAtLogin }, set: model.changeLogin))
             HStack { Text(model.notificationsAllowed ? L("Notifications: On", "通知：已开启") : L("Notifications: Off", "通知：已关闭")); Spacer(); Button(L("Notification Settings…", "通知设置…")) { if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) } } }
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(model.petalRunning ? L("With Petal · Nearby name “A”", "与 Petal 共存 · 附近设备名称“A”") : L("Discoverable as “\(model.displayName)”", "在设备上显示为“\(model.displayName)”"))
-                    Spacer()
                     Button { editingSharingName = true } label: { Image(systemName: "pencil") }
                         .buttonStyle(.borderless)
                         .help(L("Change sharing name", "更改共享名称"))
                         .accessibilityLabel(L("Change sharing name", "更改共享名称"))
                         .disabled(model.busy)
+                    Spacer(minLength: 0)
                 }
                 Text(L("Nearby device names: up to 15 UTF-8 bytes (15 ASCII characters or typically 5 Chinese characters). Transfer confirmations use the full sharing name. Leave the custom name blank to use the Mac name.", "附近设备名称上限：15 个 UTF-8 字节（15 个半角英数字符，或通常 5 个汉字）。传输确认使用完整共享名称。自定义名称留空时使用系统电脑名称。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -1092,20 +1099,50 @@ struct SettingsView: View {
     }
 }
 
+// One system glass surface; avoid stacking translucent effects behind each row.
+@MainActor
+func makeReceiveControlsContent(model: AppModel) -> NSView {
+    let host = NSHostingView(rootView: ReceiveControlsView(model: model))
+    let bounds = NSRect(origin: .zero, size: host.fittingSize)
+    host.frame = bounds
+    host.autoresizingMask = [.width, .height]
+    if #available(macOS 26.0, *) {
+        let glass = NSGlassEffectView(frame: bounds)
+        glass.style = .regular
+        glass.cornerRadius = 16
+        glass.contentView = host
+        return glass
+    }
+    let material = NSVisualEffectView(frame: bounds)
+    material.material = .popover
+    material.blendingMode = .behindWindow
+    material.state = .active
+    material.wantsLayer = true
+    material.layer?.cornerRadius = 16
+    material.layer?.masksToBounds = true
+    material.addSubview(host)
+    return material
+}
+
 struct ReceiveControlsView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             HStack {
-                Text("anDrop").font(.headline)
+                Text("anDrop").font(.system(size: 14, weight: .bold))
                 Spacer()
-            }.padding(.horizontal, 6).padding(.bottom, 4)
-            Divider()
-            ReceiveScopeRow(title: L("Trusted Devices Only", "仅限信任设备"), symbol: "checkmark.shield", selected: model.trustedOnly, enabled: model.receiving) { model.changeTrustedOnly(true) }
-            ReceiveScopeRow(title: L("Everyone", "所有人"), symbol: "person.2.fill", selected: !model.trustedOnly, enabled: model.receiving) { model.changeTrustedOnly(false) }
-            Divider()
-            HStack { Spacer(); Button(L("Settings…", "设置…"), action: model.openSettingsFromReceiveControls).buttonStyle(.link).font(.caption) }
-        }.padding(12).frame(width: 300).onExitCommand(perform: model.closeReceiveControls)
+                Toggle(L("Receive", "接收"), isOn: Binding(get: { model.receiveSwitchIsOn }, set: model.setReceiveSwitch))
+                    .labelsHidden().toggleStyle(.switch).controlSize(.regular)
+                    .accessibilityLabel(L("Receive", "接收"))
+                    .disabled(!model.radiosAvailable)
+                    .help(model.radiosAvailable ? L("Turn off to quit anDrop", "关闭后退出 anDrop") : L("Turn on Bluetooth and Wi-Fi in Control Center", "请在控制中心开启蓝牙和 Wi-Fi"))
+            }.padding(.horizontal, 14).frame(height: 42)
+            Divider().padding(.horizontal, 14)
+            VStack(spacing: 0) {
+                ReceiveScopeRow(title: L("Trusted Devices Only", "仅限信任设备"), symbol: "person.crop.circle", selected: model.trustedOnly, enabled: model.receiveSwitchIsOn) { model.changeTrustedOnly(true) }
+                ReceiveScopeRow(title: L("Everyone", "所有人"), symbol: "person.2.fill", selected: !model.trustedOnly, enabled: model.receiveSwitchIsOn) { model.changeTrustedOnly(false) }
+            }.padding(.horizontal, 7).padding(.top, 5).padding(.bottom, 6)
+        }.frame(width: 308).onExitCommand(perform: model.closeReceiveControls)
     }
 }
 
@@ -1115,20 +1152,25 @@ struct ReceiveScopeRow: View {
     let selected: Bool
     let enabled: Bool
     let action: () -> Void
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var hovering = false
+    private var selectionOpacity: Double { contrast == .increased ? 0.24 : 0.12 }
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: symbol).font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(selected && enabled ? Color.accentColor : Color.secondary)
-                    .frame(width: 32, height: 32)
-                    .background(selected && enabled ? Color.white : Color.secondary.opacity(0.16), in: Circle())
-                Text(title).font(.system(size: 14, weight: .medium))
+            HStack(spacing: 8) {
+                Image(systemName: symbol).resizable().scaledToFit()
+                    .fontWeight(.medium).symbolRenderingMode(.monochrome)
+                    .frame(width: symbol == "person.2.fill" ? 18 : 16, height: 16)
+                    .foregroundStyle(selected && enabled ? Color(nsColor: .systemBlue) : Color.primary)
+                    .frame(width: 26, height: 26)
+                    .background(selected && enabled ? Color.white : Color.primary.opacity(0.12), in: Circle())
+                Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1)
                 Spacer(minLength: 0)
-            }.padding(6).contentShape(Rectangle())
-                .background(hovering && enabled ? Color.primary.opacity(0.07) : Color.clear, in: RoundedRectangle(cornerRadius: 9))
+            }.padding(.horizontal, 7).frame(height: 32).contentShape(Rectangle())
+                .background(Color.primary.opacity(enabled ? (selected ? selectionOpacity : hovering ? 0.06 : 0) : 0), in: RoundedRectangle(cornerRadius: 9))
         }.buttonStyle(.plain).disabled(!enabled).onHover { hovering = $0 }
             .accessibilityValue(selected ? L("Selected", "已选择") : L("Not selected", "未选择"))
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
