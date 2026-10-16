@@ -41,7 +41,10 @@ if let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns").fla
 let imageDirectory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 for language in ["zh", "en"] {
     UserDefaults.standard.setVolatileDomain([
-        "language": language, "trustedOnly": false, "trustedDevices": Data(), "rememberedDevices": Data(), "customSharingName": "", "peerAliases": [String: String](),
+        "language": language, "trustedOnly": false, "trustedDevices": try JSONEncoder().encode([
+            RememberedDevice(id: "00000000-0000-0000-0000-000000000001", name: language == "zh" ? "工作手机" : "Work phone", kind: "phone", brand: "OPPO"),
+            RememberedDevice(id: "00000000-0000-0000-0000-000000000002", name: language == "zh" ? "旅行平板" : "Travel tablet", kind: "tablet", brand: "OPPO"),
+        ]), "rememberedDevices": Data(), "customSharingName": "", "peerAliases": [String: String](),
         "destination": "~/Downloads", "enabled": true,
     ], forName: UserDefaults.argumentDomain)
     let model = AppModel()
@@ -69,6 +72,7 @@ for language in ["zh", "en"] {
     model.transfers = [
         Transfer(id: "mock-received", direction: "receive", peer: names[0], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000001", deviceKind: "phone", deviceBrand: "OPPO"),
         Transfer(id: "mock-sent", direction: "send", peer: names[1], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000002", deviceKind: "tablet", deviceBrand: "OPPO"),
+        Transfer(id: "mock-history", direction: "receive", peer: names[2], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000003", deviceKind: "phone", deviceBrand: "vivo"),
     ]
     model.peers = []
     try renderDocumentation(TrustedDevicesView(model: model), to: imageDirectory.appendingPathComponent("trusted-\(language).png"))

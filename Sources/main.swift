@@ -1088,9 +1088,29 @@ struct SettingsView: View {
                     Text(L("Trusted Devices Only", "仅限信任设备")).tag(true)
                     Text(L("Everyone", "所有人")).tag(false)
                 }
-                HStack {
-                    Text(L("\(model.trustedDevices.count) trusted devices", "\(model.trustedDevices.count) 台信任设备")).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if model.trustedDevices.isEmpty {
+                            Text(L("No trusted devices", "暂无信任设备"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        ForEach(model.trustedDevices) { device in
+                            HStack(spacing: 8) {
+                                RecipientAvatar(peer: device.peer)
+                                    .scaleEffect(0.5).frame(width: 36, height: 36)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(model.peerTitle(device.peer))
+                                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                                        .help(model.peerTitle(device.peer))
+                                    if device.peer.isAmbiguous(among: model.trustedDevices.map(\.peer), aliases: model.peerAliases, chinese: appLanguage() == "zh") {
+                                        Text(device.peer.distinguishingCode(among: model.trustedDevices.map(\.peer)))
+                                            .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
                     Button(L("Trusted Devices…", "信任设备…")) { managingTrustedDevices = true }
                 }
                 Text(L("Other devices can still see this Mac. In Trusted Devices Only mode, their transfer requests are rejected. Trusted devices still need your approval.", "未受信任的设备仍可发现此 Mac；选择“仅限信任设备”后，其传输请求会被拒绝。信任设备每次传输仍需你确认。"))
