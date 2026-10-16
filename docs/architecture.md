@@ -5,6 +5,7 @@
 | `Sources/main.swift` | AppKit menu bar, SwiftUI settings/recipient panel, notifications, login item, CoreBluetooth peripheral and GATT |
 | `Sources/ShareViewController.swift` | Finder Share extension; hands selected file URLs to the native host |
 | `Sources/BrandLogos.swift` | Cached, bundled official manufacturer images; no runtime image downloads |
+| `Sources/TransferProgress.swift` | Sending phases, bounded percentage and recipient snapshot for the progress view |
 | `Sources/discovery.py` | macOS repeat-advertisement delivery for live recipient expiry |
 | `Sources/Peer.swift` | Recipient presentation, local alias keys and duplicate-name disambiguation |
 | `Sources/peer_metadata.py` | Conservative advertisement metadata parsing and recipient identity across endpoint changes |

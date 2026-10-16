@@ -20,12 +20,14 @@ struct Transfer: Identifiable, Codable {
     var paths: [String] = []
     var date = Date()
     var active: Bool { !["complete", "failed", "declined", "cancelled"].contains(state) }
+    var progress: TransferProgress { TransferProgress(state: state, completed: completed, total: total) }
     var label: String {
         switch state {
         case "request": L("Incoming files", "接收确认")
         case "preparing": L("Preparing", "正在准备")
         case "waiting": L("Waiting for acceptance", "等待对方接收")
         case "connecting": L("Connecting", "正在连接")
+        case "confirming": L("Finishing", "正在确认完成")
         case "transferring": direction == "send" ? L("Sending", "正在发送") : L("Receiving", "正在接收")
         case "complete": direction == "send" ? L("Sent", "已发送") : L("Received", "已接收")
         case "declined": L("Declined", "已拒绝")
@@ -41,6 +43,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @Published var peers: [Peer] = []
     @Published private(set) var peerAliases = UserDefaults.standard.dictionary(forKey: "peerAliases") as? [String: String] ?? [:]
     @Published var transfers: [Transfer] = []
+    @Published var outgoing: OutgoingPresentation?
+    var outgoingTransfer: Transfer? { transfers.first { $0.id == outgoing?.id } }
+    var recipientFiles: [URL] { outgoing?.files ?? selectedFiles }
+    var visiblePeers: [Peer] { outgoing.map { [$0.peer] } ?? sortedPeers }
     @Published var selectedFiles: [URL] = []
     @Published var selectedPeer: String?
     @Published var tab = 0
@@ -154,6 +160,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @objc func quit() { NSApp.terminate(nil) }
     @objc func toggleEnabled() { changeReceiving(!receiving) }
     @objc func pickAndSend() { chooseFiles(); if !selectedFiles.isEmpty { showRecipients() } }
+    @objc func showSendProgress() { showRecipients() }
     @objc func cancelMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { cancel(t) } }
     @objc func revealMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { reveal(t) } }
     @objc func acceptMenu(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let t = transfers.first(where: { $0.id == id }) { decide(t, accept: true) } }
@@ -172,8 +179,9 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         menu.addItem(.separator()); add(L("Send Files…", "发送文件…"), #selector(pickAndSend)); menu.items.last?.isEnabled = receiving && !busy
         for t in transfers.filter(\.active) {
             menu.addItem(.separator())
-            let progress = t.total > 0 ? " \(Int(min(1,Double(t.completed)/Double(t.total))*100))%" : ""
+            let progress = t.state == "transferring" ? t.progress.percent.map { " \($0)%" } ?? "" : ""
             add("\(t.peer) — \(t.label)\(progress)")
+            if t.direction == "send", t.id == outgoing?.id { add(L("Show Progress…", "查看进度…"), #selector(showSendProgress)) }
             if t.state == "request" { add(L("Accept \(t.count) files", "接收 \(t.count) 个文件"), #selector(acceptMenu(_:)), id: t.id); add(L("Decline", "拒绝"), #selector(declineMenu(_:)), id: t.id) }
             else { add(L("Cancel This Transfer", "取消此次传输"), #selector(cancelMenu(_:)), id: t.id) }
         }
@@ -235,7 +243,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func closeRecipients() { recipientPanel?.close() }
     func showRecipients() {
         if recipientPanel?.isVisible != true { clearPeers() }
-        command(["command": "scan", "value": true])
+        command(["command": "scan", "value": outgoing == nil])
         if recipientPanel == nil {
             let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 360), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = L("Choose a Recipient", "选择接收设备"); panel.isReleasedWhenClosed = false; panel.hidesOnDeactivate = false; panel.delegate = self
@@ -273,6 +281,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func windowWillClose(_ notification: Notification) {
         if let closed = notification.object as? NSWindow, closed === recipientPanel {
             clearPeers(); command(["command": "scan", "value": false])
+            if outgoingTransfer?.active != true { outgoing = nil; selectedFiles = [] }
         }
     }
     private func clearPeers() {
@@ -313,10 +322,11 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         do { try p.run(); process = p; configureEngine() }
         catch { self.error = L("Could not start sharing: \(error.localizedDescription)", "无法启动共享：\(error.localizedDescription)") }
     }
-    func command(_ value: [String: Any]) {
-        guard let bytes = try? JSONSerialization.data(withJSONObject: value) else { return }
-        do { try input?.write(contentsOf: bytes + Data([10])) }
-        catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。") }
+    @discardableResult
+    func command(_ value: [String: Any]) -> Bool {
+        guard let input, let bytes = try? JSONSerialization.data(withJSONObject: value) else { return false }
+        do { try input.write(contentsOf: bytes + Data([10])); return true }
+        catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。"); return false }
     }
     func configureEngine() { configuredName = deviceName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage()]); command(["command": "enabled", "value": receiving]) }
     private func consume(_ data: Data) {
@@ -330,7 +340,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 var summary: [String: Any] = ["event": event, "time": Date().ISO8601Format(), "bluetooth": bluetooth, "advertising": peripheral?.isAdvertising ?? false, "advertisedName": advertisedName, "error": error]
                 if event == "peers" { summary["count"] = (value["peers"] as? [Any])?.count ?? 0 }
-                else if event == "transfer" { summary["id"] = value["id"]; summary["state"] = value["state"]; summary["detail"] = value["detail"] }
+                else if event == "transfer" { summary["id"] = value["id"]; summary["state"] = value["state"]; summary["detail"] = value["detail"]; summary["completed"] = value["completed"]; summary["total"] = value["total"] }
                 else { summary["detail"] = value["detail"] }
                 if let data = try? JSONSerialization.data(withJSONObject: summary) {
                     let url = folder.appendingPathComponent("status.json")
@@ -343,7 +353,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             switch event {
             case "ready":
                 engineReady = true; error = ""; advertise()
-                if recipientPanel?.isVisible == true { command(["command": "scan", "value": true]) }
+                if recipientPanel?.isVisible == true, outgoing == nil { command(["command": "scan", "value": true]) }
             case "ble_read":
                 if let obj = value["value"] { readValue = (try? JSONSerialization.data(withJSONObject: obj)) ?? Data() }
             case "ble_notify":
@@ -407,6 +417,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func clearHistory() { transfers.removeAll { !$0.active }; saveHistory() }
     func addFiles(_ urls: [URL]) {
+        if outgoingTransfer?.active != true { outgoing = nil }
         selectedFiles = Array(Set(selectedFiles + urls.filter(\.isFileURL))).sorted { $0.lastPathComponent < $1.lastPathComponent }; tab = 0
     }
     func chooseFiles() {
@@ -419,11 +430,17 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func send() {
         expirePeerUpdates()
-        guard let selectedPeer, let peer = peers.first(where: { $0.id == selectedPeer }), !selectedFiles.isEmpty, !busy, receiving else { return }
+        guard let selectedPeer, let peer = peers.first(where: { $0.id == selectedPeer }), !selectedFiles.isEmpty, !busy, receiving, engineReady else { return }
         var label = [peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh")].filter { !$0.isEmpty }.joined(separator: " · ")
         if peerIsAmbiguous(peer) { label += " · " + peer.distinguishingCode(among: peers) }
-        error = ""; command(["command": "send", "peer": selectedPeer, "peer_label": label, "paths": selectedFiles.map(\.path)])
-        recipientPanel?.close()
+        let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        outgoing = OutgoingPresentation(id: id, peer: peer, files: selectedFiles)
+        transfers.insert(Transfer(id: id, direction: "send", peer: label, state: "preparing", name: selectedFiles[0].lastPathComponent, count: selectedFiles.count), at: 0)
+        error = ""
+        if !command(["command": "send", "request_id": id, "peer": selectedPeer, "peer_label": label, "paths": selectedFiles.map(\.path)]) {
+            updateTransfer(["id": id, "state": "failed", "detail": L("Could not connect to the sharing service.", "无法连接到共享服务。")])
+        }
+        command(["command": "scan", "value": false]); clearPeers()
     }
     func decide(_ transfer: Transfer, accept: Bool) {
         command(["command": "decision", "id": transfer.id, "accept": accept]); UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [transfer.id])
@@ -560,18 +577,18 @@ struct RecipientView: View {
                     .resizable().frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("anDrop").font(.system(size: 19, weight: .semibold))
-                    Text(model.selectedFiles.count == 1 ? model.selectedFiles[0].lastPathComponent : L("\(model.selectedFiles.count) files", "\(model.selectedFiles.count) 个文件"))
+                    Text(model.recipientFiles.count == 1 ? model.recipientFiles[0].lastPathComponent : L("\(model.recipientFiles.count) files", "\(model.recipientFiles.count) 个文件"))
                         .font(.subheadline).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 12)
-                if let file = model.selectedFiles.first {
+                if let file = model.recipientFiles.first {
                     Image(nsImage: NSWorkspace.shared.icon(forFile: file.path))
                         .resizable().scaledToFit().frame(width: 32, height: 40)
                         .accessibilityHidden(true)
                 }
             }.padding(.bottom, 18)
             Divider()
-            if model.peers.isEmpty {
+            if model.visiblePeers.isEmpty {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.small)
                     Text(L("Looking for devices…", "正在查找设备…")).font(.subheadline)
@@ -581,7 +598,7 @@ struct RecipientView: View {
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                        ForEach(model.sortedPeers) { peer in
+                        ForEach(model.visiblePeers) { peer in
                             RecipientTile(model: model, peer: peer)
                         }
                     }.padding(.top, 18).padding(.bottom, 12)
@@ -589,13 +606,26 @@ struct RecipientView: View {
             }
             Divider()
             HStack(alignment: .center, spacing: 16) {
-                Text(model.peers.contains(where: model.peerIsAmbiguous)
-                     ? L("Same name? Make one device visible, then name it with the pencil.", "设备重名？请先只让一台可被发现，再点铅笔命名。")
-                     : L("Choose a device to send.", "选择要发送到的设备。"))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-                Button(L("Cancel", "取消")) { model.closeRecipients() }
-                    .keyboardShortcut(.cancelAction).controlSize(.large)
+                if let transfer = model.outgoingTransfer {
+                    Text(transfer.state == "failed" ? transfer.detail : transfer.active
+                         ? L("You can close this window. Sending continues.", "关闭窗口后仍会继续发送。")
+                         : transfer.progress.label(chinese: appLanguage() == "zh"))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                    Spacer(minLength: 0)
+                    if transfer.active {
+                        Button(L("Cancel Transfer", "取消传输")) { model.cancel(transfer) }
+                    }
+                    Button(transfer.active ? L("Close", "关闭") : L("Done", "完成")) { model.closeRecipients() }
+                        .keyboardShortcut(.cancelAction).controlSize(.large)
+                } else {
+                    Text(model.peers.contains(where: model.peerIsAmbiguous)
+                         ? L("Same name? Make one device visible, then name it with the pencil.", "设备重名？请先只让一台可被发现，再点铅笔命名。")
+                         : L("Choose a device to send.", "选择要发送到的设备。"))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button(L("Cancel", "取消")) { model.closeRecipients() }
+                        .keyboardShortcut(.cancelAction).controlSize(.large)
+                }
             }.padding(.top, 16)
         }.padding(20).frame(width: 420, height: 320)
     }
@@ -605,29 +635,70 @@ private struct RecipientTile: View {
     @ObservedObject var model: AppModel
     let peer: Peer
     @State private var hovered = false
-
+    private var transfer: Transfer? { model.outgoing?.peer.id == peer.id ? model.outgoingTransfer : nil }
+    private var accessibleName: String {
+        [model.peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh"), model.peerIsAmbiguous(peer) ? peer.distinguishingCode(among: model.peers) : ""]
+            .filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+    private var recipientContent: some View {
+        VStack(spacing: 9) {
+            RecipientAvatar(peer: peer)
+                .background { if let transfer { RecipientProgressRing(progress: transfer.progress) } }
+                .padding(6)
+            Text(model.peerTitle(peer)).font(.system(size: 12, weight: .medium))
+                .multilineTextAlignment(.center).lineLimit(2).frame(height: 30, alignment: .top)
+            if model.peerIsAmbiguous(peer) {
+                Text(peer.distinguishingCode(among: model.peers)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+            }
+        }.frame(maxWidth: .infinity).padding(.vertical, 5).contentShape(Rectangle())
+    }
     var body: some View {
         VStack(spacing: 5) {
-            Button { model.selectedPeer = peer.id; model.send() } label: {
-                VStack(spacing: 9) {
-                    RecipientAvatar(peer: peer)
-                    Text(model.peerTitle(peer)).font(.system(size: 12, weight: .medium))
-                        .multilineTextAlignment(.center).lineLimit(2).frame(height: 30, alignment: .top)
-                    if model.peerIsAmbiguous(peer) {
-                        Text(peer.distinguishingCode(among: model.peers)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-                    }
-                }.frame(maxWidth: .infinity).padding(.vertical, 5).contentShape(Rectangle())
+            if let transfer {
+                recipientContent.accessibilityElement(children: .ignore).accessibilityLabel(accessibleName)
+                Text(transfer.progress.label(chinese: appLanguage() == "zh"))
+                    .font(.system(size: 11)).monospacedDigit()
+                    .foregroundStyle(transfer.state == "failed" ? Color.red : Color.blue)
+                    .lineLimit(2).multilineTextAlignment(.center)
+                    .accessibilityLabel(transfer.progress.label(chinese: appLanguage() == "zh"))
+            } else {
+                Button { model.selectedPeer = peer.id; model.send() } label: { recipientContent }
+                    .buttonStyle(.plain).disabled(model.busy || !model.receiving)
+                    .help([model.peerTitle(peer), model.peerSubtitle(peer)].filter { !$0.isEmpty }.joined(separator: " · "))
+                    .accessibilityLabel(accessibleName)
+                    .contextMenu { Button(L("Name on This Mac…", "设置本机名称…")) { model.renamePeer(peer) } }
+                Button { model.renamePeer(peer) } label: { Image(systemName: "pencil").font(.system(size: 10)).frame(width: 24, height: 16) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).opacity(hovered ? 1 : 0.45)
+                    .help(L("Name on This Mac", "在此 Mac 上的名称"))
+                    .accessibilityLabel(L("Name \(model.peerTitle(peer)) on this Mac", "为 \(model.peerTitle(peer)) 设置本机名称"))
+                    .disabled(model.busy)
             }
-            .buttonStyle(.plain).disabled(model.busy || !model.receiving)
-            .help([model.peerTitle(peer), model.peerSubtitle(peer)].filter { !$0.isEmpty }.joined(separator: " · "))
-            .accessibilityLabel([model.peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh"), model.peerIsAmbiguous(peer) ? peer.distinguishingCode(among: model.peers) : ""].filter { !$0.isEmpty }.joined(separator: ", "))
-            .contextMenu { Button(L("Name on This Mac…", "设置本机名称…")) { model.renamePeer(peer) } }
-            Button { model.renamePeer(peer) } label: { Image(systemName: "pencil").font(.system(size: 10)).frame(width: 24, height: 16) }
-                .buttonStyle(.plain).foregroundStyle(.secondary).opacity(hovered ? 1 : 0.45)
-                .help(L("Name on This Mac", "在此 Mac 上的名称"))
-                .accessibilityLabel(L("Name \(model.peerTitle(peer)) on this Mac", "为 \(model.peerTitle(peer)) 设置本机名称"))
-                .disabled(model.busy)
         }.onHover { hovered = $0 }
+    }
+}
+
+private struct RecipientProgressRing: View {
+    let progress: TransferProgress
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if progress.showsRing {
+            ZStack {
+                Circle().stroke(Color.blue.opacity(0.15), lineWidth: 3)
+                if progress.isIndeterminate {
+                    TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+                        Circle().trim(from: 0, to: 0.22)
+                            .stroke(Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .rotationEffect(.degrees(reduceMotion ? -90 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4 * 360 - 90))
+                    }
+                } else {
+                    Circle().trim(from: 0, to: progress.fraction ?? 0)
+                        .stroke(Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(reduceMotion ? nil : .linear(duration: 0.2), value: progress.fraction)
+                }
+            }.frame(width: 72, height: 72).allowsHitTesting(false).accessibilityHidden(true)
+        }
     }
 }
 

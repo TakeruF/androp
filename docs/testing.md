@@ -24,7 +24,7 @@ Tests checked that the nearby name obeys the byte limit and transfer confirmatio
 swift test
 ```
 
-Twenty-seven Python tests and six Swift tests passed for version 0.1.1 (build 4). They cover:
+Thirty-four Python tests and ten Swift tests passed for version 0.1.1 (build 5). They cover:
 
 - Key exchange, encryption round trip and protocol parsing.
 - Japanese filenames, empty files and collision handling.
@@ -40,6 +40,9 @@ Twenty-seven Python tests and six Swift tests passed for version 0.1.1 (build 4)
 - Discovery expiry at the ten-second boundary, removal of cached connection routes, and rejection of stale sends.
 - Scanner startup/runtime failure, late callbacks, partial packets, sender-only advertisements and endpoint rotation.
 - Closing the chooser during file preparation without losing the already-selected route.
+- ZIP response byte counts including empty payloads, failed writes and cancellation.
+- Correlated send rejection without replacing another active transfer.
+- Progress range limits, indeterminate phases and the distinction between all bytes sent and receiver-confirmed completion in English and Chinese.
 
 ## Repository packaging verification
 
@@ -60,6 +63,14 @@ A phone and tablet were observed through live advertisements. During a user-oper
 The installed build was opened from Finder Share after the visibility-off test. Discovery updates continued normally with zero recipients and no scan error; the stopped recipients did not reappear. The full signed build passed deep/strict signature verification. No file was sent in this follow-up.
 
 The macOS scanner adapter explicitly requests repeat advertisement delivery while the chooser is open. It uses a custom Bleak backend with the pinned 3.0.2 implementation; dependency upgrades must recheck this adapter. It does not connect to a device just to keep its row alive. The UI additionally expires a silent discovery stream and clears on Bluetooth-off, engine restart and chooser closure.
+
+## Outgoing progress follow-up
+
+A 64 MiB test file was sent to the OPPO phone through Finder Share with build 5. The native app received outgoing byte updates at 0%, approximately 4%, 23%, 40%, 60% and 84%, followed by the full 67,109,030-byte ZIP response. It then entered Finishing and received the peer's completion acknowledgement. The file payload was 67,108,864 bytes; the difference is ZIP overhead. The final native window showed a full blue ring and Sent. A receiver-side file hash was not checked in this run because ADB was disconnected.
+
+An earlier attempt timed out waiting for acceptance and showed the failure state. A separate native preview with synthetic data verified the final 37% ring, readable logo, device badge and English percentage label; that preview is not an additional real transfer measurement. Automated tests cover phase labels in English and Chinese.
+
+The final full build and UI refinement passed deep/strict signature verification. The percentage is based on response bytes written by the Mac; receiver storage completion is reported separately after its protocol acknowledgement. Reopening progress through the menu bar is implemented but was not exercised during this short real transfer. The temporary test file remains on the receiving phone.
 
 ## Remaining validation
 

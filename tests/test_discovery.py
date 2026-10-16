@@ -85,7 +85,8 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
             await self.engine.send(ID,['unused-file'])
         client.assert_not_called()
         self.assertIsNone(self.engine.session)
-        self.assertEqual(self.events.call_args.args,('error',))
+        self.assertEqual(self.events.call_args.args,('transfer',))
+        self.assertEqual(self.events.call_args.kwargs['state'],'failed')
 
     async def test_send_keeps_selected_route_when_chooser_closes_during_preparation(self):
         async def close_during_open(operation,*args):

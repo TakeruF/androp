@@ -49,3 +49,11 @@ The chooser shows devices with a receiving advertisement heard within the last 1
 A send request rechecks freshness before preparing files; an expired route is not reused. Expiry does not cancel a transfer already started. A device can still go offline between selection and connection, which produces a normal connection error.
 
 anDrop cannot read another device's “everyone for 10 minutes” countdown. It observes Bluetooth advertisements rather than assuming that a device stays visible for a fixed ten-minute period. The exact OS visibility-switch time is not available to the Mac, so removal is not instantaneous.
+
+## Sending progress
+
+After choosing a recipient, the share window stays open. A blue ring grows clockwise around that recipient's icon, and the percentage appears below its name. The percentage uses bytes written to the outgoing ZIP response, including ZIP overhead, so empty files and batches also have a defined total. It is transport progress, not a measurement of the recipient's disk writes.
+
+Preparing, Waiting and Connecting use an indeterminate ring without a fabricated percentage. After all response bytes have been sent, the ring is full and the status is Finishing until the peer confirms completion. Only then does it say Sent. Failure and cancellation are separate terminal states.
+
+Cancel Transfer stops the operation. Close dismisses the window while sending continues; reopen it through Show Progress in the menu bar. The chosen recipient remains in this transfer view even if it stops advertising. It is a snapshot of the active transfer, not a discoverable recipient available for a new send. Normal discovery still expires independently.

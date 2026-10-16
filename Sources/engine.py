@@ -137,6 +137,15 @@ async def unpack(archive_path, destination, count, total, progress):
             except FileNotFoundError: pass
         raise
 
+async def stream_archive(response,archive,progress):
+    """Report actual ZIP response bytes, including overhead and empty files."""
+    total=archive.stat().st_size;sent=0;progress(0,total)
+    with archive.open('rb') as source:
+        while chunk:=source.read(1024*1024):
+            await response.write(chunk);sent+=len(chunk);progress(sent,total)
+    await response.write_eof()
+    return total
+
 class Engine:
     def __init__(self):
         self.destination=str(Path.home()/'Downloads');self.name='anDrop Mac';self.keys=Keys();self.session=None
@@ -301,13 +310,16 @@ class Engine:
             except Exception as e:
                 self.scan_token=None;self.clear_peers()
                 emit('scan_status',detail=t(f'Check Bluetooth: {e}',f'请检查蓝牙：{e}'));await asyncio.sleep(5)
-    async def send(self,peer_id,paths,peer_label=None):
-        if self.session:emit('error',detail=t('Wait for the current transfer to finish.','请等待当前传输完成。'));return
+    async def send(self,peer_id,paths,peer_label=None,request_id=None):
+        identifier=uuid.UUID(request_id).hex if request_id else uuid.uuid4().hex
+        label=peer_label[:200] if isinstance(peer_label,str) and peer_label else self.peers.get(peer_id,{}).get('name','Android')
+        s={'id':identifier,'direction':'send','peer':label}
+        if self.session:self.update(s,'failed',detail=t('Wait for the current transfer to finish.','请等待当前传输完成。'));return
         self.prune_peers()
         if not self.scan_enabled or not self.discovering or peer_id not in self.devices:
-            self.publish_peers();emit('error',detail=t('This device is no longer discoverable. Enable sharing on it and choose it again.','此设备已无法被发现。请在对方设备上开启互传后重新选择。'));return
+            self.publish_peers();self.update(s,'failed',detail=t('This device is no longer discoverable. Enable sharing on it and choose it again.','此设备已无法被发现。请在对方设备上开启互传后重新选择。'));return
         device=self.devices[peer_id]  # Keep the selected route while the chooser closes.
-        s={'id':uuid.uuid4().hex,'direction':'send','peer':peer_label[:200] if isinstance(peer_label,str) and peer_label else self.peers[peer_id]['name']};self.session=s;s['task']=asyncio.current_task();self.read_state()
+        self.session=s;s['task']=asyncio.current_task();self.read_state()
         runner=None;client=None;ws=None
         try:
             self.update(s,'preparing',name=Path(paths[0]).name if paths else '',count=len(paths))
@@ -327,13 +339,13 @@ class Engine:
                         with await asyncio.to_thread(p.open,'rb') as src,z.open(p.name,'w',force_zip64=True) as out:
                             while chunk:=src.read(1024*1024):out.write(chunk);await asyncio.sleep(0)
                 with zipfile.ZipFile(archive) as z:total=sum(e.file_size for e in z.infolist())
-                keys=Keys();done=asyncio.get_running_loop().create_future();queue=asyncio.Queue();allowed_ip=None;port=0;offered=False;downloaded=False;lan_confirmed=asyncio.Event()
+                keys=Keys();done=asyncio.get_running_loop().create_future();queue=asyncio.Queue();allowed_ip=None;port=0;offered=False;downloaded=False;acknowledged=False;lan_confirmed=asyncio.Event()
                 certkey=ec.generate_private_key(ec.SECP256R1());name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'anDrop')]);now=datetime.datetime.now(datetime.timezone.utc)
                 cert=x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(certkey.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now-datetime.timedelta(minutes=1)).not_valid_after(now+datetime.timedelta(days=1)).sign(certkey,hashes.SHA256())
                 (root/'cert').write_bytes(cert.public_bytes(serialization.Encoding.PEM));(root/'key').write_bytes(certkey.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()));(root/'key').chmod(0o600)
                 context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.load_cert_chain(root/'cert',root/'key')
                 async def socket_handler(req):
-                    nonlocal ws,offered,allowed_ip
+                    nonlocal ws,offered,allowed_ip,acknowledged
                     candidate=ipaddress.ip_address(req.remote)
                     if not candidate.is_private or candidate.is_loopback or ws is not None:raise web.HTTPForbidden()
                     allowed_ip=req.remote
@@ -365,8 +377,9 @@ class Engine:
                             elif kind=='action':
                                 await ws.send_str(wire('ack',index,action,p))
                                 if action=='status' and p.get('taskId')==s['id']:
-                                    if p.get('type')==1 and downloaded:
-                                        if not done.done():done.set_result(True)
+                                    if p.get('type')==1:
+                                        acknowledged=True
+                                        if downloaded and not done.done():done.set_result(True)
                                     elif p.get('type') in (2,3):
                                         if not done.done():done.set_exception(ValueError(t('The phone cancelled the transfer.','手机已取消传输。')))
                     finally:udp_task.cancel()
@@ -376,11 +389,16 @@ class Engine:
                     emit('diagnostic',detail=f'Download request: peer={req.remote==allowed_ip}, offered={offered}, task={req.query.get("taskId")==s["id"]}')
                     if req.remote!=allowed_ip or not offered or req.query.get('taskId')!=s['id']:raise web.HTTPForbidden()
                     response=web.StreamResponse(status=200,headers={'Content-Type':'application/zip','Content-Length':str(archive.stat().st_size),'Cache-Control':'no-store'})
-                    await response.prepare(req);sent=0
-                    with archive.open('rb') as src:
-                        while chunk:=src.read(1024*1024):
-                            await response.write(chunk);sent+=len(chunk);self.progress(s,min(sent,total),total)
-                    downloaded=True;await response.write_eof();return response
+                    await response.prepare(req)
+                    try:
+                        wire_total=await stream_archive(response,archive,lambda n,t:self.progress(s,n,t))
+                    except Exception as e:
+                        if not done.done():done.set_exception(e)
+                        raise
+                    downloaded=True
+                    self.update(s,'confirming',completed=wire_total,total=wire_total)
+                    if acknowledged and not done.done():done.set_result(True)
+                    return response
                 app=web.Application(client_max_size=131072);app.router.add_get('/websocket',socket_handler);app.router.add_get('/download',download)
                 client=BleakClient(device,timeout=15)
                 await client.connect();self.update(s,'connecting',total=total,count=len(files))
@@ -421,7 +439,6 @@ class Engine:
                             if allowed_ip!=confirmed:raise ValueError('Peer address mismatch')
                             lan_confirmed.set()
                             break
-                self.update(s,'transferring',total=total,completed=0)
                 await asyncio.wait_for(done, max(120,total/(256*1024)))
                 self.update(s,'complete',count=len(files),total=total,completed=total,files=[])
                 await asyncio.sleep(.6)
@@ -467,7 +484,7 @@ class Engine:
             elif command=='decision':
                 future=self.decisions.get(obj.get('id'))
                 if future and not future.done():future.set_result(bool(obj.get('accept')))
-            elif command=='send':await self.send(obj['peer'],obj['paths'],obj.get('peer_label'))
+            elif command=='send':await self.send(obj['peer'],obj['paths'],obj.get('peer_label'),obj.get('request_id'))
             elif command=='cancel' and self.session and self.session['id']==obj.get('id'):
                 s=self.session
                 if s.get('task'):s['task'].cancel()
