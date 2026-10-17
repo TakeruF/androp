@@ -10,8 +10,9 @@ from aiohttp import ClientSession
 from engine import Engine,Keys,wire,parse_wire,bu
 
 class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,ack_first=False,reject=False,wrong_peer=False,multiple=False):
-        jobs=[];downloads=[];events=[];keys=Keys();callback=None;attempts=[]
+    async def transfer(self,ack_first=False,reject=False,wrong_peer=False,multiple=False,declined=False,fixtures=None,expected_mime='file/*'):
+        jobs=[];downloads=[];events=[];keys=Keys();callback=None;attempts=[];offers=[];content_types=[];initial_offers=[]
+        if fixtures is None:fixtures=[('日本語.txt',b'fixture'),('empty.bin',b'')]
         async def peer(host,port):
             context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);context.check_hostname=False;context.verify_mode=ssl.CERT_NONE
             confirmed='192.168.99.2' if wrong_peer else '127.0.0.1'
@@ -25,7 +26,9 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         kind,index,name,p=parse_wire(m.data)
                         if name in ('wlanBandwidth','versionNegotiation'):await ws.send_str(wire('ack',index,name,{}))
                         elif name=='sendRequest':
+                            offers.append(p)
                             async with client.get(f'https://{host}:{port}/download',params={'taskId':p['id']},ssl=context) as response:
+                                content_types.append(response.headers['Content-Type'])
                                 downloads.append(await response.read())
                             await ws.send_str(wire('action',10,'status',{'taskId':p['id'],'type':1}));break
         class BLE:
@@ -40,27 +43,41 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 if data==b'cancel':return
                 p=json.loads(data)
                 if 'key' in p:
-                    keys.derive(p['key']);callback(None,json.dumps({'wlan':'wlan','ip':keys.encrypt('192.168.49.1')}).encode())
+                    keys.derive(p['key'])
+                    initial_offers.append({'type':keys.decrypt(p['type']),'number':keys.decrypt(p['number'])})
+                    if declined:
+                        callback(None,b'3');return
+                    callback(None,json.dumps({'wlan':'wlan','ip':keys.encrypt('192.168.49.1')}).encode())
                 else:
                     host=keys.decrypt(p['ip']);port=int(keys.decrypt(p['port']));attempts.append(host)
                     if reject or (multiple and len(attempts)==1):callback(None,json.dumps({'wlan':'wlan','wlan_accept':False}).encode())
                     else:jobs.append(asyncio.create_task(peer(host,port)))
         with tempfile.TemporaryDirectory() as folder:
             paths=[]
-            for name,data in [('日本語.txt',b'fixture'),('empty.bin',b'')]:
+            for name,data in fixtures:
                 path=Path(folder)/name;path.write_bytes(data);paths.append(str(path))
             engine=Engine();engine.discovering=True;engine.devices['peer']=SimpleNamespace(address='00000000-0000-0000-0000-000000000001');engine.peers['peer']={'name':'Fixture','last':time.monotonic()}
             addresses=['127.0.0.1','127.0.0.1'] if multiple else ['127.0.0.1']
             try:
                 with patch('engine.BleakClient',BLE),patch('engine.lan_addresses',return_value=addresses),patch('engine.private_ipv4',side_effect=lambda x:x=='127.0.0.1' or x=='192.168.99.2'),patch('engine.emit',side_effect=lambda event,**kw:events.append({'event':event,**kw})):
                     await asyncio.wait_for(engine.send('peer',paths),5)
-                terminals=[e for e in events if e.get('state') in ['complete','failed']]
-                self.assertEqual(terminals[-1]['state'],'failed' if reject or wrong_peer else 'complete')
-                self.assertEqual(len(downloads),0 if reject or wrong_peer else 1)
+                terminals=[e for e in events if e.get('state') in ['complete','failed','declined']]
+                self.assertEqual(terminals[-1]['state'],'declined' if declined else 'failed' if reject or wrong_peer else 'complete')
+                self.assertEqual(len(downloads),0 if declined or reject or wrong_peer else 1)
+                if declined:
+                    self.assertEqual(len(terminals),1)
+                    self.assertEqual(attempts,[])
                 self.assertIsNone(engine.session)
+                self.assertEqual(initial_offers,[{'type':expected_mime,'number':str(len(fixtures))}])
                 if downloads:
+                    self.assertEqual(offers[0]['mimeType'],expected_mime)
+                    self.assertEqual(offers[0]['fileName'],fixtures[0][0])
+                    self.assertEqual(offers[0]['fileCount'],len(fixtures))
+                    self.assertEqual(offers[0]['totalSize'],sum(len(data) for _,data in fixtures))
+                    self.assertEqual(content_types,['application/zip'])
                     with zipfile.ZipFile(io.BytesIO(downloads[0])) as z:
-                        self.assertEqual(z.read('日本語.txt'),b'fixture');self.assertEqual(z.read('empty.bin'),b'')
+                        self.assertEqual(z.namelist(),[name for name,_ in fixtures])
+                        for name,data in fixtures:self.assertEqual(z.read(name),data)
                 if multiple:self.assertEqual(len(attempts),2)
             finally:
                 for job in jobs:job.cancel()
@@ -70,7 +87,21 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_tls_connection_before_gatt_ack(self):await self.transfer()
     async def test_peer_address_mismatch_cannot_download(self):await self.transfer(wrong_peer=True)
     async def test_wlan_rejection_does_not_offer_files(self):await self.transfer(reject=True)
+    async def test_recipient_decline_is_distinct_from_transfer_failure(self):await self.transfer(declined=True)
     async def test_second_interface_after_explicit_rejection(self):await self.transfer(multiple=True)
+
+    async def test_typed_offers_preserve_zip_transport_and_contents(self):
+        for fixtures,mime in [
+            ([('書類.PDF',b'%PDF-1.4\nfixture')],'application/pdf'),
+            ([('photo.jpg',b'jpeg fixture')],'image/jpeg'),
+            ([('a.jpg',b'jpeg fixture'),('b.png',b'png fixture')],'image/*'),
+            ([('a.jpg',b'jpeg fixture'),('b.pdf',b'%PDF fixture')],'file/*'),
+        ]:
+            with self.subTest(mime=mime):
+                await self.transfer(fixtures=fixtures,expected_mime=mime)
+
+    async def test_pdf_type_reaches_approval_even_when_recipient_declines(self):
+        await self.transfer(fixtures=[('document.pdf',b'%PDF fixture')],expected_mime='application/pdf',declined=True)
 
     async def test_udp_failure_does_not_abort_working_control_channel(self):
         from unittest.mock import AsyncMock

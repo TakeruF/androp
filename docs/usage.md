@@ -8,7 +8,7 @@ To send from the Mac, select files in Finder → Share → anDrop, choose the re
 
 To receive, select files in the device's built-in compatible 互传 feature, choose the Mac and approve the request in anDrop's notification or menu bar. The default destination is Downloads itself. Files are not opened automatically.
 
-Folders should be compressed first. Send files with identical base names in separate transfers. One transfer runs at a time. Notification banners follow macOS notification and Focus settings; progress and approval remain available in the menu bar.
+Folders should be compressed first. Send files with identical base names in separate transfers. Outgoing transfers to different devices can run concurrently. Receiving remains exclusive. Notification banners follow macOS notification and Focus settings; progress and approval remain available in the menu bar.
 
 ## Recognizing recipients
 
@@ -30,13 +30,15 @@ Unlock the receiving device, enable its sharing feature and check discoverabilit
 
 This is different from the phone being unable to find the Mac because another Mac app interferes with anDrop's Bluetooth advertising. Also check the same Wi-Fi, Bluetooth, Local Network permission, and whether the network isolates clients.
 
-## Petal Interconnect
+## Petal Interconnect (鸿蒙星河互联)
 
-Concurrent discovery remains experimental. macOS may merge Bluetooth advertising data from multiple apps, causing anDrop's name to disappear. Transfers have succeeded, but the conflict can recur after app updates or restarts.
+**We recommend quitting Petal before sharing with anDrop.** anDrop can replace Petal's Huawei Share file-sharing function and send and receive files independently. Finish any transfers in Petal before quitting it, then retry in anDrop.
+
+Coexistence remains experimental. macOS may merge Bluetooth advertising data from multiple apps, causing anDrop's name to disappear. Transfers have succeeded, but conflicts can recur after app updates or restarts. When a send or receive fails and Petal is still running, anDrop shows a popup recommending that you quit Petal and try again. It does not quit Petal automatically, and the recommendation does not establish that Petal caused that failure.
 
 While Petal runs, anDrop shortens its discovery name to **A** and keeps a Dock icon. Once Petal quits, anDrop returns to menu-bar-only operation and its normal nearby name.
 
-**Settings → Repair Discovery with Petal** restarts Petal and re-registers anDrop's advertisement. Finish active Petal transfers first because restarting can interrupt them. anDrop never restarts Petal automatically. Repair does not guarantee recovery; quitting Petal while receiving is the current fallback.
+If you need to keep both apps running, **Settings → Repair Discovery with Petal** restarts Petal and re-registers anDrop's advertisement. Finish active Petal transfers first because restarting can interrupt them. anDrop never restarts Petal automatically. Repair does not guarantee recovery; quitting Petal is the recommended approach.
 
 ## Privacy on your local network
 
@@ -52,15 +54,15 @@ anDrop cannot read another device's “everyone for 10 minutes” countdown. It 
 
 ## Sending progress
 
-After choosing a recipient, the share window stays open. A blue ring grows clockwise around that recipient's icon, and the percentage appears below its name. The percentage uses bytes written to the outgoing ZIP response, including ZIP overhead, so empty files and batches also have a defined total. It is transport progress, not a measurement of the recipient's disk writes.
+Click a recipient to start sending immediately. The share window stays open and keeps other nearby devices clickable. Click another recipient to send the same files there too, even while the first transfer is running. Each recipient has its own progress and result; clicking a started recipient again does not duplicate the send. A blue ring grows clockwise around that recipient's icon, and the percentage appears below its name. The percentage uses bytes written to the outgoing ZIP response, including ZIP overhead, so empty files and batches also have a defined total. It is transport progress, not a measurement of the recipient's disk writes.
 
 Preparing, Waiting and Connecting use an indeterminate ring without a fabricated percentage. After all response bytes have been sent, the ring is full and the status is Finishing until the peer confirms completion. Only then does it say Sent. Failure and cancellation are separate terminal states.
 
-The single Cancel button dismisses the picker before a send starts and stops the transfer while it is active. Clicking another window keeps sending in the background; use Show Progress in the menu bar to return. The chosen recipient remains in this transfer view even if it stops advertising. It is a snapshot of the active transfer, not a discoverable recipient available for a new send. Normal discovery still expires independently.
+Cancel dismisses the picker before a send starts. During sending, each active recipient has its own Cancel action; **Cancel All** stops all active sends and pending retries. A failed or declined recipient can be retried without resending to successful recipients or interrupting another send. Clicking another window keeps sending in the background; use Show Progress in the menu bar to return. The chosen recipient remains in this transfer view even if it stops advertising. It is a snapshot of the active transfer, not a discoverable recipient available for a new send. Normal discovery still expires independently.
 
 ## Share popup behavior
 
-The recipient popup has no title bar or traffic-light window buttons. It has one footer button: Cancel before/during sending, or Done after a terminal result. Escape performs the same action. While a transfer is active, clicking another window moves the popup into the background and the transfer continues. After a successful send, clicking outside the popup or switching focus to another window dismisses it. Failed and cancelled transfers retain their result until dismissed.
+The recipient popup has no title bar or traffic-light window buttons. Its footer has Cancel before sending, Cancel All during sending, and Done after all recipients have a terminal result. Clicking a device starts sending without a separate Send button. Escape performs the same action. While a transfer is active, clicking another window moves the popup into the background and the transfer continues. After all recipients succeed, clicking outside the popup or switching focus to another window dismisses it. Failed and cancelled transfers retain their result until dismissed.
 
 ## Receive connection errors
 
@@ -68,7 +70,7 @@ A compatible sender may label the recipient as having rejected a transfer when a
 
 If receiving still fails, keep the sender's sharing screen open and verify both devices use the same Wi-Fi, then send again. Notifications show an actionable explanation; local diagnostics identify the failing stage without putting IP addresses or internal Python objects into the notification.
 
-The rename control uses the SF Symbols `pencil` beside the recipient name, including names wrapping onto two lines. Clicking the icon or name sends files; clicking the pencil opens the local-name editor.
+The rename control uses the SF Symbols `pencil` beside the recipient name, including names wrapping onto two lines. Clicking the icon or name starts sending immediately; clicking the pencil opens the local-name editor.
 
 The name itself is centered below the avatar, with the pencil immediately to its right. Short names such as “Example” fit on one line; longer names use up to two lines. The popup grows with the grid up to a bounded height, then scrolls only the recipient list while keeping the header and actions visible. The local-name editor is a compact sheet without an app-icon header.
 
@@ -80,6 +82,8 @@ Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Eve
 
 Open Settings → **Trusted Devices…** to add devices from previous transfers even when they are offline. New devices need one transfer in Everyone mode first. Device rows use manufacturer artwork with a phone/tablet badge. Verify the requesting device yourself. Different local identifier suffixes distinguish devices with identical names. Remove trust or forget a remembered device at any time.
 
-This filter uses Bluetooth identifiers remembered by this Mac, not account or device names. It is not cryptographic pairing or authenticated identity. Add a device again if its identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or connecting over Wi-Fi to download files. Removing trust does not interrupt an already-started transfer.
+Alliance devices use a hash of the self-reported protocol sender ID. Huawei devices use a SHA-256 fingerprint of the transfer public key, checked after the peer proves possession of its private key. Neither uses account names, device names or IP addresses for authorization. To enroll Huawei after updating, receive a file in Everyone mode and add its new record; older Huawei history has no key and cannot be migrated. Receive and enroll again if the key or identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or downloading files. Every accepted transfer still requires approval. Removing trust does not interrupt an already-started transfer.
+
+Huawei receiving currently accepts up to 16 files and 16 MiB total, including a single file up to 16 MiB. This receive limit is separate from the larger outgoing-file limits.
 
 Control Center integration is no longer included. Use the menu bar or Settings for receiving options. The former panel is preserved as an [independent UI prototype](../Prototypes/ReceivePanel/README.md), outside the installed app. If an old control remains after upgrading, remove that anDrop item in Edit Controls.

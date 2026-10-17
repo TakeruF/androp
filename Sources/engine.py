@@ -4,9 +4,10 @@
 """anDrop local interoperability engine. JSON-lines IPC with its native host.
 No cloud, saved peer credentials, or USB transport. One transfer at a time.
 """
-import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, socket, ssl, stat, sys, tempfile, time, uuid, zipfile
+import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, signal, socket, ssl, stat, sys, tempfile, time, uuid, zipfile
 from pathlib import Path, PurePosixPath
 from peer_metadata import parse_peer_metadata, peer_identifier
+from file_types import offer_mime_type
 from network_routes import lan_addresses, private_ipv4, direct_local_address, interface_for_address, bind_interface, lan_socket, client_socket_factory
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, Fingerprint, WSMsgType, ClientConnectionError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
 from bleak import BleakClient, BleakScanner
@@ -67,7 +68,8 @@ def sender_identifier(value):
 
 def valid_trust_identifier(value):
     if not isinstance(value,str):return None
-    if value.startswith('sender:') and len(value)==71 and all(c in '0123456789abcdef' for c in value[7:]):return value
+    for prefix in ('sender:', 'huawei-key:'):
+        if value.startswith(prefix) and len(value)==len(prefix)+64 and all(c in '0123456789abcdef' for c in value[len(prefix):]):return value
     try:return str(uuid.UUID(value)).upper()
     except ValueError:return None
 
@@ -213,10 +215,25 @@ class Engine:
         self.trusted_only=False;self.trusted_ids=set()
         self.destination=str(Path.home()/'Downloads');self.name='anDrop Mac';self.keys=Keys();self.session=None
         self.scanner=None;self.scan_token=None;self.devices={};self.peers={};self.decisions={};self.scan_enabled=True;self.discovering=False;self.jobs=set()
+        self.outgoing={}
+        self.huawei_enabled=True
+        from huawei_runtime import HuaweiRuntime
+        self.huawei=HuaweiRuntime(self,emit)
     def launch(self,coro):
         task=asyncio.create_task(coro);self.jobs.add(task);task.add_done_callback(self.jobs.discard);return task
     def read_state(self):
-        emit('ble_read',uuid='9898',value={'state':1 if self.session else 0,'key':self.keys.public,'version':'10014','isFast':0,'pv':4})
+        emit('ble_read',uuid='9898',value={'state':1 if self.busy else 0,'key':self.keys.public,'version':'10014','isFast':0,'pv':4})
+    @property
+    def busy(self):
+        return bool(self.session or self.outgoing)
+    def start_outgoing(self,s,peer_id):
+        # Reserve before the first await so concurrent commands cannot duplicate
+        # a destination or steal a receive session. Each sender owns its keys,
+        # sockets, archive and cancellation task.
+        if self.session or s['id'] in self.outgoing or any(x['peer_id']==peer_id for x in self.outgoing.values()):
+            return False
+        s['peer_id']=peer_id;s['task']=asyncio.current_task()
+        self.outgoing[s['id']]=s;self.read_state();return True
     def notify(self,value,central=None):
         data=value if isinstance(value,str) else json.dumps(value,separators=(',',':'))
         emit('ble_notify',uuid='9895',data=base64.b64encode(data.encode()).decode(),central=central)
@@ -228,6 +245,8 @@ class Engine:
         if now-s.get('last_progress',0)>.2 or n>=total:
             s['last_progress']=now;self.update(s,'transferring',completed=n,total=total)
     async def reset(self,s):
+        if self.outgoing.get(s['id']) is s:
+            self.outgoing.pop(s['id']);self.read_state()
         if self.session is s:
             self.session=None;self.keys=Keys();self.read_state()
     def may_receive(self,central,sender=None):
@@ -237,9 +256,15 @@ class Engine:
         # permits metadata only; receipt and the download endpoint stay gated.
         return self.scan_enabled and (self.may_receive(central) or any(x.startswith('sender:') for x in self.trusted_ids))
     async def approve_receive(self,s,metadata):
-        identity=sender_identifier(metadata.get('senderId'))
+        if s.get('protocol')=='huawei':
+            # Set only by the receive handshake after proving possession of the
+            # peer RSA key. Discovery names, IPs and senderId never authorize it.
+            identity=valid_trust_identifier(s.get('device_identifier'))
+            if not identity or not identity.startswith('huawei-key:'):identity=None
+        else:identity=sender_identifier(metadata.get('senderId'))
         if identity:s['device_identifier']=identity
-        if not self.scan_enabled or not self.may_receive(s['central'],identity):
+        enabled=lambda:self.huawei_enabled if s.get('protocol')=='huawei' else self.scan_enabled
+        if not enabled() or not self.may_receive(s['central'],identity):
             emit('diagnostic',detail='receive_untrusted_sender')
             return False
         future=asyncio.get_running_loop().create_future();self.decisions[s['id']]=future
@@ -247,7 +272,7 @@ class Engine:
         try:accepted=await asyncio.wait_for(future,28)
         except TimeoutError:accepted=False
         finally:self.decisions.pop(s['id'],None)
-        return bool(accepted and self.session is s and self.scan_enabled and self.may_receive(s['central'],identity))
+        return bool(accepted and self.session is s and enabled() and self.may_receive(s['central'],identity))
     def may_access_control(self,central):
         if not isinstance(central,str):return False
         try:identifier=str(uuid.UUID(central)).upper()
@@ -265,7 +290,7 @@ class Engine:
         if not isinstance(payload,dict): return
         if 'key' in payload:
             if not self.may_negotiate(central): self.notify('3',central);return
-            if self.session: self.notify('3',central);return
+            if self.busy: self.notify('3',central);return
             keys=self.keys;keys.derive(payload['key']);count=int(keys.decrypt(payload['number']))
             if not 1<=count<=10000: self.notify('3',central);return
             s={'id':uuid.uuid4().hex,'direction':'receive','peer':keys.decrypt(payload.get('device_name',''))[:100] or 'Android','central':central,'keys':keys,'count':count}
@@ -420,7 +445,8 @@ class Engine:
                 self.peers.pop(identifier,None);self.devices.pop(identifier,None)
     def publish_peers(self):
         self.prune_peers()
-        emit('peers',peers=[{k:v for k,v in p.items() if k!='last'} for p in self.peers.values()])
+        emit('peers',peers=[{k:v for k,v in p.items() if k!='last'} for p in self.peers.values()]
+             + (self.huawei.visible_peers() if self.huawei_enabled and self.discovering else []))
     def discovered(self,device,ad):
         if not self.scan_enabled or not self.discovering:return
         if bu('3333') not in ad.service_data:return  # A partial advertisement is not a withdrawal.
@@ -464,16 +490,20 @@ class Engine:
                 self.scan_token=None;self.clear_peers()
                 emit('scan_status',detail=t(f'Check Bluetooth: {e}',f'请检查蓝牙：{e}'));await asyncio.sleep(5)
     async def send(self,peer_id,paths,peer_label=None,request_id=None):
+        if request_id and uuid.UUID(request_id).hex in self.outgoing:
+            return  # Repeated delivery of one command must not corrupt its result.
+        if isinstance(peer_id,str) and peer_id.startswith('huawei:'):
+            await self.huawei.send(peer_id,paths,peer_label,request_id);return
         identifier=uuid.UUID(request_id).hex if request_id else uuid.uuid4().hex
         label=peer_label[:200] if isinstance(peer_label,str) and peer_label else self.peers.get(peer_id,{}).get('name','Android')
         s={'id':identifier,'direction':'send','peer':label}
-        if self.session:self.update(s,'failed',detail=t('Wait for the current transfer to finish.','请等待当前传输完成。'));return
         self.prune_peers()
         if not self.scan_enabled or not self.discovering or peer_id not in self.devices:
             self.publish_peers();self.update(s,'failed',detail=t('This device is no longer discoverable. Enable sharing on it and choose it again.','此设备已无法被发现。请在对方设备上开启互传后重新选择。'));return
         device=self.devices[peer_id]  # Keep the selected route while the chooser closes.
         s['device_identifier']=device.address
-        self.session=s;s['task']=asyncio.current_task();self.read_state()
+        if not self.start_outgoing(s,peer_id):
+            self.update(s,'failed',detail=t('This device or the receiver is busy. Please try again shortly.','此设备或接收服务正忙，请稍后重试。'));return
         runner=None;client=None;ws=None
         try:
             self.update(s,'preparing',name=Path(paths[0]).name if paths else '',count=len(paths))
@@ -493,6 +523,7 @@ class Engine:
                         with await asyncio.to_thread(p.open,'rb') as src,z.open(p.name,'w',force_zip64=True) as out:
                             while chunk:=src.read(1024*1024):out.write(chunk);await asyncio.sleep(0)
                 with zipfile.ZipFile(archive) as z:total=sum(e.file_size for e in z.infolist())
+                mime_type=offer_mime_type(files)
                 keys=Keys();done=asyncio.get_running_loop().create_future();queue=asyncio.Queue();allowed_ip=None;confirmed_ip=None;port=0;offered=False;downloaded=False;acknowledged=False;lan_confirmed=asyncio.Event();channel_connected=asyncio.Event()
                 certkey=ec.generate_private_key(ec.SECP256R1());name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'anDrop')]);now=datetime.datetime.now(datetime.timezone.utc)
                 cert=x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(certkey.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now-datetime.timedelta(minutes=1)).not_valid_after(now+datetime.timedelta(days=1)).sign(certkey,hashes.SHA256())
@@ -529,7 +560,7 @@ class Engine:
                             elif kind=='ack' and action=='versionNegotiation':
                                 await asyncio.wait_for(lan_confirmed.wait(),8)
                                 offered=True
-                                await ws.send_str(wire('action',2,'sendRequest',{'id':s['id'],'senderId':s['id'][:12],'senderName':self.name,'fileName':files[0].name,'fileCount':len(files),'number':str(len(files)),'totalSize':total,'mimeType':'file/*','wlan':True}))
+                                await ws.send_str(wire('action',2,'sendRequest',{'id':s['id'],'senderId':s['id'][:12],'senderName':self.name,'fileName':files[0].name,'fileCount':len(files),'number':str(len(files)),'totalSize':total,'mimeType':mime_type,'wlan':True}))
                             elif kind=='action':
                                 await ws.send_str(wire('ack',index,action,p))
                                 if action=='status' and p.get('taskId')==s['id']:
@@ -565,13 +596,17 @@ class Engine:
                 except Exception as e:
                     # OPPO omits a CCC descriptor, but sends notifications. CoreBluetooth delivers them after this request.
                     if 'CBATTErrorDomain Code=10' not in str(e):raise
-                initial={'key':keys.public,'version':keys.encrypt('10014'),'pv':4,'isFast':0,'number':keys.encrypt(str(len(files))),'type':keys.encrypt('file/*'),'device_name':keys.encrypt(self.name),'random_code':keys.encrypt('')}
+                # The approval card is shown from this BLE metadata, before the
+                # receiver can see the later WebSocket sendRequest.
+                initial={'key':keys.public,'version':keys.encrypt('10014'),'pv':4,'isFast':0,'number':keys.encrypt(str(len(files))),'type':keys.encrypt(mime_type),'device_name':keys.encrypt(self.name),'random_code':keys.encrypt('')}
                 await client.write_gatt_char(bu('9896'),json.dumps(initial,separators=(',',':')).encode(),response=True)
                 self.update(s,'waiting',name=files[0].name,count=len(files),total=total)
                 async with asyncio.timeout(60):
                     while True:
                         raw=await queue.get()
-                        if raw==b'3':raise TransferError(t('The recipient declined the files.','对方已拒绝接收文件。'))
+                        if raw==b'3':
+                            self.update(s,'declined',detail=t('The recipient declined the files.','对方已拒绝接收文件。'))
+                            return
                         if raw.startswith(b'{'):
                             p=json.loads(raw)
                             emit('diagnostic',detail='send_offer_fields',fields=list(p))
@@ -622,14 +657,16 @@ class Engine:
             emit('diagnostic',detail='send_failed',transfer_id=s['id'],phase=s.get('state'),error_type=type(e).__name__,errno=getattr(e,'errno',None))
             self.update(s,'failed',detail=transfer_error_detail(e,receiving=False))
         finally:
-            if client and client.is_connected:
-                if s.get('state')!='complete':
-                    try:await client.write_gatt_char(bu('9894'),b'cancel',response=True)
-                    except Exception:pass
-                await client.disconnect()
-            if ws is not None and not ws.closed:await ws.close()
-            if runner:await runner.cleanup()
-            await self.reset(s)
+            try:
+                if client and client.is_connected:
+                    if s.get('state')!='complete':
+                        try:await client.write_gatt_char(bu('9894'),b'cancel',response=True)
+                        except Exception:pass
+                    await client.disconnect()
+                if ws is not None and not ws.closed:await ws.close()
+                if runner:await runner.cleanup()
+            finally:
+                await self.reset(s)
     def local_ipv4(self):
         addresses=lan_addresses()
         if not addresses:raise TransferError(t('No active local network address. Connect Wi-Fi or Ethernet and try again.','未找到可用的局域网地址。请连接 Wi-Fi 或以太网后重试。'))
@@ -643,6 +680,7 @@ class Engine:
                 self.trusted_only=bool(obj.get('trusted_only',False))
                 self.trusted_ids={identifier for value in obj.get('trusted_ids',[]) if (identifier:=valid_trust_identifier(value))}
                 self.destination=obj.get('destination',self.destination);self.name=obj.get('name',self.name);self.read_state()
+                self.huawei_enabled=bool(obj.get('huawei_enabled',self.scan_enabled))
             elif command=='enabled':
                 self.scan_enabled=bool(obj.get('value'))
                 if not self.scan_enabled:self.clear_peers()
@@ -653,12 +691,23 @@ class Engine:
             elif command=='subscribe':
                 if obj.get('uuid')=='9895' and self.may_access_control(obj.get('central')):self.notify('ready',obj.get('central'))
             elif command=='write':await self.receive_write(obj)
+            elif command=='huawei_datagram':self.huawei.datagram(obj)
             elif command=='decision':
                 future=self.decisions.get(obj.get('id'))
                 if future and not future.done():future.set_result(bool(obj.get('accept')))
             elif command=='send':await self.send(obj['peer'],obj['paths'],obj.get('peer_label'),obj.get('request_id'))
+            elif command=='cancel' and obj.get('id') in self.outgoing:
+                s=self.outgoing[obj['id']];s['cancel_requested']=True
+                task=s.get('task')
+                if task:
+                    task.cancel();await asyncio.gather(task,return_exceptions=True)
             elif command=='cancel' and self.session and self.session['id']==obj.get('id'):
                 s=self.session;s['cancel_requested']=True
+                if s.get('protocol')=='huawei':
+                    self.huawei.cancel_receive()
+                    if s.get('task'):
+                        s['task'].cancel();await asyncio.gather(s['task'],return_exceptions=True)
+                    return
                 if s.get('task'):
                     task=s['task'];task.cancel();await asyncio.gather(task,return_exceptions=True)
                     if self.session is s:
@@ -670,21 +719,37 @@ class Engine:
                     if future and not future.done():future.set_result(False)
                     else:self.notify('cancel',s.get('central'));self.update(s,'cancelled');await self.reset(s)
         except Exception as e:
+            if obj.get('command') in ('send','cancel'):
+                # An invalid request must not cancel a different destination.
+                emit('error',detail=t('Could not process the transfer request.','无法处理传输请求。'));return
             if obj.get('command')=='write' and self.session and obj.get('central')!=self.session.get('central'):
                 emit('diagnostic',detail='ignored_unrelated_invalid_write');return
             if self.session:
                 s=self.session;self.notify('cancel',s.get('central'));self.update(s,'failed',detail=transfer_error_detail(e,receiving=s.get('direction')=='receive'));await self.reset(s)
             else:emit('error',detail=str(e))
     async def run(self):
-        self.read_state();self.launch(self.scanning());emit('ready')
+        loop=asyncio.get_running_loop();main_task=asyncio.current_task()
+        loop.add_signal_handler(signal.SIGTERM,main_task.cancel)
+        self.read_state();self.launch(self.scanning());self.launch(self.huawei.run());emit('ready')
         reader=asyncio.StreamReader(limit=1048576);protocol=asyncio.StreamReaderProtocol(reader)
         await asyncio.get_running_loop().connect_read_pipe(lambda:protocol,sys.stdin)
-        while line:=await reader.readline():
-            try:self.launch(self.command(json.loads(line)))
-            except Exception:emit('error',detail='Invalid app command')
-        for task in list(self.jobs):task.cancel()
-        await asyncio.gather(*self.jobs,return_exceptions=True)
+        try:
+            while line:=await reader.readline():
+                try:self.launch(self.command(json.loads(line)))
+                except Exception:emit('error',detail='Invalid app command')
+        finally:
+            self.huawei.cancel()
+            for task in list(self.jobs):task.cancel()
+            await asyncio.gather(*self.jobs,return_exceptions=True)
+            loop.remove_signal_handler(signal.SIGTERM)
 
 if __name__=='__main__':
+    sys.modules.setdefault('engine',sys.modules[__name__])
     os.umask(0o077)
-    asyncio.run(Engine().run())
+    if sys.argv[1:2]==['--huawei-send']:
+        from huawei_runtime import send_worker
+        send_worker()
+    elif sys.argv[1:2]==['--huawei-check']:
+        from huawei_runtime import runtime_check
+        runtime_check()
+    else:asyncio.run(Engine().run())

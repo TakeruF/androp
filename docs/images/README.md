@@ -6,9 +6,9 @@ These PNGs are rendered from the production recipient, settings and trusted-devi
 
 | Filename | Scene |
 | --- | --- |
-| `recipients-zh.png`, `recipients-en.png` | Four fictional phones/tablets with brand badges and local-name controls |
-| `sending-zh.png`, `sending-en.png` | Synthetic 42% outgoing transfer of `Project.pdf` |
-| `trusted-zh.png`, `trusted-en.png` | Two offline devices from fictional transfer history, with Add buttons |
+| `recipients-zh.png`, `recipients-en.png` | Six fictional phone/tablet/computer candidates, including Huawei, with brand/type badges |
+| `sending-zh.png`, `sending-en.png` | Independent synthetic 42% and 68% sends of `Project.pdf` to OPPO and Huawei recipients |
+| `trusted-zh.png`, `trusted-en.png` | Offline OPPO phone/tablet and Huawei phone from fictional history, with trust controls |
 | `settings-zh.png`, `settings-en.png` | Mock `Studio Mac`, `~/Downloads`, languages, notifications, automatic updates and footer links |
 
 ## Regenerate on macOS
@@ -19,7 +19,7 @@ From the repository root, with the Swift build tools described in [building](../
 python3 scripts/render-docs.py
 ```
 
-The script compiles a disposable copy of the production UI and appends `scripts/DocumentationPreview.swift`. It uses a separate bundle identifier and a volatile preferences domain. The system Computer Name getter is replaced with a fixed mock value in that disposable build only. No app delegate is installed, no window is shown, and Bluetooth, notifications, the transfer engine and login items are not started. The mock Settings viewport is expanded to include update controls and footer links in one image; the real app uses a scrollable window. It renders the views directly to 2× PNGs and removes EXIF, text and timestamp metadata. It does not read real history, connect to devices or change the installed app.
+The script compiles a disposable copy of the production UI and appends `scripts/DocumentationPreview.swift`. It uses a separate bundle identifier and a volatile preferences domain. The system Computer Name getter is replaced with a fixed mock value in that disposable build only. No app delegate is installed, no window is shown, and Bluetooth, notifications, the transfer engine and login items are not started. The mock Settings and recipient viewports are expanded to include all controls in each image; the real app uses bounded, scrollable windows. The version label comes from `release.json`. It renders the views directly to 2× PNGs and removes EXIF, text and timestamp metadata. It does not read real history, connect to devices or change the installed app.
 
 Review all eight images after changing UI or localization. The capture of a SwiftUI view does not include macOS window shadows, the menu bar, permission dialogs or system notification banners; those are not simulated here. Build/runtime logs belong outside this folder.
 

@@ -81,6 +81,15 @@
       "source": "https://www.samsung.com.cn/",
       "processing": "Inline header SVG; added XML namespace and normalized viewBox capitalization.",
       "sha256": "7764dfbe7fa2ef5fcfe01a008a71a685ab9dfc0cb225c76ed5a42d96d9402913"
+    },
+    {
+      "brand": "Huawei",
+      "file": "huawei.png",
+      "official_page": "https://consumer.huawei.com/cn/",
+      "source": "https://consumer.huawei.com/content/dam/huawei-cbg-site/common/huawei-logo.png",
+      "processing": "Downloaded unchanged from the official favicon link (96px transparent emblem).",
+      "retrieved_on": "2026-10-17",
+      "sha256": "0cd39fe6844ae1dd1db39b5463ce77939863b29102f7c91e82eec49c01c35306"
     }
   ]
 }

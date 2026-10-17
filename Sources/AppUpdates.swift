@@ -3,6 +3,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import UserNotifications
 #if canImport(Sparkle) && !APP_STORE
 import Sparkle
 #endif
@@ -23,6 +24,8 @@ final class AppUpdates: NSObject, ObservableObject {
     private var postponedInstall: (() -> Void)?
     private var didPresentReadyAlert = false
     private(set) var installing = false
+    static let notificationID = "org.androp.update"
+    private static let pendingVersionKey = "anDropPendingUpdateVersion"
     #if canImport(Sparkle) && !APP_STORE
     private var controller: SPUStandardUpdaterController?
     #endif
@@ -31,7 +34,7 @@ final class AppUpdates: NSObject, ObservableObject {
         self.hasActiveTransfers = hasActiveTransfers
         #if canImport(Sparkle) && !APP_STORE
         guard controller == nil else { return }
-        let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
+        let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: self)
         self.controller = controller
         controller.updater.publisher(for: \.canCheckForUpdates).receive(on: RunLoop.main).assign(to: &$canCheck)
         controller.updater.publisher(for: \.automaticallyChecksForUpdates).receive(on: RunLoop.main).assign(to: &$automaticallyChecks)
@@ -42,6 +45,7 @@ final class AppUpdates: NSObject, ObservableObject {
             controller.updater.checkForUpdatesInBackground()
         }
         #endif
+        notifyIfJustUpdated()
     }
 
     func setAutomaticallyChecks(_ value: Bool) {
@@ -69,9 +73,36 @@ final class AppUpdates: NSObject, ObservableObject {
             self.postponedInstall = nil
             installing = true
             postponedInstall()
-        } else if readyInstall != nil && !didPresentReadyAlert {
-            presentReadyUpdate()
+        } else if readyInstall != nil {
+            installReadyUpdate()
         }
+    }
+    func notificationClicked() {
+        if readyInstall != nil { presentReadyUpdate(force: true); return }
+        #if canImport(Sparkle) && !APP_STORE
+        controller?.checkForUpdates(nil)
+        #endif
+    }
+    /// Automatic updates install as soon as no transfer is running, so the
+    /// user only sees a notification instead of a restart prompt.
+    private func installReadyUpdate() {
+        guard !hasActiveTransfers(), let readyInstall, let readyVersion else { return }
+        UserDefaults.standard.set(readyVersion, forKey: Self.pendingVersionKey)
+        installing = true
+        readyInstall()
+    }
+    private func notifyIfJustUpdated() {
+        guard let pending = UserDefaults.standard.string(forKey: Self.pendingVersionKey) else { return }
+        UserDefaults.standard.removeObject(forKey: Self.pendingVersionKey)
+        guard pending == Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { return }
+        postNotification(L("anDrop updated to \(pending)", "anDrop 已更新到 \(pending)"), L("The latest version is installed and running.", "新版本已安装并正在运行。"))
+    }
+    private func postNotification(_ title: String, _ body: String) {
+        let content = UNMutableNotificationContent(); content.title = title; content.body = body
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: Self.notificationID, content: content, trigger: nil))
+    }
+    private func removeNotification() {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Self.notificationID])
     }
     private func presentReadyUpdate(force: Bool = false) {
         guard !hasActiveTransfers(), let readyInstall, let readyVersion, force || !didPresentReadyAlert else { return }
@@ -105,7 +136,12 @@ extension AppUpdates: SPUUpdaterDelegate {
         readyVersion = item.displayVersionString
         readyInstall = immediateInstallHandler
         didPresentReadyAlert = false
-        Task { @MainActor [weak self] in self?.presentReadyUpdate() }
+        if hasActiveTransfers() {
+            postNotification(L("anDrop \(item.displayVersionString) is ready", "anDrop \(item.displayVersionString) 已就绪"), L("It will install automatically after the current transfer finishes.", "当前传输完成后将自动安装。"))
+        } else {
+            postNotification(L("Updating anDrop to \(item.displayVersionString)", "正在将 anDrop 更新到 \(item.displayVersionString)"), L("anDrop will restart in a moment.", "anDrop 将很快重新启动。"))
+            Task { @MainActor [weak self] in self?.installReadyUpdate() }
+        }
         return true
     }
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
@@ -113,7 +149,20 @@ extension AppUpdates: SPUUpdaterDelegate {
         readyInstall = nil
         postponedInstall = nil
         readyVersion = nil
+        UserDefaults.standard.removeObject(forKey: Self.pendingVersionKey)
     }
+}
+
+// Scheduled checks without automatic installation post a notification
+// instead of opening Sparkle's alert behind other apps.
+extension AppUpdates: SPUStandardUserDriverDelegate {
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+    func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool { false }
+    func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
+        guard !handleShowingUpdate else { return }
+        postNotification(L("anDrop \(update.displayVersionString) is available", "anDrop \(update.displayVersionString) 可供更新"), L("Click to view and install the update.", "点按查看并安装更新。"))
+    }
+    func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) { removeNotification() }
 }
 #endif
 
@@ -127,14 +176,14 @@ struct UpdateSettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(text("Updates", "更新")).font(.headline)
                 Toggle(text("Check for updates automatically", "自动检查更新"), isOn: Binding(get: { updates.automaticallyChecks }, set: updates.setAutomaticallyChecks))
-                Toggle(text("Download updates automatically", "自动下载更新"), isOn: Binding(get: { updates.automaticallyDownloads }, set: updates.setAutomaticallyDownloads))
+                Toggle(text("Install updates automatically", "自动安装更新"), isOn: Binding(get: { updates.automaticallyDownloads }, set: updates.setAutomaticallyDownloads))
                     .disabled(!updates.automaticallyChecks)
                 HStack {
                     Button(updates.readyVersion == nil ? text("Check for Updates…", "检查更新…") : text("Install Downloaded Update…", "安装已下载的更新…"), action: updates.checkForUpdates)
                         .disabled(busy || (!updates.canCheck && updates.readyVersion == nil))
                     if let version = updates.readyVersion { Text(text("Version \(version) ready", "版本 \(version) 已就绪")).font(.caption).foregroundStyle(.secondary) }
                 }
-                Text(busy ? text("Updates wait until transfers finish.", "传输完成后才能更新。") : text("Downloads are verified before installation. anDrop will prompt you when an automatic download is ready.", "更新会先通过验证，自动下载完成后再提示你安装。"))
+                Text(busy ? text("Updates wait until transfers finish.", "传输完成后才能更新。") : (updates.automaticallyDownloads && updates.automaticallyChecks ? text("Updates are verified, then installed automatically when no transfer is running. You'll get a notification when anDrop updates.", "更新通过验证后，会在没有传输时自动安装，并通过通知告知你。") : text("You'll get a notification when a new version is available.", "有新版本时会通过通知提醒你。")))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }

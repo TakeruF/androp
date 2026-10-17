@@ -3,12 +3,14 @@
 # Copyright (c) 2026 anDrop contributors
 """Render documentation images from production SwiftUI views with mock data only."""
 from pathlib import Path
+import json
 import plistlib
 import shutil
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+RELEASE = json.loads((ROOT / 'release.json').read_text())
 OUTPUT = ROOT / 'docs/images'
 OUTPUT.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
@@ -20,6 +22,8 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
         'CFBundleExecutable': 'Documentation',
         'CFBundleIdentifier': 'org.androp.documentation-preview',
         'CFBundlePackageType': 'APPL',
+        'CFBundleShortVersionString': RELEASE['version'],
+        'CFBundleVersion': str(RELEASE['build']),
     }))
     shutil.copytree(ROOT / 'Resources/BrandLogos', app / 'Resources/BrandLogos')
     shutil.copyfile(ROOT / 'AppIcon.icns', app / 'Resources/AppIcon.icns')
@@ -34,7 +38,12 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
     # remain visible in one documentation image. Production remains scrollable.
     viewport = 'height: min(640, (NSScreen.main?.visibleFrame.height ?? 740) - 100)'
     assert viewport in source
-    source = source.replace(viewport, 'height: 900')
+    source = source.replace(viewport, 'height: 1100')
+    # Show every mock recipient action without a screen-dependent scroll crop.
+    # The production picker keeps its bounded, scrollable viewport.
+    grid_limit = 'return min(300, max(96, visibleHeight - 220))'
+    assert grid_limit in source
+    source = source.replace(grid_limit, 'return 1000')
     source += (ROOT / 'scripts/DocumentationPreview.swift').read_text()
     generated = stage / 'main.swift'
     generated.write_text(source)
@@ -43,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
         'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
         '-module-cache-path', str(stage / 'module-cache'),
         *[str(ROOT / 'Sources' / name) for name in
-          ['AppUpdates.swift', 'Localization.swift', 'Peer.swift', 'ReceiveAccessPolicy.swift', 'TransferProgress.swift', 'BrandLogos.swift']],
+          ['AppUpdates.swift', 'Localization.swift', 'Peer.swift', 'ReceiveAccessPolicy.swift', 'TransferProgress.swift', 'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift']],
         str(generated), '-o', str(executable),
     ], check=True)
     # This renders views to PNGs without starting the app delegate, Bluetooth,

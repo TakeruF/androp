@@ -5,7 +5,7 @@ import Foundation
 import CryptoKit
 
 struct Peer: Identifiable, Equatable {
-    enum Kind: String { case phone, tablet, unknown }
+    enum Kind: String, Codable { case phone, tablet, computer, unknown }
     let id: String
     let name: String
     var brand = ""
@@ -19,6 +19,7 @@ struct Peer: Identifiable, Equatable {
         switch kind {
         case .phone: "smartphone"
         case .tablet: "ipad.landscape"
+        case .computer: "desktopcomputer"
         case .unknown: "rectangle.on.rectangle"
         }
     }
@@ -27,6 +28,7 @@ struct Peer: Identifiable, Equatable {
         switch kind {
         case .phone: type = chinese ? "手机" : "Phone"
         case .tablet: type = chinese ? "平板" : "Tablet"
+        case .computer: type = chinese ? "电脑" : "Computer"
         case .unknown: type = ""
         }
         return [brand, type].filter { !$0.isEmpty }.joined(separator: " ")
@@ -49,8 +51,11 @@ struct Peer: Identifiable, Equatable {
         return name.isEmpty ? label : localizedName(chinese: chinese)
     }
     func subtitle(aliases: [String: String], chinese: Bool) -> String {
-        let title = title(aliases: aliases, chinese: chinese)
-        return [deviceLabel(chinese: chinese), localizedName(chinese: chinese)].reduce(into: [String]()) { result, value in
+        details(excluding: title(aliases: aliases, chinese: chinese), chinese: chinese)
+    }
+    // Device type and discovered name, minus whatever is already shown as the title.
+    func details(excluding title: String, chinese: Bool) -> String {
+        [deviceLabel(chinese: chinese), localizedName(chinese: chinese)].reduce(into: [String]()) { result, value in
             if !value.isEmpty, value != title, !result.contains(value) { result.append(value) }
         }.joined(separator: " · ")
     }
@@ -71,4 +76,51 @@ struct Peer: Identifiable, Equatable {
         guard result.count <= 40, !result.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { return nil }
         return result
     }
+}
+
+// A device the user keeps out of the recipient list on this Mac.
+// Stored under the hashed identity with display metadata only, never the raw ID,
+// so the list can be shown and restored while the device is offline.
+struct HiddenDevice: Codable, Identifiable, Equatable {
+    let id: String
+    var name = ""
+    var brand = ""
+    var kind: Peer.Kind = .unknown
+
+    init(peer: Peer) {
+        id = peer.aliasKey; name = peer.name; brand = peer.brand; kind = peer.kind
+    }
+    // Metadata for the avatar and the labels; carries no identity.
+    var displayPeer: Peer { Peer(id: "", name: name, brand: brand, kind: kind) }
+    func title(aliases: [String: String], chinese: Bool) -> String {
+        if let alias = aliases[id], !alias.isEmpty { return alias }
+        return displayPeer.title(aliases: [:], chinese: chinese)
+    }
+    func subtitle(aliases: [String: String], chinese: Bool) -> String {
+        displayPeer.details(excluding: title(aliases: aliases, chinese: chinese), chinese: chinese)
+    }
+    func isAmbiguous(among devices: [HiddenDevice], aliases: [String: String], chinese: Bool) -> Bool {
+        devices.contains { other in
+            other.id != id && other.title(aliases: aliases, chinese: chinese) == title(aliases: aliases, chinese: chinese)
+        }
+    }
+    func distinguishingCode(among devices: [HiddenDevice]) -> String {
+        var count = 6
+        while count < id.count && devices.contains(where: { $0.id != id && $0.id.prefix(count) == id.prefix(count) }) { count += 2 }
+        return String(id.prefix(count)).uppercased()
+    }
+}
+
+// Hiding is always an explicit choice: discovering a device again never clears a record.
+struct HiddenDevices: Codable, Equatable {
+    private(set) var devices: [HiddenDevice]
+
+    init(devices: [HiddenDevice] = []) { self.devices = devices }
+    func contains(_ peer: Peer) -> Bool { devices.contains { $0.id == peer.aliasKey } }
+    func visible(_ peers: [Peer]) -> [Peer] { peers.filter { !contains($0) } }
+    mutating func hide(_ peer: Peer) {
+        guard !contains(peer) else { return }
+        devices.insert(HiddenDevice(peer: peer), at: 0)
+    }
+    mutating func show(_ device: HiddenDevice) { devices.removeAll { $0.id == device.id } }
 }

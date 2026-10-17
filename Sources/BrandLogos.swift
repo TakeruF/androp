@@ -8,7 +8,7 @@ import AppKit
         "OPPO": "oppo.svg", "Xiaomi": "xiaomi.png", "HONOR": "honor.svg",
         "vivo": "vivo.svg", "iQOO": "iqoo.svg", "realme": "realme.svg",
         "OnePlus": "oneplus.svg", "Meizu": "meizu.png", "Lenovo": "lenovo.png",
-        "Samsung": "samsung.svg"
+        "Samsung": "samsung.svg", "Huawei": "huawei.png", "HUAWEI": "huawei.png"
     ]
     private static let images: [String: NSImage] = files.reduce(into: [:]) { result, item in
         guard let root = Bundle.main.resourceURL,

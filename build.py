@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import json, os, platform, plistlib, re, runpy, shutil, subprocess, sys, tempfile
-from concurrent.futures import ThreadPoolExecutor
 ROOT=Path(__file__).resolve().parent
 FINAL=ROOT/'build/anDrop.app'
 APP=Path(tempfile.mkdtemp(prefix='androp-build-'))/'anDrop.app'
@@ -34,7 +33,7 @@ ext=APP/'Contents/PlugIns/anDropShare.appex'
 extinfo={'CFBundleIconFile':'ShareIcon','CFBundleIconName':'AppIconPaperplane','CFBundleExecutable':'anDropShare','CFBundleIdentifier':BUNDLE_ID+'.Share','CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'XPC!','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationDictionaryVersion':2,'NSExtensionActivationSupportsFileWithMaxCount':1000,'NSExtensionActivationSupportsImageWithMaxCount':1000,'NSExtensionActivationSupportsMovieWithMaxCount':1000}}}}
 (ext/'Contents/Info.plist').write_bytes(plistlib.dumps(extinfo))
 cache=ROOT/'build/module-cache';cache.mkdir(parents=True,exist_ok=True)
-host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','Diagnostics.swift','BrandLogos.swift','main.swift']]
+host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','Diagnostics.swift','BrandLogos.swift','HuaweiLANDiscovery.swift','main.swift']]
 framework_flags=[]
 if not APP_STORE:
  (APP/'Contents/Frameworks').mkdir()
@@ -43,7 +42,11 @@ if not APP_STORE:
 run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,*(['-D','APP_STORE'] if APP_STORE else []),'-module-name','anDrop','-module-cache-path',cache,*framework_flags,*host_sources,'-o',APP/'Contents/MacOS/anDrop')
 run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,'-module-cache-path',cache,'-parse-as-library','-emit-executable','-Xlinker','-e','-Xlinker','_NSExtensionMain',ROOT/'Sources/Localization.swift',ROOT/'Sources/ShareViewController.swift','-o',ext/'Contents/MacOS/anDropShare')
 if '--ui-only' not in sys.argv:
- run(sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--name','anDropEngine','--distpath',ROOT/'build/engine-dist','--workpath',ROOT/'build/engine-work','--specpath',ROOT/'build','--exclude-module','mtapy','--exclude-module','pytest',ROOT/'Sources/engine.py')
+ huawei_data=[]
+ for name in ['huawei-auth-probe.py','huawei-transfer-probe.py','huawei-receive-probe.py','huawei-receive-channels.py','huawei-file-batch.py']:
+  huawei_data+=['--add-data',str(ROOT/'scripts'/name)+':huawei']
+ run(sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--name','anDropEngine','--distpath',ROOT/'build/engine-dist','--workpath',ROOT/'build/engine-work','--specpath',ROOT/'build','--exclude-module','mtapy','--exclude-module','pytest','--hidden-import','cryptography.hazmat.primitives.ciphers.aead','--hidden-import','cryptography.hazmat.primitives.asymmetric.rsa','--hidden-import','cryptography.hazmat.primitives.asymmetric.padding',*huawei_data,ROOT/'Sources/engine.py')
+ run(ROOT/'build/engine-dist/anDropEngine/anDropEngine','--huawei-check')
  if (APP/'Contents/Resources/Engine').exists():shutil.rmtree(APP/'Contents/Resources/Engine')
  shutil.copytree(ROOT/'build/engine-dist/anDropEngine',APP/'Contents/Resources/Engine',symlinks=True)
 if '--ui-only' in sys.argv:
@@ -91,8 +94,10 @@ for parent in [APP/'Contents/Resources/Engine',APP/'Contents/Frameworks']:
   if p.is_file() and not p.is_symlink():
    with p.open('rb') as handle:magic=handle.read(4)
    if magic in mach_magic:leaves.append(p)
-with ThreadPoolExecutor(max_workers=4) as executor:
- list(executor.map(lambda p:sign(p,preserve=True),leaves))
+# codesign can treat a framework's main Mach-O as the containing framework.
+# Finish nested helpers first; parallel mutation leaves transient .cstemp files
+# inside that container and can invalidate the outer signing operation.
+for p in sorted(leaves,key=lambda p:(-len(p.parts),str(p))):sign(p,preserve=True)
 containers=[p for p in APP.rglob('*') if p.is_dir() and not p.is_symlink() and p.suffix in ('.app','.xpc','.framework')]
 for p in sorted(containers,key=lambda p:len(p.parts),reverse=True):sign(p,preserve=True)
 run('xattr','-cr',APP)

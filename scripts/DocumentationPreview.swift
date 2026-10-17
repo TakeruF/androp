@@ -42,9 +42,10 @@ let imageDirectory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory:
 for language in ["zh", "en"] {
     UserDefaults.standard.setVolatileDomain([
         "language": language, "trustedOnly": false, "trustedDevices": try JSONEncoder().encode([
-            RememberedDevice(id: "00000000-0000-0000-0000-000000000001", name: language == "zh" ? "工作手机" : "Work phone", kind: "phone", brand: "OPPO"),
-            RememberedDevice(id: "00000000-0000-0000-0000-000000000002", name: language == "zh" ? "旅行平板" : "Travel tablet", kind: "tablet", brand: "OPPO"),
+            RememberedDevice(id: "sender:" + String(repeating: "a", count: 64), name: language == "zh" ? "工作手机" : "Work phone", kind: "phone", brand: "OPPO"),
+            RememberedDevice(id: "sender:" + String(repeating: "b", count: 64), name: language == "zh" ? "旅行平板" : "Travel tablet", kind: "tablet", brand: "OPPO"),
         ]), "rememberedDevices": Data(), "customSharingName": "", "peerAliases": [String: String](),
+        "hiddenRecipients": try JSONEncoder().encode(HiddenDevices()),
         "destination": "~/Downloads", "enabled": true,
     ], forName: UserDefaults.argumentDomain)
     let model = AppModel()
@@ -52,26 +53,33 @@ for language in ["zh", "en"] {
     model.notificationsAllowed = true
     model.destination = "~/Downloads"
     model.selectedFiles = [URL(fileURLWithPath: "/mock/Project.pdf")]
-    let names = language == "zh" ? ["工作手机", "旅行平板", "家用手机", "学习平板"]
-        : ["Work phone", "Travel tablet", "Home phone", "Study tablet"]
+    let names = language == "zh" ? ["工作手机", "旅行平板", "华为手机", "小米电脑", "华为电脑", "荣耀电脑"]
+        : ["Work phone", "Travel tablet", "Huawei phone", "Xiaomi computer", "Huawei computer", "HONOR computer"]
     model.peers = [
         Peer(id: "mock-phone", name: names[0], brand: "OPPO", kind: .phone),
         Peer(id: "mock-tablet", name: names[1], brand: "OPPO", kind: .tablet),
-        Peer(id: "mock-vivo", name: names[2], brand: "vivo", kind: .phone),
-        Peer(id: "mock-xiaomi", name: names[3], brand: "Xiaomi", kind: .tablet),
+        Peer(id: "mock-huawei", name: names[2], brand: "Huawei", kind: .phone),
+        Peer(id: "mock-xiaomi", name: names[3], brand: "Xiaomi", kind: .computer),
+        Peer(id: "mock-huawei-pc", name: names[4], brand: "Huawei", kind: .computer),
+        Peer(id: "mock-honor-pc", name: names[5], brand: "HONOR", kind: .computer),
     ]
     try renderDocumentation(RecipientView(model: model), to: imageDirectory.appendingPathComponent("recipients-\(language).png"))
-    model.outgoing = OutgoingPresentation(id: "mock-transfer", peer: model.peers[0], files: model.selectedFiles)
-    model.transfers = [Transfer(id: "mock-transfer", direction: "send", peer: names[0],
-        state: "transferring", name: "Project.pdf", total: 100, completed: 42)]
+    model.outgoing = [
+        OutgoingPresentation(id: "mock-transfer", peer: model.peers[0], files: model.selectedFiles),
+        OutgoingPresentation(id: "mock-huawei-transfer", peer: model.peers[2], files: model.selectedFiles),
+    ]
+    model.transfers = [
+        Transfer(id: "mock-transfer", direction: "send", peer: names[0], state: "transferring", name: "Project.pdf", total: 100, completed: 42),
+        Transfer(id: "mock-huawei-transfer", direction: "send", peer: names[2], state: "transferring", name: "Project.pdf", total: 100, completed: 68),
+    ]
     try renderDocumentation(RecipientView(model: model), to: imageDirectory.appendingPathComponent("sending-\(language).png"))
-    model.outgoing = nil
+    model.outgoing = []
     model.transfers = []
     try renderDocumentation(SettingsView(model: model), to: imageDirectory.appendingPathComponent("settings-\(language).png"))
     model.transfers = [
-        Transfer(id: "mock-received", direction: "receive", peer: names[0], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000001", deviceKind: "phone", deviceBrand: "OPPO"),
+        Transfer(id: "mock-received", direction: "receive", peer: names[0], state: "complete", deviceIdentifier: "sender:" + String(repeating: "a", count: 64), deviceKind: "phone", deviceBrand: "OPPO"),
         Transfer(id: "mock-sent", direction: "send", peer: names[1], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000002", deviceKind: "tablet", deviceBrand: "OPPO"),
-        Transfer(id: "mock-history", direction: "receive", peer: names[2], state: "complete", deviceIdentifier: "00000000-0000-0000-0000-000000000003", deviceKind: "phone", deviceBrand: "vivo"),
+        Transfer(id: "mock-history", direction: "receive", peer: names[2], state: "complete", deviceIdentifier: "huawei-key:" + String(repeating: "c", count: 64), deviceKind: "phone", deviceBrand: "Huawei"),
     ]
     model.peers = []
     try renderDocumentation(TrustedDevicesView(model: model), to: imageDirectory.appendingPathComponent("trusted-\(language).png"))

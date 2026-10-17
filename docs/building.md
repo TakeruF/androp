@@ -37,7 +37,7 @@ The app embeds the public Ed25519 key in `Resources/UpdatePublicKey.txt`. The ma
 build/dependencies/Sparkle-2.10.0/bin/generate_keys --account org.example.your-app
 ```
 
-The official Sparkle tools generate signed update archives and a signed appcast. Both signed feeds and verification before extraction are required. The feed is served from the public repository’s latest GitHub Release asset named `appcast.xml`. Automatic checks/downloads default to on; persisted choices are preserved. Update dialogs follow the app language, and installation is postponed while a transfer is active. Installation deferred with Later occurs on quit, as described in the prompt.
+The official Sparkle tools generate signed update archives and a signed appcast. Both signed feeds and verification before extraction are required. The feed is served from the public repository’s latest GitHub Release asset named `appcast.xml`. Automatic checks and automatic installation default to on; persisted choices are preserved. A verified automatic download installs and relaunches immediately when no transfer is active (otherwise right after the transfer finishes), with a user notification before and after the relaunch. When automatic installation is off, scheduled checks use Sparkle's gentle reminders: a notification is posted instead of the update alert, and clicking it opens the alert. Update dialogs follow the app language.
 
 `build.py --app-store` excludes Sparkle, its feed and updater UI. This is a build switch for future store distribution, not a claim of App Store approval or complete store compliance.
 
@@ -77,3 +77,7 @@ codesign --verify --deep --strict build/anDrop.app
 ```
 
 Refresh dependency notices using `collect-licenses.py` from the exact build environment and inspect native-library provenance. See [licensing](licensing.md), [publication privacy](publication.md) and [validation records](testing.md). The normal build excludes the archived receive-panel prototype and creates no Control Center extension, App Intents metadata or control-state App Group entitlement.
+
+## Huawei Share LAN adapter
+
+A full engine build includes the bounded Huawei protocol modules and explicit AES-GCM/RSA imports for the official Huawei Share support introduced in 1.2.0. The build runs `anDropEngine --huawei-check` without network access before packaging. UI-only builds must reuse an engine built after those changes. Hardware integration evidence and remaining discovery/authentication/recovery checks are tracked in [Huawei Share research](huawei-share-research.md). Local validation can use a separate `ANDROP_BUNDLE_ID` to preserve the installed app’s settings.

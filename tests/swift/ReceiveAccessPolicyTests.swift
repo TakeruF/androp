@@ -42,3 +42,13 @@ private let unknownCentral = "00000000-0000-0000-0000-00000000000B"
     #expect(ReceiveAccessPolicy.allows(centralID: unknownCentral, enabled: true, trustedOnly: true, trustedIDs: [senderID]))
     #expect(!ReceiveAccessPolicy.allows(centralID: unknownCentral, enabled: false, trustedOnly: true, trustedIDs: [senderID]))
 }
+
+@Test func huaweiKeysCanBeRememberedWithoutAuthorizingAllianceBluetooth() {
+    let identity = "huawei-key:" + String(repeating: "a", count: 64)
+    #expect(ReceiveAccessPolicy.persistentID(identity))
+    #expect(!ReceiveAccessPolicy.persistentID("huawei-key:" + String(repeating: "g", count: 64)))
+    #expect(!ReceiveAccessPolicy.persistentID("huawei-key:" + String(repeating: "a", count: 63)))
+    #expect(!ReceiveAccessPolicy.persistentID("huawei:discovery-only"))
+    #expect(!ReceiveAccessPolicy.allows(centralID: unknownCentral, enabled: true,
+        trustedOnly: true, trustedIDs: [identity]))
+}

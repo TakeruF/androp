@@ -6,6 +6,10 @@ import Foundation
 /// files, which may contain names, addresses, paths or raw protocol messages.
 @MainActor
 final class DiagnosticsStore {
+    struct PreviewField: Codable, Equatable {
+        let tag: Int
+        let bytes: Int
+    }
     struct Event: Codable, Equatable {
         var time: String
         var event: String
@@ -16,6 +20,10 @@ final class DiagnosticsStore {
         var phase: String?
         var errorType: String?
         var errno: Int?
+        var previewIssue: String?
+        var previewFields: [PreviewField]?
+        var receiveModule: String?
+        var receiveLine: Int?
     }
     struct RunningApp: Codable, Hashable {
         var name: String
@@ -54,8 +62,11 @@ final class DiagnosticsStore {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]; return encoder
     }()
     static let states: Set<String> = ["preparing", "waiting", "verifying", "connecting", "request", "transferring", "confirming", "complete", "failed", "declined", "cancelled"]
-    static let codes: Set<String> = ["receive_connect_attempt", "receive_connect_interrupted", "receive_untrusted_sender", "receive_endpoint_replaced", "receive_network_offer", "receive_udp_probe_unavailable", "receive_connected", "receive_negotiating", "receive_download_start", "receive_save_start", "receive_failed", "send_failed", "send_offer_fields", "engine_stopped", "engine_start_failed", "ignored_unrelated_invalid_write", "WebSocket connected", "Bandwidth probes sent"]
-    static let phases = states.union(["connect", "bandwidth", "negotiate", "download", "save", "bind"])
+    static let codes: Set<String> = ["huawei_peer_discovered", "huawei_discovery_rejected", "huawei_incoming_rejected", "huawei_runtime_stopped", "huawei_receive_failed", "huawei_send_failed", "huawei_identity_unavailable", "huawei_transport_failed","receive_connect_attempt", "receive_connect_interrupted", "receive_untrusted_sender", "receive_endpoint_replaced", "receive_network_offer", "receive_udp_probe_unavailable", "receive_connected", "receive_negotiating", "receive_download_start", "receive_save_start", "receive_failed", "send_failed", "send_offer_fields", "engine_stopped", "engine_start_failed", "ignored_unrelated_invalid_write", "WebSocket connected", "Bandwidth probes sent"]
+    /// Native Huawei UDP transport phases. Each value is a fixed token chosen by
+    /// the transport itself, never a host, interface or OS message.
+    static let transportPhases: Set<String> = ["transport_enumerate", "transport_interface", "transport_socket", "transport_broadcast", "transport_interface_bind", "transport_bind", "transport_multicast_join", "transport_multicast_interface", "transport_nonblocking", "transport_receive", "transport_send", "transport_send_partial", "transport_payload", "transport_target", "transport_unavailable"]
+    static let phases = states.union(transportPhases).union(["discovery", "busy", "undiscovered_peer", "connect", "bandwidth", "negotiate", "download", "save", "bind", "discovery_address", "discovery_coap", "discovery_resource", "discovery_record", "discovery_port", "discovery_identity", "malformed", "receive", "receive_preview", "receive_preview_frame", "receive_metadata", "receive_data"])
     static let errorTypes: Set<String> = ["ClientConnectorError", "ClientConnectionError", "ClientOSError", "ClientPayloadError", "ServerDisconnectedError", "ServerTimeoutError", "TimeoutError", "OSError", "PermissionError", "ConnectionRefusedError", "ConnectionResetError", "BrokenPipeError", "FileNotFoundError", "ValueError", "TransferError", "BleakError", "BleakDBusError", "ClientSSLError", "ServerFingerprintMismatch", "WSServerHandshakeError", "BadZipFile"]
     static let extensions: Set<String> = ["txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "json", "xml", "md", "html", "css", "js", "py", "swift", "log", "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "svg", "tif", "tiff", "bmp", "raw", "dng", "mp4", "mov", "mkv", "avi", "webm", "m4v", "mp3", "m4a", "aac", "wav", "flac", "ogg", "zip", "7z", "rar", "gz", "tar", "dmg", "pkg", "apk", "bin", "epub"]
     static func fileType(_ filename: String) -> String {
@@ -72,12 +83,27 @@ final class DiagnosticsStore {
             guard let text = value[field] as? String, values.contains(text) else { return nil }; return text
         }
         let rawType = value["error_type"] as? String
+        let isHuaweiReceive = event == "diagnostic" && value["detail"] as? String == "huawei_receive_failed"
+        let previewFields: [PreviewField]? = {
+            guard isHuaweiReceive, let fields = value["preview_fields"] as? [[String: Any]], fields.count <= 32 else { return nil }
+            var result: [PreviewField] = []
+            for field in fields {
+                guard let tag = field["tag"] as? Int, (0...255).contains(tag),
+                      let bytes = field["bytes"] as? Int, (0...1_048_576).contains(bytes) else { return nil }
+                result.append(PreviewField(tag: tag, bytes: bytes))
+            }
+            return result
+        }()
         return Event(time: now.ISO8601Format(), event: event,
                      transfer: transferID(value["transfer_id"] as? String ?? value["id"] as? String),
                      direction: allowed("direction", ["send", "receive"]), state: allowed("state", states),
                      code: allowed("detail", codes), phase: allowed("phase", phases),
                      errorType: rawType.map { errorTypes.contains($0) ? $0 : "OtherError" },
-                     errno: (value["errno"] as? Int).flatMap { (-65535...65535).contains($0) ? $0 : nil })
+                     errno: (value["errno"] as? Int).flatMap { (-65535...65535).contains($0) ? $0 : nil },
+                     previewIssue: isHuaweiReceive ? allowed("preview_issue", ["field_layout", "name_size", "thumbnail_size", "metadata_size", "repeated_preview"]) : nil,
+                     previewFields: previewFields,
+                     receiveModule: isHuaweiReceive ? allowed("receive_module", ["channels", "batch", "transfer", "auth", "offer", "runtime"]) : nil,
+                     receiveLine: isHuaweiReceive ? (value["receive_line"] as? Int).flatMap { (1...10000).contains($0) ? $0 : nil } : nil)
     }
     init(folder: URL) {
         self.folder = folder
@@ -109,7 +135,7 @@ final class DiagnosticsStore {
             if contexts.count >= 30 { contexts.removeAll() }
             contexts[id] = Context(transfer: id, direction: direction == "send" ? "send" : "receive", fileTypes: types,
                 fileCount: max(0, min(count, 10000)), fileTypesScope: types.isEmpty ? "not_available" : allTypesKnown ? "all_files" : "first_file_only",
-                peerBrand: brands.contains(brand ?? "") ? brand! : "unknown", peerKind: ["phone", "tablet"].contains(kind ?? "") ? kind! : "unknown",
+                peerBrand: brands.contains(brand ?? "") ? brand! : "unknown", peerKind: ["phone", "tablet", "computer"].contains(kind ?? "") ? kind! : "unknown",
                 appsAtStart: Array(uniqueApps.prefix(200)))
         }
         if !types.isEmpty, allTypesKnown || contexts[id]?.fileTypesScope != "all_files" {
@@ -118,7 +144,7 @@ final class DiagnosticsStore {
         }
         contexts[id]?.fileCount = max(0, min(count, 10000))
         if brands.contains(brand ?? "") { contexts[id]?.peerBrand = brand! }
-        if ["phone", "tablet"].contains(kind ?? "") { contexts[id]?.peerKind = kind! }
+        if ["phone", "tablet", "computer"].contains(kind ?? "") { contexts[id]?.peerKind = kind! }
         if state == "failed" {
             contexts[id]?.appsAtFailure = Array(uniqueApps.prefix(200))
             try? write(Snapshot(context: contexts[id], events: Array(events.suffix(150))), to: failureURL(id))
