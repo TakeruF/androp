@@ -4,11 +4,11 @@
 
 简体中文 · [English](README.en.md)
 
-[<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/main/badge_github.png" alt="从 GitHub 下载" height="60">](https://github.com/TakeruF/cn-android-share/releases/latest)
+[<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/main/badge_github.png" alt="从 GitHub 下载" height="60">](https://github.com/TakeruF/androp/releases/latest)
 
 anDrop 是一个常驻 macOS 菜单栏的文件共享应用，正式支持 **互传联盟** 生态与 **华为分享**。无需提前连接厂商电脑端应用，也无需在手机上额外安装应用、登录账号或连接 USB。文件通过本地网络传输。**两台设备需要开启蓝牙，并连接到同一个 Wi-Fi（同一局域网）。**
 
-**[下载 anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md)
+**[下载 anDrop](https://github.com/TakeruF/androp/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md)
 
 **1.2.0：华为分享正式支持是本次更新的主打功能。** 可通过设备自带的华为分享与 Mac 双向收发文件；与鸿蒙星河互联同时运行仍属实验性支持。具体机型验证范围与传输限制见下方说明。
 
@@ -149,7 +149,7 @@ python3 scripts/render-docs.py
 - [演示图片生成说明](docs/images/README.md)
 - [已归档的接收面板原型](Prototypes/ReceivePanel/README.md)：保留原控制中心面板的源码和预览，供将来复用；不包含在发行版中。
 
-技术文档目前主要为英文。仓库名是 **cn-android-share**，应用名是 **anDrop**。
+技术文档目前主要为英文。仓库名是 **androp**，应用名是 **anDrop**。
 
 </details>
 

@@ -1386,8 +1386,8 @@ struct SettingsView: View {
             HStack { Button(L("Clear Transfer History", "清除传输记录"), action: model.clearHistory); Spacer(); Text(applicationVersion).font(.caption).foregroundStyle(.secondary) }
             Text(L("Mutual Transfer Alliance · Huawei Share · Same Wi-Fi required.", "互传联盟 · 华为分享 · 需连接同一 Wi-Fi。")).font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 16) {
-                Link(L("License (GPL-3.0)", "许可证（GPL-3.0）"), destination: URL(string: "https://github.com/TakeruF/cn-android-share/blob/main/LICENSE")!)
-                Link(L("GitHub Repository", "GitHub 仓库"), destination: URL(string: "https://github.com/TakeruF/cn-android-share")!)
+                Link(L("License (GPL-3.0)", "许可证（GPL-3.0）"), destination: URL(string: "https://github.com/TakeruF/androp/blob/main/LICENSE")!)
+                Link(L("GitHub Repository", "GitHub 仓库"), destination: URL(string: "https://github.com/TakeruF/androp")!)
             }.font(.caption)
         }.padding(24)
         }.frame(width: 460, height: min(640, (NSScreen.main?.visibleFrame.height ?? 740) - 100))

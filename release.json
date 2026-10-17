@@ -2,8 +2,8 @@
   "version": "1.2.0",
   "build": 12000,
   "minimum_macos": "14.0",
-  "repository": "TakeruF/cn-android-share",
-  "feed_url": "https://github.com/TakeruF/cn-android-share/releases/latest/download/appcast.xml",
+  "repository": "TakeruF/androp",
+  "feed_url": "https://github.com/TakeruF/androp/releases/latest/download/appcast.xml",
   "update_key_account": "org.androp.mac",
   "sparkle": {
     "version": "2.10.0",

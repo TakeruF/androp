@@ -4,11 +4,11 @@
 
 [简体中文](README.md) · English
 
-[<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/main/badge_github.png" alt="Get it on GitHub" height="60">](https://github.com/TakeruF/cn-android-share/releases/latest)
+[<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/main/badge_github.png" alt="Get it on GitHub" height="60">](https://github.com/TakeruF/androp/releases/latest)
 
 anDrop is a macOS menu bar app that officially supports the **互传联盟 (Mutual Transfer Alliance)** ecosystem and **Huawei Share**. No prior connection to a vendor desktop app, extra phone app, account or USB cable is needed. File transfers stay on the local network. **Both devices need Bluetooth enabled and must connect to the same Wi-Fi network (the same LAN).**
 
-**[Download anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [Usage and troubleshooting](docs/usage.md) · [Compatibility](docs/compatibility.md)
+**[Download anDrop](https://github.com/TakeruF/androp/releases/latest)** · [Usage and troubleshooting](docs/usage.md) · [Compatibility](docs/compatibility.md)
 
 **1.2.0: official Huawei Share support is the headline feature.** Send and receive files between your Mac and a device's built-in Huawei Share. Petal coexistence remains experimental. Tested models and transfer limits are listed below.
 
@@ -149,7 +149,7 @@ python3 scripts/render-docs.py
 - [Documentation image generation](docs/images/README.md)
 - [Archived receive-panel prototype](Prototypes/ReceivePanel/README.md): source and standalone preview of the removed Control Center panel, excluded from release builds.
 
-The repository is named **cn-android-share**; the app is named **anDrop**.
+The repository is named **androp**; the app is named **anDrop**.
 
 </details>
 
