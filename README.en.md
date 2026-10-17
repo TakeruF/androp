@@ -10,9 +10,9 @@ anDrop is a macOS menu bar app for the **互传联盟 (Mutual Transfer Alliance)
 
 **[Download anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [Usage and troubleshooting](docs/usage.md) · [Compatibility](docs/compatibility.md)
 
-Version 1.1.0 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. OPPO Find X9 Pro and OPPO Pad 4 Pro have both undergone physical testing across multiple scenarios, including transfers in both directions. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
+Version 1.1.1 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. OPPO Find X9 Pro and OPPO Pad 4 Pro have both undergone physical testing across multiple scenarios, including transfers in both directions. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
 
-**1.1.0** improves connections while vendor connectivity apps are running, fixes trusted-device rejection and Finder share-window focus, and adds diagnostic logs and email reports. Re-enroll old trusted-device entries after successfully receiving a file. See the [release notes](docs/releases/1.1.0.md) and [test record](docs/testing.md).
+**1.1.1** fixes Settings potentially opening and taking focus when clicking “Show in Finder” in a received-file notification. See the [release notes](docs/releases/1.1.1.md) and [test record](docs/testing.md). When upgrading from 1.0.0, re-enroll old trusted-device entries after successfully receiving a file; see the [1.1.0 upgrade notes](docs/releases/1.1.0.md).
 
 ## Install and get started
 
@@ -106,7 +106,7 @@ The Mutual Transfer Alliance is a cross-brand ecosystem used by Xiaomi, HONOR, O
 | OPPO Find X9 Pro | Physically tested across multiple scenarios, including same-Wi-Fi transfers in both directions, with file hashes checked. |
 | OPPO Pad 4 Pro | Physically tested across multiple scenarios, including discovery, tablet identification and same-Wi-Fi transfers in both directions. |
 | Xiaomi, HONOR, vivo and other brands/models | Compatible devices in the target ecosystem; not physically tested yet. |
-| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.1.0. |
+| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.1.1. |
 | Petal Interconnect coexistence | Experimental. Transfers have succeeded, but discovery conflicts can recur. |
 | Wi-Fi Direct, Google Quick Share, Huawei Share | Not implemented. HarmonyOS devices untested. |
 

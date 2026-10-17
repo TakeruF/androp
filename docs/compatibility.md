@@ -12,7 +12,7 @@ Compatibility update: **2026-10-17**. Coverage includes recorded tests and the d
 | vivo | **Untested / 未验证** | Compatible 互传联盟 devices are a target |
 | Other participating brands | **Untested / 未验证** | Model, region and software version may matter |
 | Apple Silicon Mac, macOS 27.0.1 | **Tested / 已验证** | Native host, Python engine, Finder extension |
-| Intel Mac / earlier macOS | **Untested / 未验证** | 1.1.0 targets macOS 14 with bundled-binary checks; no physical older-OS validation. Published DMG is arm64 only |
+| Intel Mac / earlier macOS | **Untested / 未验证** | 1.1.1 targets macOS 14 with bundled-binary checks; no physical older-OS validation. Published DMG is arm64 only |
 | Petal Interconnect running concurrently | **Experimental / 实验性** | Successful transfers, but recurrent discovery conflicts |
 | Notification Center action buttons | **Not physically verified / 尚未实测** | Implemented; incoming files were accepted through the app during tests |
 | Open at Login after reboot | **Untested / 未验证** | Implemented; reboot not tested |

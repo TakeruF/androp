@@ -10,9 +10,9 @@ anDrop 是一个常驻 macOS 菜单栏的文件共享应用，面向 **互传联
 
 **[下载 anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md)
 
-1.1.0 提供适用于 **Apple Silicon Mac、macOS 14 及以上**的 DMG 安装包。OPPO Find X9 Pro 和 OPPO Pad 4 Pro 均已进行包括双向传输在内的多场景实机测试；其他品牌和机型尚未实机验证。构建检查已确认随应用打包的二进制不要求高于 macOS 14 的版本，但尚未在 macOS 14 实机测试。下方图片均使用虚构数据，不代表其中所有品牌都已通过兼容性测试。
+1.1.1 提供适用于 **Apple Silicon Mac、macOS 14 及以上**的 DMG 安装包。OPPO Find X9 Pro 和 OPPO Pad 4 Pro 均已进行包括双向传输在内的多场景实机测试；其他品牌和机型尚未实机验证。构建检查已确认随应用打包的二进制不要求高于 macOS 14 的版本，但尚未在 macOS 14 实机测试。下方图片均使用虚构数据，不代表其中所有品牌都已通过兼容性测试。
 
-**1.1.0** 改善了与厂商互联应用同时使用时的传输连接、修复受信任设备误拒绝与 Finder 共享窗口失焦，并新增日志与邮件反馈。旧版信任记录需成功接收一次文件后重新添加，详见[更新说明](docs/releases/1.1.0.md)和[测试记录](docs/testing.md)。
+**1.1.1** 修复点击接收完成通知中的“在访达中显示”时，设置窗口可能同时打开并抢到前台的问题。详见[更新说明](docs/releases/1.1.1.md)和[测试记录](docs/testing.md)。从 1.0.0 升级时，旧版信任记录需成功接收一次文件后重新添加，参见 [1.1.0 升级说明](docs/releases/1.1.0.md)。
 
 ## 安装与首次使用
 
@@ -106,7 +106,7 @@ anDrop 是一个常驻 macOS 菜单栏的文件共享应用，面向 **互传联
 | OPPO Find X9 Pro | 已进行包括同一 Wi-Fi 下双向传输在内的多场景实机测试，并检查了传输文件的哈希。 |
 | OPPO Pad 4 Pro | 已进行包括设备发现、平板类型显示及同一 Wi-Fi 下双向传输在内的多场景实机测试。 |
 | 小米、荣耀、vivo 等其他品牌／机型 | 目标生态中的兼容设备，尚未实机验证。 |
-| Apple Silicon Mac，macOS 27.0.1 | 已验证的开发环境；发行包面向 macOS 14 及以上。macOS 14 实机、Intel 均未验证，1.1.0 不提供 Intel 安装包。 |
+| Apple Silicon Mac，macOS 27.0.1 | 已验证的开发环境；发行包面向 macOS 14 及以上。macOS 14 实机、Intel 均未验证，1.1.1 不提供 Intel 安装包。 |
 | Petal Interconnect 共存 | 实验性支持；曾成功传输，但发现冲突可能再次出现。 |
 | Wi-Fi Direct、Google Quick Share、Huawei Share | 尚未实现；HarmonyOS 设备尚未验证。 |
 

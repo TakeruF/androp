@@ -817,7 +817,9 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         center.setNotificationCategories([
             UNNotificationCategory(identifier: "receive", actions: [UNNotificationAction(identifier: "accept", title: L("Accept", "接收")), UNNotificationAction(identifier: "decline", title: L("Decline", "拒绝"))], intentIdentifiers: []),
             UNNotificationCategory(identifier: "failed", actions: [UNNotificationAction(identifier: "logs", title: L("Show Logs", "查看日志"), options: [.foreground])], intentIdentifiers: []),
-            UNNotificationCategory(identifier: "complete", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"), options: [.foreground])], intentIdentifiers: []),
+            // Finder owns the foreground for this action. Activating anDrop as
+            // well can trigger applicationShouldHandleReopen and show Settings.
+            UNNotificationCategory(identifier: "complete", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: []),
             UNNotificationCategory(identifier: "manage", actions: [UNNotificationAction(identifier: "manage", title: L("Show Transfers", "查看传输"), options: [.foreground]), UNNotificationAction(identifier: "cancel", title: L("Cancel", "取消"))], intentIdentifiers: [])
         ])
         center.requestAuthorization(options: [.alert, .sound]) { [weak self] allowed, _ in Task { @MainActor [weak self] in self?.notificationsAllowed = allowed } }
