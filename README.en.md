@@ -4,6 +4,8 @@
 
 [简体中文](README.md) · English
 
+[<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/main/badge_github.png" alt="Get it on GitHub" height="60">](https://github.com/TakeruF/cn-android-share/releases/latest)
+
 anDrop is a macOS menu bar app for the **互传联盟 (Mutual Transfer Alliance)** ecosystem. No prior connection to a vendor desktop app, extra phone app, account or USB cable is needed. File transfers stay on the local network. **Both devices need Bluetooth enabled and must connect to the same Wi-Fi network (the same LAN).**
 
 **[Download anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [Usage and troubleshooting](docs/usage.md) · [Compatibility](docs/compatibility.md)

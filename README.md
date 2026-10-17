@@ -4,6 +4,8 @@
 
 简体中文 · [English](README.en.md)
 
+[<img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/main/badge_github.png" alt="从 GitHub 下载" height="60">](https://github.com/TakeruF/cn-android-share/releases/latest)
+
 anDrop 是一个常驻 macOS 菜单栏的文件共享应用，面向 **互传联盟（Mutual Transfer Alliance）** 生态。无需提前连接厂商电脑端应用，也无需在手机上额外安装应用、登录账号或连接 USB。文件通过本地网络传输。**两台设备需要开启蓝牙，并连接到同一个 Wi-Fi（同一局域网）。**
 
 **[下载 anDrop](https://github.com/TakeruF/cn-android-share/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md)
