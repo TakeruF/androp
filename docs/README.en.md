@@ -22,6 +22,7 @@ All project-authored documentation is maintained in Simplified Chinese (`.md`) a
 
 ## Release notes
 
+- [1.2.1](releases/1.2.1.en.md)
 - [1.2.0](releases/1.2.0.en.md)
 - [1.1.1](releases/1.1.1.en.md)
 - [1.1.0](releases/1.1.0.en.md)

@@ -212,7 +212,7 @@ async def stream_archive(response,archive,progress):
 
 class Engine:
     def __init__(self):
-        self.trusted_only=False;self.trusted_ids=set()
+        self.trusted_only=False;self.trusted_ids=set();self.auto_accept_trusted=True
         self.destination=str(Path.home()/'Downloads');self.name='anDrop Mac';self.keys=Keys();self.session=None
         self.scanner=None;self.scan_token=None;self.devices={};self.peers={};self.decisions={};self.scan_enabled=True;self.discovering=False;self.jobs=set()
         self.outgoing={}
@@ -267,6 +267,10 @@ class Engine:
         if not enabled() or not self.may_receive(s['central'],identity):
             emit('diagnostic',detail='receive_untrusted_sender')
             return False
+        # Match the transfer identity, never the display name, discovery ID or
+        # legacy Bluetooth address. This applies independently of receive scope.
+        if self.auto_accept_trusted and identity and identity in self.trusted_ids:
+            return self.session is s
         future=asyncio.get_running_loop().create_future();self.decisions[s['id']]=future
         self.update(s,'request',count=s['count'],name=str(metadata.get('fileName',t('Files','文件')))[:240],total=int(metadata['totalSize']))
         try:accepted=await asyncio.wait_for(future,28)
@@ -678,6 +682,7 @@ class Engine:
             if command=='configure':
                 LANG=obj.get('language','en')
                 self.trusted_only=bool(obj.get('trusted_only',False))
+                self.auto_accept_trusted=bool(obj.get('auto_accept_trusted',True))
                 self.trusted_ids={identifier for value in obj.get('trusted_ids',[]) if (identifier:=valid_trust_identifier(value))}
                 self.destination=obj.get('destination',self.destination);self.name=obj.get('name',self.name);self.read_state()
                 self.huawei_enabled=bool(obj.get('huawei_enabled',self.scan_enabled))

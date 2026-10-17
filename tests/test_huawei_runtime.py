@@ -154,6 +154,7 @@ class ApprovalIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(engine.may_negotiate('00000000-0000-0000-0000-00000000000B'))
     async def approval(self, accepted, *, trusted=False, revoke=False, identity=None, allowed=None, remove_trust=False):
         engine = Engine(); engine.trusted_only = trusted
+        engine.auto_accept_trusted = False
         engine.trusted_ids = set(allowed or [])
         session = {'id': 'test-session', 'central': '', 'direction': 'receive', 'protocol': 'huawei'}
         if identity: session['device_identifier'] = identity
@@ -181,6 +182,19 @@ class ApprovalIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await self.approval(False, trusted=True, identity=identity, allowed=[identity]))
         self.assertFalse(await self.approval(True, trusted=True, identity=identity, allowed=[identity], remove_trust=True))
         self.assertFalse(await self.approval(True, trusted=True, identity=identity, allowed=[identity], revoke=True))
+    async def test_trusted_huawei_key_auto_accepts_in_both_scopes(self):
+        identity = 'huawei-key:' + 'a' * 64
+        for trusted_only in (False, True):
+            for enabled in (False, True):
+                engine = Engine(); engine.trusted_only = trusted_only
+                engine.trusted_ids = {identity}; engine.huawei_enabled = enabled
+                session = {'id': 'auto-huawei', 'central': '', 'direction': 'receive',
+                           'protocol': 'huawei', 'device_identifier': identity}
+                with patch.object(engine, 'update') as update, patch('engine.emit'):
+                    accepted = await engine.huawei.approval(session, {'accepted_file_count': 1, 'accepted_total_bytes': 5})
+                self.assertEqual(accepted, enabled)
+                self.assertEqual(engine.decisions, {})
+                update.assert_not_called()
     async def test_unknown_changed_or_advertised_identity_never_prompts(self):
         identity = 'huawei-key:' + 'a' * 64
         for candidate in (None, 'huawei-key:' + 'b' * 64, 'huawei:advertisement',

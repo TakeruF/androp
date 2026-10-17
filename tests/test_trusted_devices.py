@@ -47,6 +47,7 @@ class TrustedDeviceTests(unittest.IsolatedAsyncioTestCase):
     async def test_rotated_trusted_sender_requires_user_approval(self):
         for decision in [True,False]:
             engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+            engine.auto_accept_trusted=False
             self.assertEqual(await self.approve(engine,decision=decision),decision)
             self.assertEqual(engine.session['device_identifier'],IDENTITY)
 
@@ -62,6 +63,7 @@ class TrustedDeviceTests(unittest.IsolatedAsyncioTestCase):
     async def test_revocation_and_disable_while_confirming_win_over_acceptance(self):
         for change in ['revoke','disable']:
             engine=Engine();engine.trusted_only=True;engine.trusted_ids={IDENTITY}
+            engine.auto_accept_trusted=False
             def mutate():
                 if change=='revoke':engine.trusted_ids.clear()
                 else:engine.scan_enabled=False
@@ -69,6 +71,39 @@ class TrustedDeviceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_everyone_still_requires_acceptance(self):
         for decision in [True,False]:self.assertEqual(await self.approve(Engine(),decision=decision),decision)
+
+    async def test_trusted_sender_is_automatically_accepted_by_default_in_both_scopes(self):
+        for trusted_only in (False, True):
+            engine=Engine();engine.trusted_only=trusted_only;engine.trusted_ids={IDENTITY}
+            with patch.object(engine,'update') as update:
+                self.assertTrue(await self.approve(engine,decision=False))
+            update.assert_not_called()
+            self.assertEqual(engine.decisions,{})
+
+    async def test_turning_auto_accept_off_requires_approval_in_both_scopes(self):
+        for trusted_only in (False, True):
+            for decision in (False, True):
+                engine=Engine();engine.trusted_only=trusted_only;engine.trusted_ids={IDENTITY}
+                engine.auto_accept_trusted=False
+                self.assertEqual(await self.approve(engine,decision=decision),decision)
+
+    async def test_auto_accept_does_not_bypass_disabled_receiving_or_removed_trust(self):
+        for trusted_only in (False, True):
+            engine=Engine();engine.trusted_only=trusted_only;engine.trusted_ids={IDENTITY}
+            engine.scan_enabled=False
+            self.assertFalse(await self.approve(engine))
+            engine.scan_enabled=True;engine.trusted_ids.clear()
+            self.assertFalse(await self.approve(engine,decision=False))
+
+    async def test_auto_accept_configuration_defaults_on_and_can_be_toggled(self):
+        engine=Engine()
+        with patch('engine.emit'):
+            for value in (None,False,True):
+                configuration={'command':'configure','trusted_ids':[IDENTITY]}
+                if value is not None:configuration['auto_accept_trusted']=value
+                await engine.command(configuration)
+                self.assertEqual(engine.auto_accept_trusted,value is not False)
+                self.assertEqual(await self.approve(engine,decision=False),value is not False)
 
     async def test_legacy_uuid_cannot_match_another_role_or_rotated_address(self):
         engine=Engine();engine.trusted_only=True;engine.trusted_ids={DEVICE}

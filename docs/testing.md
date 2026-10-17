@@ -263,3 +263,11 @@ Apple公证/staple/Gatekeeper通过。public资产DMG/签名appcast/SHA256；sou
 历史发布检查GitHub Latest=v1.2.0，三资产匿名重下与本机逐字节一致，canonical latest/download/appcast.xml亦同；独立验DMG Ed25519/feed/版本build/最低OS/架构/DMG内容/票据/Gatekeeper/不变designated requirement。
 
 安装的1.1.1/11022通过Sparkle到1.2.0/12000并重启，host/engine/Finder字节同公证版；信任/记忆/别名/隐藏/范围/目录/名/语言保持，设置1.2.0与Huawei无实验标签，后续公开feed显示最新。证明更新安装运行，不是新手机传输。
+
+## 1.2.1：受信任设备自动接收（2026-10-18）
+
+完整 **226 项 Python 测试和 31 项 Swift 测试**通过。新增覆盖两种接收范围下默认自动接收、关闭后恢复确认、“所有人”中的未登记发送者仍需确认、仅信任模式拒绝未知设备、关闭接收，以及华为传输公钥匹配。真实 loopback TLS/WebSocket/HTTP 接收在已登记发送者场景下无需确认，文件内容校验通过。编译后的生产 AppModel 验证设置持久化及两种范围下传给引擎的配置。
+
+完整冻结引擎已重建；从发行二进制提取的字节码通过两协议、两接收范围、默认开启及关闭自动接收的 smoke 检查。Developer ID 构建中 80 个 Mach-O 文件通过 arm64/macOS 14 最低版本检查。中英文设置截图使用虚构数据从生产视图重新生成并目视检查。本次变更未进行新的手机实机传输。
+
+Apple 公证、staple 及 Gatekeeper 检查通过。最终签名 DMG、签名 appcast 和 SHA-256 清单为唯一公开资产；包含完整冻结引擎，沿用既有发行包标识和 designated signing requirement。

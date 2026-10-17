@@ -17,7 +17,7 @@
 
 host与同捆engine通过进程管道JSON lines通信，不用网络listener作本地IPC。蓝牙发现，正文走现有LAN；Mac接收广告8881/GATT9999，发送扫描兼容service data再与选定设备协商。平台／厂商差异需实机测试。
 
-联盟路径使用P-256及观测到的AES-CBC协商格式，发送方HTTPS提供ZIP、TLS WebSocket交换控制；接收下载证书固定为同会话WebSocket证书。这是会话一致性，不是独立认证对端身份。归档检查件数/总大小/危险路径/不支持类型，完成文件不覆盖、加quarantine、每次批准。尚未独立安全审计。
+联盟路径使用P-256及观测到的AES-CBC协商格式，发送方HTTPS提供ZIP、TLS WebSocket交换控制；接收下载证书固定为同会话WebSocket证书。这是会话一致性，不是独立认证对端身份。归档检查件数/总大小/危险路径/不支持类型，完成文件不覆盖、加quarantine；受信任设备默认自动批准，可在设置中关闭。尚未独立安全审计。
 
 不运行时导入mtapy；[NOTICE](../NOTICE.md)记录原型及参考。Wi-Fi Direct/Google Quick Share未实现。1.2.0正式Huawei Share使用独立native LAN发现、同捆Python RSA/AES-GCM/DFile。机型范围见[兼容性](compatibility.md)，限额见[使用](usage.md)，鸿蒙星河互联共存仍实验性。
 
@@ -25,7 +25,7 @@ host与同捆engine通过进程管道JSON lines通信，不用网络listener作�
 
 host将CoreBluetooth central UUID列表与别名分开保存，在返回状态／缓存数据前检查GATT读和整批写；未知subscription不发通知，排队通知送达时重查，不用nil subscriber广播。engine独立筛ready、派生接收密钥前检查UUID，批准后再查接收状态和政策。名字／广播ID不授予信任，无批准不下载，已批准传输可在移除信任后完成。
 
-候选来自完成接收，需手动登记。联盟记录 `sender:`+自报senderId的SHA256，不是认证凭据。Huawei记录 `huawei-key:`+规范DER RSA公钥SHA256，仅在有效GCM offer证明私钥持有后交runtime；raw key不写探针证据。发现ID/名字/IP/账号名不能授权。公钥连续性是本机登记，不是厂商／账号认证。身份变化需Everyone新收再登记，旧Huawei历史无key不能迁移；离线记录可管理。仅联盟sender允许GATT元数据协商，Huawei key不打开该入口。两协议均在提示／数据前拒未知、批准后重查且每次确认。发现仍公开，见[信任与发现](trusted-discovery.md)。
+候选来自完成接收，需手动登记。联盟记录 `sender:`+自报senderId的SHA256，不是认证凭据。Huawei记录 `huawei-key:`+规范DER RSA公钥SHA256，仅在有效GCM offer证明私钥持有后交runtime；raw key不写探针证据。发现ID/名字/IP/账号名不能授权。公钥连续性是本机登记，不是厂商／账号认证。身份变化需Everyone新收再登记，旧Huawei历史无key不能迁移；离线记录可管理。仅联盟sender允许GATT元数据协商，Huawei key不打开该入口。两协议在仅限信任模式均在提示／数据前拒未知；两种接收范围均默认自动批准已登记的传输身份，可在设置中关闭并逐次确认。手动批准后重查政策，Everyone中的未知身份始终需确认。发现仍公开，见[信任与发现](trusted-discovery.md)。
 
 host运行、蓝牙Wi-Fi可用即接收，无持久总开关；退出停广告／engine，无线不可用停新请求和广告。控制中心已移除，[独立接收面板原型](../Prototypes/ReceivePanel/README.md)保留原生glass/SF Symbols/演示，正式构建不产WidgetKit/App Intents/App Group快照，旧control URL打开普通设置。
 

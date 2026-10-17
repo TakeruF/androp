@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from engine import Engine,wire,parse_wire,sender_identifier,Keys
 
 class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False):
+    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False,auto_accept=False):
         files=files or {'日本語.txt':b'synthetic file\n','empty.bin':b''}
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);destination=root/'received';destination.mkdir()
@@ -25,6 +25,7 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
             with zipfile.ZipFile(zipped,'w') as z:
                 for name,data in files.items():z.writestr(name,data)
             engine=Engine();engine.destination=str(destination);engine.trusted_only=trusted
+            engine.auto_accept_trusted=auto_accept
             engine.trusted_ids={sender_identifier('test-sender-unique-device')} if allowed else {sender_identifier('another-device-id')}
             session={'id':uuid.uuid4().hex,'direction':'receive','central':str(uuid.uuid4()).upper(),'count':len(files),'peer':'Same account name'};engine.session=session
             downloads=[];events=[];udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);udp.bind(('127.0.0.1',0));udp.setblocking(False);udp_port=udp.getsockname()[1]
@@ -80,7 +81,8 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(len(terminals),1,'Superseded connect attempt must not end the transfer')
                     else:
                         await asyncio.wait_for(engine.receive(session,'127.0.0.1',port,udp),8)
-                should_succeed=(not trusted or (allowed and sender=='test-sender-unique-device' and not revoked)) and decision and not disabled and not malformed_count
+                auto_approved=auto_accept and allowed and sender=='test-sender-unique-device'
+                should_succeed=(not trusted or (allowed and sender=='test-sender-unique-device' and not revoked)) and (auto_approved or decision) and not disabled and not malformed_count
                 if cancel_midstream:
                     self.assertEqual(session['state'],'cancelled')
                     self.assertEqual(list(destination.iterdir()),[])
@@ -105,6 +107,13 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_changed_protocol_id_does_not_inherit_trust(self):await self.transfer(trusted=True,sender='different-device-id')
     async def test_missing_protocol_id_does_not_inherit_trust(self):await self.transfer(trusted=True,sender=None)
     async def test_user_decline_never_downloads(self):await self.transfer(decision=False)
+    async def test_auto_accept_trusted_receives_files_without_prompt_in_both_scopes(self):
+        for trusted in (False,True):
+            events=await self.transfer(trusted=trusted,auto_accept=True,decision=False)
+            self.assertFalse(any(event.get('state')=='request' for event in events))
+    async def test_auto_accept_unknown_sender_in_everyone_still_requires_approval(self):
+        events=await self.transfer(allowed=False,auto_accept=True,decision=False)
+        self.assertTrue(any(event.get('state')=='request' for event in events))
     async def test_revocation_while_prompt_is_open_never_downloads(self):await self.transfer(trusted=True,revoked=True)
     async def test_disable_while_prompt_is_open_never_downloads(self):await self.transfer(disabled=True)
     async def test_invalid_file_count_never_downloads(self):await self.transfer(malformed_count=True)

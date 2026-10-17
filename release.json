@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "build": 12000,
+  "version": "1.2.1",
+  "build": 12100,
   "minimum_macos": "14.0",
   "repository": "TakeruF/androp",
   "feed_url": "https://github.com/TakeruF/androp/releases/latest/download/appcast.xml",

@@ -40,7 +40,7 @@ popup无标题／红黄绿：发前Cancel、发送时Cancel All、全部终态Do
 
 ## 受信任设备与接收限额
 
-菜单栏／设置选Trusted Devices Only或Everyone，均每次批准。**前者筛接收，不向未知设备隐藏Mac**，与AirDrop联系人发现匹配不同（[Apple说明](https://support.apple.com/guide/security/airdrop-security-sec2261183f4/web)）。当前联盟用公开广播，详[信任与发现](trusted-discovery.md)。
+菜单栏／设置选Trusted Devices Only或Everyone；两种范围下“自动接收受信任设备的文件”均默认开启，可在设置中关闭并改为每次确认。Everyone中的未登记设备始终需确认。**前者筛接收，不向未知设备隐藏Mac**，与AirDrop联系人发现匹配不同（[Apple说明](https://support.apple.com/guide/security/airdrop-security-sec2261183f4/web)）。当前联盟用公开广播，详[信任与发现](trusted-discovery.md)。
 
 设置“受信任的设备…”从成功历史添加，离线也可；新设备先Everyone收一次。列表厂商／类型角标，用户核实请求，重名用本地ID后缀；可移除信任／忘记。联盟存自报senderId摘要，Huawei存传输公钥SHA256并校验私钥持有，不按名字／账号／IP授权。旧Huawei历史无key不可迁移，更新后Everyone新收再加；key或ID变重新核实。未知在提示／下载前拒绝，批准后也查政策，移除不打断已接受传输。
 

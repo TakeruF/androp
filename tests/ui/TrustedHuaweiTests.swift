@@ -8,6 +8,25 @@ extension AppModel {
             "peer": "Huawei test", "device_identifier": identity,
             "device_kind": "phone", "device_brand": "Huawei"]
         input = FileHandle.nullDevice
+        precondition(autoAcceptTrusted)
+        for scope in [false, true] {
+            changeTrustedOnly(scope)
+            for enabled in [false, true] {
+                let pipe = Pipe()
+                input = pipe.fileHandleForWriting
+                changeAutoAcceptTrusted(enabled)
+                let commands = String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
+                    .split(separator: "\n")
+                    .map { try! JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String: Any] }
+                let configure = commands.first { $0["command"] as? String == "configure" }!
+                precondition(configure["auto_accept_trusted"] as? Bool == enabled)
+                precondition(configure["trusted_only"] as? Bool == scope)
+                precondition(AppModel().autoAcceptTrusted == enabled)
+                precondition(AppModel().trustedOnly == scope)
+                input = FileHandle.nullDevice
+            }
+        }
+        input = FileHandle.nullDevice
         var event = incoming
         event["state"] = "transferring"
         updateTransfer(event)

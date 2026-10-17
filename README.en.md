@@ -10,9 +10,9 @@ anDrop is a macOS menu bar app that officially supports the **互传联盟 (Mutu
 
 **[Download anDrop](https://github.com/TakeruF/androp/releases/latest)** · [Usage and troubleshooting](docs/usage.en.md) · [Compatibility](docs/compatibility.en.md)
 
-**1.2.0: official Huawei Share support is the headline feature.** Send and receive files between your Mac and a device's built-in Huawei Share. 鸿蒙星河互联 coexistence remains experimental. Tested models and transfer limits are listed below.
+**1.2.1: automatically accept files from trusted devices.** Enabled by default in both receive modes, with a Settings switch to require approval for each transfer. See the [1.2.1 release notes](docs/releases/1.2.1.en.md).
 
-Version 1.2.0 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. OPPO Find X9 Pro and OPPO Pad 4 Pro have both undergone physical testing across multiple scenarios, including transfers in both directions. Huawei Share has also passed bidirectional transfer testing on **Huawei Pura 70 running HarmonyOS 7 (鸿蒙 7)**. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
+Version 1.2.1 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. OPPO Find X9 Pro and OPPO Pad 4 Pro have both undergone physical testing across multiple scenarios, including transfers in both directions. Huawei Share has also passed bidirectional transfer testing on **Huawei Pura 70 running HarmonyOS 7 (鸿蒙 7)**. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
 
 **1.2.0** adds official Huawei Share support, concurrent sends to different devices, recipient renaming/hiding from the context menu, and automatic update installation with notifications. It also improves photo receipt and trusted-device management. See the [release notes](docs/releases/1.2.0.en.md) and [test record](docs/testing.en.md). When upgrading from 1.0.0, re-enroll old trusted-device entries after successfully receiving a file; see the [1.1.0 upgrade notes](docs/releases/1.1.0.en.md).
 
@@ -47,7 +47,7 @@ Before sending, Cancel dismisses the picker. Each recipient has independent prog
 ### Phone or tablet → Mac
 
 1. Select files on the device, open its built-in compatible sharing feature and choose the Mac.
-2. Accept in anDrop’s notification or menu bar. **Every incoming transfer requires approval.**
+2. Accept in anDrop’s notification or menu bar. **Trusted devices are accepted automatically by default; this can be turned off in Settings.**
 3. Files go directly into **Downloads** by default. Duplicate names receive a numeric suffix; existing files are never overwritten and received files are not opened automatically.
 
 Sends to different devices can run concurrently. Receiving remains exclusive. Compress folders first. Send files with identical base names in separate transfers.
@@ -65,7 +65,7 @@ Change the destination folder, sharing name, language, Open at Login, receiving 
 
 ## Receive scope and trusted devices
 
-Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Both modes require approval for every incoming transfer.
+Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. **Automatically accept from trusted devices** is on by default in both modes. Turn it off in Settings to approve each transfer. Untrusted devices always require approval in Everyone mode.
 
 **This differs from AirDrop Contacts Only: untrusted devices may still see this Mac. Trusted Devices Only rejects their transfer requests; it does not hide anDrop.** See [discovery limits and receive filtering](docs/trusted-discovery.en.md).
 
@@ -73,7 +73,7 @@ In Settings → **Trusted Devices…**, add devices from successful incoming tra
 
 <img src="docs/images/trusted-en.png" alt="Mock trusted-device management with manufacturer artwork and add, remove and forget controls" width="600">
 
-The filter stores a hash of the protocol sender ID, so rotating Bluetooth addresses do not remove trust. Names and accounts do not authorize receipt. This is a self-reported ID, not cryptographic pairing or authenticated identity. After the control connection supplies the ID, unlisted senders are rejected before approval and before downloading files. Listed senders still require approval. Removing trust does not interrupt an already accepted transfer. Old UUID-only entries require one incoming transfer in Everyone mode and enrollment of the new record; matching a display name is not a safe migration.
+The filter stores a hash of the protocol sender ID, so rotating Bluetooth addresses do not remove trust. Names and accounts do not authorize receipt. This is a self-reported ID, not cryptographic pairing or authenticated identity. After the control connection supplies the ID, unlisted senders are rejected before approval and before downloading files. Listed senders are accepted automatically when the setting is on; otherwise they require approval. Removing trust does not interrupt an already accepted transfer. Old UUID-only entries require one incoming transfer in Everyone mode and enrollment of the new record; matching a display name is not a safe migration.
 
 Huawei devices can also be added: after updating, receive a file in Everyone mode, then add the device here. Huawei records use a SHA-256 fingerprint of the transfer public key, with proof of possession during each receive handshake. Names, IP addresses and discovery advertisements do not authorize receipt. This is local enrollment, not Huawei account pairing. If the key changes, receive and enroll again. Older Huawei history has no key and cannot be migrated automatically.
 
@@ -113,7 +113,7 @@ The Mutual Transfer Alliance is a cross-brand ecosystem used by Xiaomi, HONOR, O
 | OPPO Pad 4 Pro | Physically tested across multiple scenarios, including discovery, tablet identification and same-Wi-Fi transfers in both directions. |
 | HONOR | Models supporting both Huawei Share and Android mutual transfer (安卓互传) are a priority for upcoming physical validation. We plan to test discovery and bidirectional file transfers separately through both sharing methods. Availability depends on model and OS version; physical testing remains outstanding. |
 | Xiaomi, vivo and other brands/models | Compatible devices in the target ecosystem; not physically tested yet. |
-| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.2.0. |
+| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.2.1. |
 | 鸿蒙星河互联 coexistence | Experimental. We recommend finishing any 鸿蒙星河互联 transfers and quitting it, then using anDrop for file sharing to avoid discovery or transfer conflicts. |
 | Huawei Share | **Officially supported by anDrop on the same LAN. Test device: Huawei Pura 70 running HarmonyOS 7 (鸿蒙 7).** Three-file app transfers in both directions, Downloads receipt, duplicate-name receipt, and content verification passed. The phone is found while its screen is on, without opening its share sheet. The first transfer needs “Everyone” on the phone; afterwards “Devices shared with” also works. Transfers can be retried right after a cancel or dropped connection. The latest full build passed bidirectional transfers with empty files, Japanese names and 8 MiB, including Downloads receipt and duplicate-name handling. Phone identity authentication, screen-off discovery, and Wi-Fi loss recovery remain under validation. See the [research record](docs/huawei-share-research.en.md). |
 | Wi-Fi Direct, Google Quick Share | Not implemented. |

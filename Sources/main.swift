@@ -91,6 +91,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
 
     @Published private(set) var forgottenDeviceIdentifiers = Set(UserDefaults.standard.stringArray(forKey: "forgottenDeviceIdentifiers") ?? [])
     @Published private(set) var trustedOnly = UserDefaults.standard.bool(forKey: "trustedOnly")
+    @Published private(set) var autoAcceptTrusted = UserDefaults.standard.object(forKey: "autoAcceptTrusted") as? Bool ?? true
     @Published private(set) var trustedDevices: [RememberedDevice] = {
         guard let data = UserDefaults.standard.data(forKey: "trustedDevices") else { return [] }
         return (try? JSONDecoder().decode([RememberedDevice].self, from: data)) ?? []
@@ -276,6 +277,9 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @objc func selectEveryone() { changeTrustedOnly(false) }
     func changeTrustedOnly(_ value: Bool) {
         trustedOnly = value; UserDefaults.standard.set(value, forKey: "trustedOnly"); configureEngine(); rebuildMenu()
+    }
+    func changeAutoAcceptTrusted(_ value: Bool) {
+        autoAcceptTrusted = value; UserDefaults.standard.set(value, forKey: "autoAcceptTrusted"); configureEngine()
     }
     var knownDevices: [RememberedDevice] {
         var seen = Set<String>()
@@ -564,7 +568,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         do { try input.write(contentsOf: bytes + Data([10])); return true }
         catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。"); return false }
     }
-    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "trusted_ids": trustedDevices.map(\.id), "huawei_enabled": receiving]); command(["command": "enabled", "value": receiveSwitchIsOn]) }
+    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "auto_accept_trusted": autoAcceptTrusted, "trusted_ids": trustedDevices.map(\.id), "huawei_enabled": receiving]); command(["command": "enabled", "value": receiveSwitchIsOn]) }
     private func consume(_ data: Data) {
         outputBuffer.append(data)
         if outputBuffer.count > 4_194_304 { outputBuffer.removeAll(); error = L("The sharing service returned an invalid response.", "共享服务返回了无效响应。"); return }
@@ -1302,12 +1306,15 @@ struct SettingsView: View {
                     HStack { Button(L("Accept", "接收")) { model.decide(incoming, accept: true) }; Button(L("Decline", "拒绝")) { model.decide(incoming, accept: false) } }
                 }
             }
-            VStack(alignment: .leading, spacing: 8) { Text(L("Save received files to", "接收文件保存位置")).font(.headline); HStack { Text(model.destination).font(.callout).lineLimit(1).truncationMode(.middle); Spacer(); Button(L("Change…", "更改…"), action: model.chooseDestination).disabled(model.busy) }; Text(L("Each transfer needs your approval. Existing files are never overwritten.", "每次接收都需确认。同名文件不会被覆盖。")).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 8) { Text(L("Save received files to", "接收文件保存位置")).font(.headline); HStack { Text(model.destination).font(.callout).lineLimit(1).truncationMode(.middle); Spacer(); Button(L("Change…", "更改…"), action: model.chooseDestination).disabled(model.busy) }; Text(L("Existing files are never overwritten.", "同名文件不会被覆盖。")).font(.caption).foregroundStyle(.secondary) }
             VStack(alignment: .leading, spacing: 8) {
                 Picker(L("Allow Requests From", "接收范围"), selection: Binding(get: { model.trustedOnly }, set: model.changeTrustedOnly)) {
                     Text(L("Trusted Devices Only", "仅限受信任的设备")).tag(true)
                     Text(L("Everyone", "所有人")).tag(false)
                 }
+                Toggle(L("Automatically accept from trusted devices", "自动接收受信任设备的文件"), isOn: Binding(get: { model.autoAcceptTrusted }, set: model.changeAutoAcceptTrusted))
+                Text(L("On by default in both receive modes. Turn off to approve each transfer from trusted devices. Other devices always need approval in Everyone mode.", "默认开启，适用于两种接收范围。关闭后，受信任设备的每次传输也需确认。在“所有人”模式下，其他设备始终需要确认。"))
+                    .font(.caption).foregroundStyle(.secondary)
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 8) {
                         if model.trustedDevices.isEmpty {
@@ -1333,9 +1340,9 @@ struct SettingsView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     Button(L("Trusted Devices…", "受信任的设备…")) { managingTrustedDevices = true }
                 }
-                Text(L("Other devices can still see this Mac. In Trusted Devices Only mode, their transfer requests are rejected. Trusted devices still need your approval.", "未受信任的设备仍可发现此 Mac；选择“仅限受信任的设备”后，其传输请求会被拒绝。受信任的设备每次传输仍需你确认。"))
+                Text(L("Other devices can still see this Mac. In Trusted Devices Only mode, their transfer requests are rejected.", "未受信任的设备仍可发现此 Mac；选择“仅限受信任的设备”后，其传输请求会被拒绝。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Text(L("To trust a Huawei device, receive a file in Everyone mode, then add it in Trusted Devices. Each transfer still needs your approval.", "添加华为设备前，请在“所有人”模式下接收一次文件，再到“受信任的设备”中添加。每次传输仍需你确认。"))
+                Text(L("To trust a Huawei device, receive a file in Everyone mode, then add it in Trusted Devices.", "添加华为设备前，请在“所有人”模式下接收一次文件，再到“受信任的设备”中添加。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 8) {

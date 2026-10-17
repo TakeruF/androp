@@ -62,7 +62,7 @@ class OutgoingSelectionTests(unittest.TestCase):
                        'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift']
             compiled = subprocess.run([
                 'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
-                '-module-cache-path', str(ROOT / 'build/module-cache'),
+                '-module-cache-path', str(stage / 'module-cache'),
                 *[str(localization if name == 'Localization.swift' else ROOT / 'Sources' / name) for name in sources],
                 str(generated), '-o', str(executable),
             ], capture_output=True, text=True, timeout=180)

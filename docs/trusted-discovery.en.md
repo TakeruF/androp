@@ -2,7 +2,7 @@
 
 [简体中文](trusted-discovery.md) · English
 
-Updated2026-10-17. **Trusted Devices Only limits receiving, not discovery.** Unregistered devices may still see this Mac in their system share picker, but their files are refused. This differs from AirDrop Contacts Only.
+Updated 2026-10-18. **Trusted Devices Only limits receiving, not discovery.** Unregistered devices may still see this Mac in their system share picker, but their files are refused. This differs from AirDrop Contacts Only.
 
 ## Why sender identification changed
 
@@ -17,12 +17,12 @@ Old entries lack senderId and cannot migrate safely by matching names. Select Ev
 1. Bluetooth negotiates current network endpoints.
 2. TLS control reads sender identity and metadata.
 3. Trusted-only checks senderId and rejects an unlisted ID before prompting or requesting any file download.
-4. Listed senders still require approval; removing trust or disabling receipt while it is pending invalidates acceptance.
-5. Download starts after approval and pins the control connection's certificate fingerprint.
+4. Enrolled sender IDs are accepted automatically by default in either receive mode. Turn off Automatically accept from trusted devices to require approval. Removing trust or disabling receipt while approval is pending invalidates acceptance.
+5. Download starts after automatic or manual approval and pins the control connection's certificate fingerprint.
 
-With persistent trust entries, an unfamiliar Bluetooth address must be able to perform the first two steps to present the same senderId. This is not automatic file receipt. An empty trusted list rejects immediately. Already accepted transfers may finish; new ones check current policy.
+With persistent trust entries, an unfamiliar Bluetooth address must be able to perform the first two steps to present the same senderId. Negotiation alone does not authorize file receipt. In trusted-only mode, an empty trusted list rejects immediately. Already accepted transfers may finish; new ones check current policy.
 
-**This is not cryptographic pairing or authenticated identity.** The sender supplies its own ID, so a client spoofing it may pass this convenience filter. Approval is never omitted. Reset or changed protocol IDs require verification and re-enrollment. Certificate pinning ensures session download consistency, not initial identity authentication. Huawei public-key enrollment is separately described in [architecture](architecture.en.md) and [usage](usage.en.md).
+**This is not cryptographic pairing or authenticated identity.** The sender supplies its own ID, so a client spoofing it may pass this convenience filter. With automatic acceptance enabled, a matching enrolled ID skips the approval prompt. Turn it off to confirm every transfer. Reset or changed protocol IDs require verification and re-enrollment. Certificate pinning ensures session download consistency, not initial identity authentication. Huawei public-key enrollment is separately described in [architecture](architecture.en.md) and [usage](usage.en.md).
 
 ## Visibility limits
 

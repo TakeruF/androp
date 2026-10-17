@@ -22,6 +22,7 @@
 
 ## 更新说明
 
+- [1.2.1](releases/1.2.1.md)
 - [1.2.0](releases/1.2.0.md)
 - [1.1.1](releases/1.1.1.md)
 - [1.1.0](releases/1.1.0.md)
