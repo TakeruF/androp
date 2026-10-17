@@ -1,38 +1,34 @@
-# Architecture
+# 架构
 
-| Component | Responsibility |
+简体中文 · [English](architecture.en.md)
+
+| 组件 | 职责 |
 | --- | --- |
-| `Sources/main.swift` | AppKit menu bar, SwiftUI settings/recipient panel, notifications, login item, CoreBluetooth peripheral and GATT |
-| `Sources/ShareViewController.swift` | Finder Share extension; hands selected file URLs to the native host |
-| `Sources/BrandLogos.swift` | Cached, bundled official manufacturer images; no runtime image downloads |
-| `Sources/TransferProgress.swift` | Sending phases, bounded percentage and recipient snapshot for the progress view |
-| `Sources/discovery.py` | macOS repeat-advertisement delivery for live recipient expiry |
-| `Sources/ReceiveAccessPolicy.swift` | GATT access checks using local trusted endpoint identifiers |
-| `Sources/Peer.swift` | Recipient presentation, local alias keys and duplicate-name disambiguation |
-| `Sources/peer_metadata.py` | Conservative advertisement metadata parsing and recipient identity across endpoint changes |
-| `Sources/Localization.swift` | English/Simplified Chinese strings and system-language fallback |
-| `Sources/engine.py` | BLE central scanning, protocol negotiation, local HTTPS/WebSocket transfer, archive validation and saving |
+| `Sources/main.swift` | AppKit菜单栏、SwiftUI设置／候选、通知、登录启动、CoreBluetooth peripheral和GATT |
+| `Sources/ShareViewController.swift` | Finder共享扩展，将所选URL交给host |
+| `Sources/BrandLogos.swift` | 缓存本地官方品牌图，不在运行时下载 |
+| `Sources/TransferProgress.swift` | 发送阶段、有界百分比和候选快照 |
+| `Sources/discovery.py` | macOS重复广播回调与候选过期 |
+| `Sources/ReceiveAccessPolicy.swift` | 按本地可信endpoint做GATT检查 |
+| `Sources/Peer.swift` | 候选展示、别名key、同名区分 |
+| `Sources/peer_metadata.py` | 保守解析广播及endpoint变化后的候选身份 |
+| `Sources/Localization.swift` | 英语／简体中文、系统语言回退 |
+| `Sources/engine.py` | BLE central扫描、协议、本地HTTPS/WebSocket、归档验证与保存 |
 
-The native host and bundled engine communicate through JSON lines over process pipes. No network listener is used for this local IPC.
+host与同捆engine通过进程管道JSON lines通信，不用网络listener作本地IPC。蓝牙发现，正文走现有LAN；Mac接收广告8881/GATT9999，发送扫描兼容service data再与选定设备协商。平台／厂商差异需实机测试。
 
-Discovery uses Bluetooth; file bytes use the existing local network. The receiving Mac advertises service `8881` and exposes the GATT service `9999`. The outgoing path scans compatible device service data and negotiates with the selected device. Platform and vendor variations still need physical-device tests.
+联盟路径使用P-256及观测到的AES-CBC协商格式，发送方HTTPS提供ZIP、TLS WebSocket交换控制；接收下载证书固定为同会话WebSocket证书。这是会话一致性，不是独立认证对端身份。归档检查件数/总大小/危险路径/不支持类型，完成文件不覆盖、加quarantine、每次批准。尚未独立安全审计。
 
-The implementation uses P-256 key exchange and the observed protocol's AES-CBC format for negotiation. The sender serves a ZIP archive over HTTPS and exchanges control messages over a TLS WebSocket. The receiver pins the download certificate to the certificate from the same session's WebSocket. This is session consistency, not independently authenticated peer identity.
+不运行时导入mtapy；[NOTICE](../NOTICE.md)记录原型及参考。Wi-Fi Direct/Google Quick Share未实现。1.2.0正式Huawei Share使用独立native LAN发现、同捆Python RSA/AES-GCM/DFile。机型范围见[兼容性](compatibility.md)，限额见[使用](usage.md)，鸿蒙星河互联共存仍实验性。
 
-Incoming archives are checked for count, total size, unsafe paths and unsupported entry types. Completed files are placed without overwriting existing files, and receive a quarantine attribute. Acceptance is required for each transfer. The implementation has not undergone an independent security audit.
+## 受信任设备接收筛选
 
-There is no runtime import of mtapy; [NOTICE.md](../NOTICE.md) records the earlier prototype's use and the research references. Wi-Fi Direct and Google Quick Share are outside the current implementation. Huawei Share is officially supported as the headline feature of 1.2.0, with dedicated native LAN discovery and a bundled Python runtime using RSA/AES-GCM and DFile transfer over the existing LAN. See [compatibility](compatibility.md) for tested models and [usage](usage.md) for transfer limits. Petal coexistence remains experimental.
+host将CoreBluetooth central UUID列表与别名分开保存，在返回状态／缓存数据前检查GATT读和整批写；未知subscription不发通知，排队通知送达时重查，不用nil subscriber广播。engine独立筛ready、派生接收密钥前检查UUID，批准后再查接收状态和政策。名字／广播ID不授予信任，无批准不下载，已批准传输可在移除信任后完成。
 
-## Trusted-device receive filter
+候选来自完成接收，需手动登记。联盟记录 `sender:`+自报senderId的SHA256，不是认证凭据。Huawei记录 `huawei-key:`+规范DER RSA公钥SHA256，仅在有效GCM offer证明私钥持有后交runtime；raw key不写探针证据。发现ID/名字/IP/账号名不能授权。公钥连续性是本机登记，不是厂商／账号认证。身份变化需Everyone新收再登记，旧Huawei历史无key不能迁移；离线记录可管理。仅联盟sender允许GATT元数据协商，Huawei key不打开该入口。两协议均在提示／数据前拒未知、批准后重查且每次确认。发现仍公开，见[信任与发现](trusted-discovery.md)。
 
-The host persists a user-managed list of CoreBluetooth central UUIDs separately from display aliases. The host gates GATT status reads and whole write batches before responding with application state or buffering data. Unlisted subscriptions receive no application notification; queued notifications are rechecked at delivery and are never broadcast using a nil subscriber list. The engine independently filters ready notifications and checks the UUID before deriving an incoming session key, and rechecks both the filter and enabled state after the acceptance prompt resolves. It never grants trust from a name or advertised ID. No file is downloaded before approval. Active transfers continue when trust is removed.
+host运行、蓝牙Wi-Fi可用即接收，无持久总开关；退出停广告／engine，无线不可用停新请求和广告。控制中心已移除，[独立接收面板原型](../Prototypes/ReceivePanel/README.md)保留原生glass/SF Symbols/演示，正式构建不产WidgetKit/App Intents/App Group快照，旧control URL打开普通设置。
 
-Trust candidates come from completed incoming transfers and require explicit enrollment. Alliance records use `sender:` plus SHA-256 of the self-reported protocol sender ID; these are not authenticated credentials. Huawei records use `huawei-key:` plus SHA-256 of the canonical DER RSA public key, supplied to the runtime only after a valid AES-GCM offer proves possession of the private key. Raw Huawei keys never enter probe evidence. Discovery IDs, names, IP addresses and account names do not establish trust. Huawei key continuity is local enrollment, not vendor/account authentication. Changed keys or sender IDs require a new Everyone-mode receipt and enrollment; older Huawei history has no key and cannot be migrated. Records remain available offline. Only Alliance sender IDs allow GATT metadata negotiation; Huawei keys do not open that path. Both protocols reject unlisted identities before prompting or receiving file data, recheck permission after approval, and retain explicit approval for every transfer. Already accepted transfers can finish after trust removal. Discovery remains public; see [trusted receiving versus discovery](trusted-discovery.md).
+点击候选立即发送，持续发现让其他候选仍可点击。首次保留批次，后续点击复用原批次且不丢新排队Finder选择。host每目标独立文件列表/request ID；engine按ID+目标预留会话，独立密钥/归档/socket/取消任务，Huawei有独立进程组。接收独占，发送活跃时拒新接收。重复request ID幂等，同目标重复活动发送拒绝。
 
-Receiving is enabled while the host is running and Bluetooth and Wi-Fi are available. There is no persisted on/off preference. Quitting stops advertising and terminates the engine. Bluetooth/Wi-Fi unavailability disables new receive requests and stops advertising.
-
-Control Center integration is removed from the production build. The compact receive panel is preserved as a [standalone UI prototype](../Prototypes/ReceivePanel/README.md) with its native glass wrapper, SF Symbols and mock preview. The host no longer builds WidgetKit/App Intents components or publishes an App Group snapshot. Old control URLs open the ordinary Settings window.
-
-The recipient popup starts a send immediately when a device is clicked and keeps discovery running so other recipients remain clickable during transfers. The first click retains the current file batch; later recipient clicks reuse that batch while preserving any newly queued Finder selection. The host retains a file list and request ID per recipient. The engine reserves outgoing sessions by request ID and destination, with separate keys, archives, sockets and cancellation tasks; Huawei sends also own separate subprocess groups. Incoming transfers remain exclusive, and new incoming requests are rejected while outgoing sessions are active. Repeating a request ID is idempotent; a second active send to the same destination is rejected.
-
-Each tile shows its own progress, result, retry and cancellation. Cancel All stops active sends and pending retries. Done closes the result, and outside-click dismissal is enabled only after every recipient succeeds. Clicking another window during sending leaves all transfers running in the background.
+每tile独立进度/结果/重试/取消；全部取消停活动和待重试，完成关闭结果，仅全成功可点外关闭。发送中切其他窗口仍继续。

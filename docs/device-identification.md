@@ -1,51 +1,33 @@
-# Device manufacturer and model identification
+# 设备厂商与型号识别
 
-Investigation date: **2026-10-16**. Tested with the existing OPPO Find X9 Pro on Chinese ColorOS 17 / Android 17, sharing service 17.2.36. A follow-up passive test included an OPPO tablet with the same sharing/account name. Version 0.1.1 uses the observed brand and category metadata in its recipient UI.
+简体中文 · [English](device-identification.en.md)
 
-## Results
+调查：2026-10-16，已有OPPO Find X9 Pro，中国ColorOS17/Android17、分享服务17.2.36；后续被动试验含同分享／账号名的OPPO平板。0.1.1已将观测品牌与大类用于候选UI。
 
-| Information | Finding | Limit |
+| 信息 | 结果 | 限制 |
 | --- | --- | --- |
-| Sharing display name | Available in Bluetooth service data `3334` | A user-selected sharing/account label, not proof of model or real-world identity |
-| Manufacturer/brand | **OPPO identified from the observed `3333` advertisement flags, before connecting** | Self-reported protocol metadata; not authenticated hardware identity |
-| Phone/tablet category | **Phone and tablet distinguished in simultaneous passive discovery** | A broad category, not a product model |
-| Exact hardware model | **Not obtained through the examined wireless sharing path** | No model field in the observed advertisement or sharing status response |
-| Model over USB/ADB | Available as a local diagnostic baseline | Not a solution for anDrop's normal connection-free discovery |
+| 分享显示名 | BLE Service Data3334可得 | 用户／账号标签，不证明型号或真实身份 |
+| 品牌 | 连接前从3333 flags识别OPPO | 自报协议元数据，不是认证硬件身份 |
+| 手机／平板 | 同时被动发现可区分 | 大类，不是具体产品型号 |
+| 具体型号 | 此无线分享路径未取得 | 广播／状态响应无型号字段 |
+| USB/ADB型号 | 可作本地诊断基准 | 不是正常无需连接发现方案 |
 
-## Physical-device evidence
+只读探针以已知显示名选设备，报告去掉名字和地址，不改设置、不发传输请求。3333为22 B、receiver role、format11、flags9 (`0x09`)，3334为不公开名字，无manufacturer-specific广告。此格式bit0x08为OPPO、0x10为realme、0x02为tablet，0x09仅OPPO位；另一轮无连接扫描重现，既有USB厂商字段亦一致。这是该格式发现，不保证其他品牌／未来版本通用。
 
-The read-only probe selected the same device by its already-visible sharing name, then omitted that name and device addresses from the report. No settings were changed and no file-transfer request was sent.
+临时BLE连接枚举并读9897，仅有key/pv/state/version，无型号／厂商，公钥不保留。标准180A、2A29、2A24均未出现，属于可选[Device Information Service](https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/DIS_v1.2/out/en/index-en.html)。USB基准型号PLG110未在无线数据出现；不能凭知道测试机型号就给任意附近设备贴该型号。
 
-The observed service data contained:
+## 同账号名的两个设备
 
-- `3333`: 22 bytes; receiver role, discovery format version `11`, flags `9` (`0x09`).
-- `3334`: the sharing display name, intentionally omitted from this document.
-- No manufacturer-specific advertisement data in that observation.
+后续同时观察phone flags9和tablet11 (`0x0B`)，同分享名、不同协议ID，均无local/peripheral name，未取得平板具体型号。macOS endpoint在观测期间改变而协议ID保持，旧按endpoint保留会短暂重复。0.1.1以已识别format11、非零12位hex ID聚合，重发现更新endpoint；不同ID即使同名也独立。仅证明此次稳定，不保证重置／账号／固件后终身稳定。
 
-In this `3333` format, bit `0x08` is the OPPO brand indicator, bit `0x10` is the realme indicator, and bit `0x02` is the tablet indicator. The observed `0x09` has the OPPO bit set and the other two clear. A second passive scan reproduced the result without a Bluetooth connection. Manufacturer fields read separately over the existing USB diagnostic connection agreed with OPPO. The bit interpretations are protocol findings, not a claim that all brands or future software versions use this layout.
+本地别名按该候选身份SHA256，未知格式退回endpoint。身份仅组织列表，不用来认证或跳过批准。
 
-A temporary BLE connection was used to enumerate services and read the existing sharing status characteristic `9897`. Its JSON contained only `key`, `pv`, `state` and `version`; no model/manufacturer field was present. Public-key contents are not retained here. The standard Device Information service `180A`, Manufacturer Name characteristic `2A29` and Model Number characteristic `2A24` were absent. Bluetooth defines those optional information characteristics in its [Device Information Service specification](https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/DIS_v1.2/out/en/index-en.html).
+## 其他格式与产品含义
 
-The diagnostic USB model identifier was `PLG110`. The examined Bluetooth advertisements and sharing response did not expose that identifier or the marketing name. Knowledge of the attached test phone must not be used to label arbitrary nearby devices with that model.
+[CatShare发现实现](https://github.com/kmod-midori/CatShare/blob/067348d3d9207206e120b2afe2837c6101f73f41/app/src/main/java/moe/reimu/catshare/ShareActivity.kt)解另一种6 B记录，以service UUID带品牌码；[映射](https://github.com/kmod-midori/CatShare/blob/067348d3d9207206e120b2afe2837c6101f73f41/app/src/main/java/moe/reimu/catshare/utils/DeviceUtils.kt)含OPPO/realme/vivo/小米/OnePlus/魅族/Samsung/Lenovo，不含HONOR，未知应保留未知。这是参考，不是实机兼容性。本次手机使用3333/3334而非6 B格式，跨格式品牌位不可互换，一处品牌位在另一处可能是能力位。
 
-## Two devices with one account name
+UI使用圆形官方logo、phone/tablet角标、原分享名和可选Mac本地别名，无需预配对。未知／矛盾数据保留通用，不从名字或UUID猜。支持解析格式不等于所有厂商都实测。
 
-A subsequent passive scan observed an OPPO phone and tablet simultaneously. Both advertised the same sharing name, but they had different protocol device IDs. Their version-11 flags were `9` (`0x09`, phone) and `11` (`0x0B`, tablet), respectively. Neither supplied a Bluetooth local name or peripheral name, so a device-specific friendly name could not be recovered from those fields. The tablet's exact model was not established.
+精确型号需要支持协议显式字段、可选标准信息响应或独立验证机制。名字恰含产品名不可靠；其他vendor通道也许有更多信息，但尚未作为此应用传输前发现路径验证。不声称精确型号普遍不可能，只说明已查路径未提供。
 
-During the observation, macOS Bluetooth endpoint identifiers changed while each advertised protocol device ID remained unchanged. Keeping recipients only by the Bluetooth endpoint briefly produced duplicate rows. Version 0.1.1 groups a recognized version-11, nonzero 12-hex-digit device ID and updates its connection endpoint on rediscovery. Different advertised IDs remain separate even if their account names match. This is evidence of stability during this observation, not a claim of lifetime stability across resets, account changes or firmware updates.
-
-Local aliases are keyed by a SHA-256 hash of that recipient identity. Unknown formats fall back to the Bluetooth endpoint. Identity fields are self-reported and only organize the chooser; they are never used to authenticate a sender or bypass transfer approval.
-
-## Other brands and formats
-
-The open-source [CatShare discovery implementation](https://github.com/kmod-midori/CatShare/blob/067348d3d9207206e120b2afe2837c6101f73f41/app/src/main/java/moe/reimu/catshare/ShareActivity.kt) decodes a different alliance advertisement format: a six-byte service-data record carries a brand code in its service UUID. Its [brand mapping](https://github.com/kmod-midori/CatShare/blob/067348d3d9207206e120b2afe2837c6101f73f41/app/src/main/java/moe/reimu/catshare/utils/DeviceUtils.kt) includes OPPO, realme, vivo, Xiaomi, OnePlus, Meizu, Samsung and Lenovo. This provides an implementation reference, not physical validation of those brands here. That mapping does not cover HONOR; an unknown code must remain unknown.
-
-The tested phone emitted the `3333`/`3334` format during this observation, rather than that six-byte record. Brand bits cannot be interpreted interchangeably across advertisement formats. In particular, a bit used as a brand flag in one format can mean a capability in another.
-
-## Implications for anDrop
-
-The app now displays official brand logos in circles, a phone/tablet badge and the original sharing name, with optional Mac-local aliases. It parses the examined version-11 format without requiring prior pairing. Unrecognized or contradictory metadata stays unknown rather than being guessed from a name or service UUID alone. Support for a format is separate from validation of every manufacturer using it.
-
-An exact model label requires an explicit model field from a supported protocol, an optional standard Device Information response, or a separately verified model-identification mechanism. A friendly name that happens to contain a product name is not reliable model metadata. Some vendor-specific transfer channels carry more information, but they have not been validated as a model-discovery path usable by this app before a transfer. The current evidence does not establish that exact model discovery is universally impossible; it establishes that the examined path did not provide it.
-
-No vendor APK/source excerpts, device names, addresses, serial numbers or raw protocol captures accompany this report. The parsing and identity behavior are covered by synthetic tests; no personal capture is needed to run them.
+不附厂商源码、真实名/地址/序列号/raw抓包；解析与身份测试用合成数据。

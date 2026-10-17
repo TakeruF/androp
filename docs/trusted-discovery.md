@@ -1,4 +1,6 @@
-# 受信任设备与蓝牙可见性 / Trusted receiving and visibility
+# 受信任设备与蓝牙可见性
+
+简体中文 · [English](trusted-discovery.en.md)
 
 更新：2026-10-17。
 
@@ -32,10 +34,4 @@ Apple 的公开 [`CBPeripheralManager.startAdvertising`](https://developer.apple
 
 分析使用本地安装的厂商应用；不在仓库分发 APK、反编译源码或真实设备标识。其他厂商的身份稳定性与发现行为需要各自实机验证。
 
-## English
-
-Trusted Devices Only filters receipt, not visibility. It uses a hash of the protocol sender ID learned from a successful incoming transfer, rather than a transient CoreBluetooth central/peripheral UUID. Names and accounts never authorize a transfer. Old UUID-only entries require one new incoming transfer in Everyone mode and explicit enrollment of the resulting record.
-
-A new Bluetooth address may negotiate a TLS control channel to present its sender ID. An unlisted ID is rejected before the user prompt and before any HTTP file download. Listed devices still need approval for every transfer. Trust removal or disabling receipt while approval is pending prevents download.
-
-The protocol ID is self-reported and spoofable: this is not cryptographic pairing or authenticated identity. Certificate pinning protects the subsequent download connection within the session, not the initial device identity. Other manufacturers and devices that reset/change their protocol IDs require separate validation.
+华为公钥登记与每次私钥持有校验另见[架构](architecture.md)与[使用说明](usage.md)。

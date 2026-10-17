@@ -1,89 +1,49 @@
-# Usage and troubleshooting
+# 使用与排查
 
-## Send and receive
+简体中文 · [English](usage.en.md)
 
-Enable Bluetooth and Wi-Fi on both devices and join the same local network. Receiving is enabled whenever anDrop is running. Quit anDrop to stop receiving.
+## 收发与候选设备
 
-To send from the Mac, select files in Finder → Share → anDrop, choose the receiving device and approve there. If the extension is not visible, open anDrop once and enable its Share extension in macOS settings. The menu bar's Send Files action is also available.
+两端开启蓝牙/Wi-Fi并连接同一LAN。anDrop运行即接收，退出停止。Mac在Finder选文件→共享→anDrop，选目标、对方批准；扩展无显示时先启动一次应用并在系统设置启用，也可菜单栏“发送文件”。接收时设备原生兼容互传选Mac，在通知／菜单栏批准，默认直接Downloads，不自动打开。文件夹先压缩，同basename分批发送；可同时向不同目标发，接收独占。通知受macOS/专注模式影响，菜单栏仍可批准／看进度。
 
-To receive, select files in the device's built-in compatible 互传 feature, choose the Mac and approve the request in anDrop's notification or menu bar. The default destination is Downloads itself. Files are not opened automatically.
+候选为圆形官方logo、设备类型角标及分享名；同账号可能同名，未知品牌／类型保留通用。tooltip和无障碍含类型，不表示精确型号。图标右键“重命名设备…”可设仅Mac本地别名，最多40个Unicode字符，留空恢复广播名，不改手机／账号。旧构建的铅笔已由右键菜单替代。相同名字／类型以短码区分；需要时先只公开一台再命名，不因账号名合并。右键可隐藏候选，设置“已隐藏的设备…”恢复。
 
-Folders should be compressed first. Send files with identical base names in separate transfers. Outgoing transfers to different devices can run concurrently. Receiving remains exclusive. Notification banners follow macOS notification and Focus settings; progress and approval remain available in the menu bar.
+format11以协议ID维持候选、更新当前BLE endpoint避免轮换重复，其他格式用Mac蓝牙ID。底层ID变可能需重设别名，不猜账号匹配。广告ID不认证／不自动接收。发送历史用选定名称／类型，接收保留对方自报分享名。
 
-## Recognizing recipients
+## 名称与发现
 
-The recipient grid uses an official brand logo in a circle with a phone/tablet badge and the sharing name below it. A sharing name can be the account holder's name and can be identical on several devices. The badge uses explicitly recognized advertisement metadata; unknown manufacturers or types remain generic. A tooltip and accessibility label also include the device category. This is not exact model identification.
+默认跟系统Computer Name，附近名最多15 UTF-8字节（15 ASCII、通常5汉字、更少emoji），截短不切坏字符。设置名称旁铅笔可改附近分享名，留空恢复系统，不改Mac电脑名；传输确认用完整分享名，设置解释限额。
 
-Use the pencil button or right-click → **Name on This Mac** to give a device a local name such as “Work phone” or “Travel tablet”. Names may contain up to **40 characters**, including Chinese characters; the edit dialog states the limit. Leave the field empty to return to the advertised sharing name. The name stays on this Mac and does not rename the Android device or its account.
+找不到设备时解锁对方、开互传与可发现，部分限制联系人／本人或公开自动到期，已测OPPO为“所有人（10分钟）”。重开可见。也查同Wi-Fi、蓝牙、本地网络权限、client isolation；手机看不到Mac也可能是另一个Mac应用干扰广告，与手机公开到期不同。
 
-If the sharing name and device category are both identical, a short device code appears. Make only one device discoverable initially if you need to identify which physical device to name. Devices are never merged merely because their account names match.
+候选保留最后10秒接收广播，每秒刷新，通常最后广播10–11秒后消失。关闭chooser、关闭anDrop或scanner错误清缓存，重开重新扫；6秒无发现更新（每2秒检查）、服务重启也清。发送预检重查新鲜度，不复用过期route，但过期不取消已开传输，选后离线仍可能正常报连接错误。Mac读不到对方10分钟倒计时，移除不是开关即时镜像。
 
-For the examined version-11 advertisement, the app uses its advertised device ID and refreshes the current Bluetooth connection endpoint. This prevents temporary duplicate rows when a Bluetooth address changes. Other formats fall back to the Mac's Bluetooth identifier. If the underlying device ID changes, the alias may need to be entered again; the app does not guess a match from an account name. Advertised IDs are not authentication and never grant automatic acceptance. Outgoing transfer history uses the selected name and device category; incoming requests retain the sender's own sharing name.
+## 鸿蒙星河互联
 
-## Device name limit
+建议先完成鸿蒙星河互联中的传输并退出，再用anDrop独立收发华为分享。共存实验性，macOS可能合并广播造成名字丢失，曾成功也可能更新／重启后冲突。失败且实时检测鸿蒙星河互联运行时弹窗建议退出重试，不自动退出、不断言其为失败原因。鸿蒙星河互联运行时附近名暂为A并保留Dock图标，退出后恢复正常名和纯菜单栏。
 
-The default name follows macOS Computer Name. Nearby names have a **15 UTF-8 byte** limit: up to 15 ASCII characters, typically 5 Chinese characters, or fewer emoji. Shortening preserves complete characters. Click the pencil beside the nearby name in Settings to set a custom sharing name of up to 15 UTF-8 bytes. Leave it blank to restore the system name; this does not rename your Mac. Transfer confirmations use the full sharing name. The settings UI also explains this limit.
+必须共存时可设置→Repair Discovery with 鸿蒙星河互联，重启鸿蒙星河互联并重登记广告；先完成其传输，可能中断，不自动执行且不保证恢复，推荐退出。
 
-## Device not found
+## 进度与窗口行为
 
-Unlock the receiving device, enable its sharing feature and check discoverability. Some phones limit visibility to contacts/own devices or turn off everyone-visible mode automatically. The tested OPPO offers **Everyone (10 minutes)**. Expiry can explain the phone disappearing from the Mac's recipient list; re-enable visibility when needed.
+点击目标立即发，其他目标仍可点击发送同批，每个独立进度／结果，重复点击不重复发。蓝环顺时针和名称下百分比基于Mac写出ZIP响应的字节（含开销），空文件亦有总量，不是对方落盘测量。准备/等待/连接不伪造百分比，字节全发后为Finishing，收到对方完成才Sent，失败／取消独立。
 
-This is different from the phone being unable to find the Mac because another Mac app interferes with anDrop's Bluetooth advertising. Also check the same Wi-Fi, Bluetooth, Local Network permission, and whether the network isolates clients.
+发前取消关闭chooser，发送中每目标可取消，全部取消停活动和等待重试；失败／拒绝可单独重试，不重复成功项或停其他。点击外窗继续后台，菜单Show Progress可回；活动tile快照即使停广播也保留，不能当新发送可发现项。
 
-## Petal Interconnect (鸿蒙星河互联)
+popup无标题／红黄绿：发前Cancel、发送时Cancel All、全部终态Done，Escape同动作，无额外Send按钮。发送中失焦到后台，全成功后点外／换焦才关闭，失败取消保留到主动关闭。当前名称最多两行，窗口随grid增高到上限后仅列表滚动，header/footer固定，改名sheet紧凑。历史build8/9铅笔与布局检查见[测试](testing.md)。
 
-**We recommend quitting Petal before sharing with anDrop.** anDrop can replace Petal's Huawei Share file-sharing function and send and receive files independently. Finish any transfers in Petal before quitting it, then retry in anDrop.
+## 接收连接错误与隐私
 
-Coexistence remains experimental. macOS may merge Bluetooth advertising data from multiple apps, causing anDrop's name to disappear. Transfers have succeeded, but conflicts can recur after app updates or restarts. When a send or receive fails and Petal is still running, anDrop shows a popup recommending that you quit Petal and try again. It does not quit Petal automatically, and the recommendation does not establish that Petal caused that failure.
+连接失败中止可能被对方称“接收者拒绝”，不代表Mac点Decline。初始连接短暂重试，不重试证书／协议错误、不自动续传部分文件。失败时保持发送分享页、确认同Wi-Fi再发；通知为可操作说明，诊断标阶段，不把IP/Python对象丢进通知。
 
-While Petal runs, anDrop shortens its discovery name to **A** and keeps a Dock icon. Once Petal quits, anDrop returns to menu-bar-only operation and its normal nearby name.
+附近设备能看广播名，完整Computer Name参与协商。本地历史含对端名和路径，可设置清除，无云／分析endpoint。
 
-If you need to keep both apps running, **Settings → Repair Discovery with Petal** restarts Petal and re-registers anDrop's advertisement. Finish active Petal transfers first because restarting can interrupt them. anDrop never restarts Petal automatically. Repair does not guarantee recovery; quitting Petal is the recommended approach.
+## 受信任设备与接收限额
 
-## Privacy on your local network
+菜单栏／设置选Trusted Devices Only或Everyone，均每次批准。**前者筛接收，不向未知设备隐藏Mac**，与AirDrop联系人发现匹配不同（[Apple说明](https://support.apple.com/guide/security/airdrop-security-sec2261183f4/web)）。当前联盟用公开广播，详[信任与发现](trusted-discovery.md)。
 
-Nearby devices can see the advertised device name while sharing is enabled. The full Computer Name is used in transfer negotiation. Local transfer history includes peer names and file paths; use Clear History in Settings to remove it. The app does not use a cloud service or analytics endpoint.
+设置“受信任的设备…”从成功历史添加，离线也可；新设备先Everyone收一次。列表厂商／类型角标，用户核实请求，重名用本地ID后缀；可移除信任／忘记。联盟存自报senderId摘要，Huawei存传输公钥SHA256并校验私钥持有，不按名字／账号／IP授权。旧Huawei历史无key不可迁移，更新后Everyone新收再加；key或ID变重新核实。未知在提示／下载前拒绝，批准后也查政策，移除不打断已接受传输。
 
-## When a recipient disappears
+Huawei接收最多16文件、单件及合计16 MiB；发送最多16件、单件4 GiB／合计16 GiB。这是不同方向限额，大容量本机验证不等于GiB实机成功。
 
-The chooser shows devices with a receiving advertisement heard within the last 10 seconds. It refreshes once per second, so a device normally disappears about 10–11 seconds after its last advertisement. Closing the chooser, switching anDrop off, or a scanner error clears its discovery cache. Reopening starts a fresh search. The screen also clears results if it receives no discovery updates for six seconds (checked every two seconds), or if the sharing service restarts.
-
-A send request rechecks freshness before preparing files; an expired route is not reused. Expiry does not cancel a transfer already started. A device can still go offline between selection and connection, which produces a normal connection error.
-
-anDrop cannot read another device's “everyone for 10 minutes” countdown. It observes Bluetooth advertisements rather than assuming that a device stays visible for a fixed ten-minute period. The exact OS visibility-switch time is not available to the Mac, so removal is not instantaneous.
-
-## Sending progress
-
-Click a recipient to start sending immediately. The share window stays open and keeps other nearby devices clickable. Click another recipient to send the same files there too, even while the first transfer is running. Each recipient has its own progress and result; clicking a started recipient again does not duplicate the send. A blue ring grows clockwise around that recipient's icon, and the percentage appears below its name. The percentage uses bytes written to the outgoing ZIP response, including ZIP overhead, so empty files and batches also have a defined total. It is transport progress, not a measurement of the recipient's disk writes.
-
-Preparing, Waiting and Connecting use an indeterminate ring without a fabricated percentage. After all response bytes have been sent, the ring is full and the status is Finishing until the peer confirms completion. Only then does it say Sent. Failure and cancellation are separate terminal states.
-
-Cancel dismisses the picker before a send starts. During sending, each active recipient has its own Cancel action; **Cancel All** stops all active sends and pending retries. A failed or declined recipient can be retried without resending to successful recipients or interrupting another send. Clicking another window keeps sending in the background; use Show Progress in the menu bar to return. The chosen recipient remains in this transfer view even if it stops advertising. It is a snapshot of the active transfer, not a discoverable recipient available for a new send. Normal discovery still expires independently.
-
-## Share popup behavior
-
-The recipient popup has no title bar or traffic-light window buttons. Its footer has Cancel before sending, Cancel All during sending, and Done after all recipients have a terminal result. Clicking a device starts sending without a separate Send button. Escape performs the same action. While a transfer is active, clicking another window moves the popup into the background and the transfer continues. After all recipients succeed, clicking outside the popup or switching focus to another window dismisses it. Failed and cancelled transfers retain their result until dismissed.
-
-## Receive connection errors
-
-A compatible sender may label the recipient as having rejected a transfer when anDrop aborts after a connection failure. That message alone does not mean the Mac user pressed Decline. anDrop now briefly retries transient failures while opening the initial connection. It does not retry certificate/protocol failures or resume partial files automatically.
-
-If receiving still fails, keep the sender's sharing screen open and verify both devices use the same Wi-Fi, then send again. Notifications show an actionable explanation; local diagnostics identify the failing stage without putting IP addresses or internal Python objects into the notification.
-
-The rename control uses the SF Symbols `pencil` beside the recipient name, including names wrapping onto two lines. Clicking the icon or name starts sending immediately; clicking the pencil opens the local-name editor.
-
-The name itself is centered below the avatar, with the pencil immediately to its right. Short names such as “Example” fit on one line; longer names use up to two lines. The popup grows with the grid up to a bounded height, then scrolls only the recipient list while keeping the header and actions visible. The local-name editor is a compact sheet without an app-icon header.
-
-## Receive scope and trusted devices
-
-Choose **Trusted Devices Only** or **Everyone** in the menu bar or Settings. Every transfer still requires approval in both modes; trusting a device never enables automatic acceptance.
-
-**Visibility is different from AirDrop Contacts Only.** Other devices can still see this Mac in their sharing picker. **Trusted Devices Only rejects transfer requests from devices that are not in the trusted list; it does not hide anDrop from them.** Trusted devices still require approval. AirDrop Contacts Only performs contact matching before responding during discovery ([Apple Platform Security](https://support.apple.com/guide/security/airdrop-security-sec2261183f4/web)); anDrop’s current alliance discovery uses a public Bluetooth advertisement. See [discovery limits and receive filtering](trusted-discovery.md).
-
-Open Settings → **Trusted Devices…** to add devices from previous transfers even when they are offline. New devices need one transfer in Everyone mode first. Device rows use manufacturer artwork with a phone/tablet badge. Verify the requesting device yourself. Different local identifier suffixes distinguish devices with identical names. Remove trust or forget a remembered device at any time.
-
-Alliance devices use a hash of the self-reported protocol sender ID. Huawei devices use a SHA-256 fingerprint of the transfer public key, checked after the peer proves possession of its private key. Neither uses account names, device names or IP addresses for authorization. To enroll Huawei after updating, receive a file in Everyone mode and add its new record; older Huawei history has no key and cannot be migrated. Receive and enroll again if the key or identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or downloading files. Every accepted transfer still requires approval. Removing trust does not interrupt an already-started transfer.
-
-Huawei receiving currently accepts up to 16 files and 16 MiB total, including a single file up to 16 MiB. This receive limit is separate from the larger outgoing-file limits.
-
-Control Center integration is no longer included. Use the menu bar or Settings for receiving options. The former panel is preserved as an [independent UI prototype](../Prototypes/ReceivePanel/README.md), outside the installed app. If an old control remains after upgrading, remove that anDrop item in Edit Controls.
+控制中心不再包含，使用菜单／设置；旧panel留[独立原型](../Prototypes/ReceivePanel/README.md)，旧control如残留可Edit Controls移除。

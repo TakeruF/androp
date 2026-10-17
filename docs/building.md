@@ -1,13 +1,15 @@
-# Building and releasing anDrop
+# 构建与发行 anDrop
 
-## Requirements
+简体中文 · [English](building.en.md)
 
-- Xcode 26 or later and Swift 6.2+ (`-default-isolation MainActor`). The release was built on Apple Silicon with macOS 27.0.1 and Swift 6.4.
-- Python 3.14 and the pinned dependencies in `requirements.txt`. Version 1.0.0 uses the official python.org 3.14.7 runtime and binary wheels.
-- The build machine must match the target CPU architecture. The published 1.0.0 DMG is arm64 only; Intel is untested.
-- Normal builds fetch official Sparkle 2.10.0 from the URL in `release.json`, verify its pinned SHA-256 and embed the framework. Build-time network access is required on the first run.
+## 环境与完整构建
 
-The deployment target is **macOS 14.0**. A Homebrew Python built for macOS 26 cannot be made compatible by changing only Info.plist. Use a Python distribution and native wheels built for the minimum OS, such as the official python.org macOS installer. The build rejects bundled Mach-O files whose deployment target exceeds the declared minimum or whose load commands refer to build-machine libraries. This is a packaging check, not a physical test on macOS 14.
+- Xcode26+、Swift6.2+（`-default-isolation MainActor`）。记录发行环境为Apple Silicon/macOS27.0.1/Swift6.4。
+- Python3.14与requirements.txt固定依赖；1.0.0使用python.org3.14.7及binary wheels。
+- 构建机CPU需匹配目标，已发1.0.0仅arm64，Intel未测。
+- 常规构建按release.json下载官方Sparkle2.10.0、验证固定SHA256并同捆，首次需网络。
+
+部署目标macOS14.0。不能只改Info.plist让要求macOS26的Homebrew Python变兼容；用面向最低OS的Python／native wheels，如官方安装包。构建拒绝最低OS过高或load command引用构建机库的Mach-O。这是打包检查，不是macOS14实机测试。
 
 ```sh
 python3.14 -m venv .venv
@@ -15,35 +17,25 @@ python3.14 -m venv .venv
 .venv/bin/python build.py
 ```
 
-Output: `build/anDrop.app`. The script compiles the Swift host and Finder Share extension, freezes the Python engine with PyInstaller, embeds Sparkle and licenses, signs nested code from the inside out and verifies the complete signature. Temporary staging avoids extended filesystem attributes invalidating signatures.
+输出 `build/anDrop.app`：编译Swift host/Finder扩展、PyInstaller冻结engine、同捆Sparkle/许可证、由内到外签名并验证；临时staging避免扩展属性破坏签名。完整构建后 `build.py --ui-only`可复用engine，改engine/Python/依赖必须完整重建；UI-only仍检查运行库兼容。
 
-After a complete build, `build.py --ui-only` reuses its engine. Rebuild fully after changing engine code, Python or dependencies. The runtime compatibility check still runs for a UI-only build.
+release.json保存版本、单调build、最低OS和公开feed。ANDROP_VERSION/ANDROP_BUILD可本地覆盖；正式打包拒绝与配置不符。
 
-Version, monotonically increasing build number, minimum OS and public update feed live in `release.json`. `ANDROP_VERSION` and `ANDROP_BUILD` may override version/build for local tests. Release packaging rejects a mismatch with the release configuration.
+## 签名与更新
 
-## Signing
+默认ad-hoc，本地配置ANDROP_SIGN_IDENTITY用于Developer ID发行，启hardened runtime/安全时间戳。证书、identity、team ID、私钥不进tracked文件。默认bundle `org.androp.mac`，ANDROP_BUNDLE_ID可本地覆盖；升级保留发行ID，否则可能重置权限／设置／登录项／扩展注册。Developer ID证书标识签名者，匿名Git不能隐藏，上传前检查实际产物。
 
-Default local builds are ad-hoc signed. Supply a configured Developer ID Application identity through the local `ANDROP_SIGN_IDENTITY` environment variable for a release. Real signatures use hardened runtime and secure timestamps. Certificates, identity strings, team identifiers and private keys must remain outside tracked files.
-
-The default bundle identifier is `org.androp.mac`; `ANDROP_BUNDLE_ID` can override it locally. Preserve the distributed identifier across updates. Changing it can reset permissions, preferences, login items and extension registration.
-
-Developer ID certificates identify the signer. Anonymous Git metadata does not anonymize a signed app. Inspect the concrete signed artifact and resolve any publication/privacy constraint before uploading it.
-
-## Automatic updates
-
-The app embeds the public Ed25519 key in `Resources/UpdatePublicKey.txt`. The matching private key stays in the login Keychain under the account named in `release.json`; do not commit or export it. Create your own key when distributing a fork:
+Ed25519公钥在Resources/UpdatePublicKey.txt，私钥存release.json账号对应login Keychain，不提交／导出。fork自行生成：
 
 ```sh
 build/dependencies/Sparkle-2.10.0/bin/generate_keys --account org.example.your-app
 ```
 
-The official Sparkle tools generate signed update archives and a signed appcast. Both signed feeds and verification before extraction are required. The feed is served from the public repository’s latest GitHub Release asset named `appcast.xml`. Automatic checks and automatic installation default to on; persisted choices are preserved. A verified automatic download installs and relaunches immediately when no transfer is active (otherwise right after the transfer finishes), with a user notification before and after the relaunch. When automatic installation is off, scheduled checks use Sparkle's gentle reminders: a notification is posted instead of the update alert, and clicking it opens the alert. Update dialogs follow the app language.
+Sparkle官方工具签更新包及appcast，要求feed签名与解包前验证。feed为公开GitHub latest资产appcast.xml。自动检查／安装默认开，保留既有选择；验证下载后无传输即安装重启，有传输则结束后，前后通知。关闭自动安装时定期检查用gentle reminder通知，点击开更新对话框。界面跟应用语言。`build.py --app-store`排除Sparkle/feed/更新UI，仅未来商店构建开关，不代表审核／合规完成。
 
-`build.py --app-store` excludes Sparkle, its feed and updater UI. This is a build switch for future store distribution, not a claim of App Store approval or complete store compliance.
+## 公证与DMG
 
-## Notarization and DMG packaging
-
-The release helper never publishes. It keeps public assets separate from private signing/notarization records. Set `ANDROP_SIGN_IDENTITY` locally first, then run:
+helper不会发布，public资产与private签名／公证记录分离。先本地设ANDROP_SIGN_IDENTITY：
 
 ```sh
 .venv/bin/python scripts/release.py prepare
@@ -51,23 +43,19 @@ The release helper never publishes. It keeps public assets separate from private
 .venv/bin/python scripts/release.py package
 ```
 
-`prepare --skip-build` uses an already completed build after validating it. By default, submit uses the account already configured in Xcode with `xcodebuild -exportArchive` and `-allowProvisioningUpdates`. Package exports the notarized app with `-exportNotarizedApp` and refuses to continue unless signature verification, stapling validation and Gatekeeper assessment succeed. If notarization is still processing, retry package later.
+prepare --skip-build验证后复用已构建版。默认submit用Xcode既有账号、xcodebuild -exportArchive/-allowProvisioningUpdates；package用-exportNotarizedApp，签名/stapling/Gatekeeper未通过即拒绝，处理中稍后重跑。也可prepare前设既有ANDROP_NOTARY_PROFILE，submit改notarytool，package检查Accepted后staple。凭据留Keychain/Xcode，不放命令参数／源码，导出诊断私有。
 
-Alternatively, set `ANDROP_NOTARY_PROFILE` to your own existing Keychain profile before prepare. Submit uses notarytool, and package checks the saved submission status for Accepted before stapling. Keep credentials in the configured Keychain/Xcode account; do not put them in command arguments or source. All export and notarization diagnostics remain private.
-
-The helper packages the stapled app and an Applications link into a DMG, signs the DMG, generates a signed appcast with embedded Chinese notes and writes checksums. **The application is notarized and stapled; the DMG container is Developer ID signed. The helper does not claim a separate DMG notarization.**
-
-Only these files in `dist/<version>/public/` are release assets:
+helper将stapled app与Applications链接打DMG、签DMG、生成含中文说明的签名appcast与校验。**应用已公证并staple，DMG为Developer ID签名，不声称DMG单独公证。** 仅以下 `dist/<version>/public/`是资产：
 
 - `anDrop-<version>-arm64.dmg`
 - `appcast.xml`
 - `SHA256SUMS.txt`
 
-Use `docs/releases/<version>.md` as the GitHub release body. Never upload `dist/<version>/private/`, exported archives, raw build logs, ExportOptions or notarization records. Inspect assets and privacy before the separate explicit GitHub publication step. The repository must be public for unauthenticated update downloads.
+GitHub release正文用 `docs/releases/<version>.md`，英语见同名.en.md。不上传private目录/archives/raw日志/ExportOptions/公证记录；单独明确发布前检查资产／隐私，仓库公开才可匿名下载更新。
 
-## Installation and validation
+## 安装与验证
 
-Quit the old app and replace its complete bundle in Applications. Do not merge bundles: the archived Control Center extension could otherwise remain inside an older installation. Open the app and grant Bluetooth, Local Network, notifications and destination-folder access as requested. Follow macOS’s normal approval flow; do not disable system security protections.
+退出旧版后替换整个Applications bundle，不能合并以免旧控制中心扩展残留。按正常OS流程授权蓝牙/本地网络/通知/目录，不关保护。
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
@@ -76,8 +64,8 @@ python3 scripts/check-runtime.py build/anDrop.app --minimum 14.0 --arch arm64
 codesign --verify --deep --strict build/anDrop.app
 ```
 
-Refresh dependency notices using `collect-licenses.py` from the exact build environment and inspect native-library provenance. See [licensing](licensing.md), [publication privacy](publication.md) and [validation records](testing.md). The normal build excludes the archived receive-panel prototype and creates no Control Center extension, App Intents metadata or control-state App Group entitlement.
+在实际构建环境用collect-licenses.py刷新声明，核对native来源。见[许可证](licensing.md)、[发布隐私](publication.md)、[测试](testing.md)。正常构建排除原型，不创建控制中心扩展/App Intents metadata/control-state App Group。
 
-## Huawei Share LAN adapter
+## Huawei Share LAN适配器
 
-A full engine build includes the bounded Huawei protocol modules and explicit AES-GCM/RSA imports for the official Huawei Share support introduced in 1.2.0. The build runs `anDropEngine --huawei-check` without network access before packaging. UI-only builds must reuse an engine built after those changes. Hardware integration evidence and remaining discovery/authentication/recovery checks are tracked in [Huawei Share research](huawei-share-research.md). Local validation can use a separate `ANDROP_BUNDLE_ID` to preserve the installed app’s settings.
+完整engine含1.2.0正式Huawei支持的有界协议模块和显式GCM/RSA imports，打包前无网络执行 `anDropEngine --huawei-check`。UI-only必须用这些修改之后的engine。实机／发现／认证／恢复边界见[调查](huawei-share-research.md)。可本地单独ANDROP_BUNDLE_ID隔离验证以保留安装版设置。

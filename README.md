@@ -143,13 +143,17 @@ swift test
 python3 scripts/render-docs.py
 ```
 
+- [全部文档与语言约定](docs/README.md)
+- [华为分享实机调查](docs/huawei-share-research.md)
+- [Android／OPPO 通知类型调查](docs/android-file-type-research.md)
+- [OPPO 联系人与本人设备调查](docs/oppo-own-device-research.md)
 - [架构与协议边界](docs/architecture.md)
 - [详细使用与排查](docs/usage.md)
 - [设备识别调查](docs/device-identification.md)
 - [演示图片生成说明](docs/images/README.md)
 - [已归档的接收面板原型](Prototypes/ReceivePanel/README.md)：保留原控制中心面板的源码和预览，供将来复用；不包含在发行版中。
 
-技术文档目前主要为英文。仓库名是 **androp**，应用名是 **anDrop**。
+技术文档均提供简体中文（`.md`）与英语（`.en.md`），见[文档目录](docs/README.md)。仓库名是 **androp**，应用名是 **anDrop**。
 
 </details>
 

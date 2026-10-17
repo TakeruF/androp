@@ -1,168 +1,86 @@
-# Validation record
+# 测试与验证记录
 
-Recorded on 2026-10-16. This is a summary of observed tests, not a certification or a claim that all file sizes, devices or network configurations work.
+简体中文 · [English](testing.en.md)
 
-## Physical-device results
+最初记录于2026-10-16，后续条目保留各阶段构建与日期。仅总结已观察试验，不是认证或所有文件／设备／网络可用保证。历史UI与限额随后可能改变。
 
-Environment: Apple Silicon Mac on macOS 27.0.1 and OPPO Find X9 Pro on Chinese ColorOS 17 / Android 17, sharing service 17.2.36. Both devices used the same Wi-Fi. No vendor desktop preconnection was needed. USB/ADB assisted test setup and inspection; file transfer used Bluetooth negotiation and the local network. The diagnostic phone app was removed before final validation.
+## 实机结果
 
-| Direction | Test | Result |
+Apple Silicon/macOS27.0.1、OPPO Find X9 Pro中国ColorOS17/Android17、互传17.2.36，同Wi-Fi，无厂商桌面预连接。USB/ADB协助准备／检查，传输走BLE协商和LAN，最终前已移除诊断手机app。
+
+| 方向／项目 | 试验 | 结果 |
 | --- | --- | --- |
-| Finder → anDrop → phone | 8 MiB binary, empty file, 49-byte file with a Japanese filename in one transfer | All three received; SHA-256 matched |
-| Phone's built-in 互传 → Mac | 8 MiB binary | Received directly in Downloads; SHA-256 matched |
-| Phone → Mac with an existing same-named file | Name collision | Existing file preserved; new file received with numeric suffix |
-| Mac received file | Quarantine metadata | Attribute present |
-| UI | English and Simplified Chinese settings, Finder share entry | Visually checked |
-| Petal concurrent operation | Both directions | Succeeded in some runs; discovery failed again in later runs |
+| Finder→anDrop→手机 | 8 MiB、空、日文名49 B同批 | 三点接收／SHA256一致 |
+| 手机原生互传→Mac | 8 MiB | 直接Downloads／SHA256一致 |
+| 手机→Mac同名冲突 | 已有文件 | 保留原件、数字后缀 |
+| Mac接收 | quarantine | 属性存在 |
+| UI | 英中设置/Finder共享 | 目视确认 |
+| 鸿蒙星河互联共存 | 双向 | 部分成功，后续发现又失败 |
 
-Tests checked that the nearby name obeys the byte limit and transfer confirmation uses the full Computer Name. Actual personal device names and local file paths are intentionally not recorded here.
+附近名字节限额和确认完整Computer Name已查，不公开实际私名／路径。
 
-## Automated tests
+## 自动化
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
 swift test
 ```
 
-Forty-six Python tests and ten Swift tests passed for version 0.1.1 (build 7). They cover:
+0.1.1/build7为46 Python/10 Swift：密钥/加密/协议、日文/空/冲突、拒穿越/绝对路径/symlink、大小不符不输出、短暂路由及aiohttp错误、持续路由/初始reset/refusal有界重试、TLS/HTTP不重试、offer timer不取消活动接收、英中安全错误、权限/取消不重试、同名phone/tablet独立、未知/冲突/未来格式回退、endpoint轮换仍同候选且用最新route、别名/同名/40字符、10秒失效及拒过期、scanner启动/运行错/迟回调/不完整/只发广告、准备时关闭chooser保留route、含空ZIP进度/失败写/取消、关联拒绝不覆盖别的活动任务、进度边界及字节发完与peer完成分离。
 
-- Key exchange, encryption round trip and protocol parsing.
-- Japanese filenames, empty files and collision handling.
-- Rejection of traversal, absolute paths and symlinks.
-- Declared-size mismatch without saved output.
-- Transient local-route recovery, including aiohttp-wrapped errors.
-- Bounded retry for persistent route failure and transient initial receive resets/refusals.
-- TLS/HTTP rejection without retry, active receiver protection from the offer timer, and safe localized error messages.
-- Permission errors and cancellation without retry.
-- Same-account phone/tablet metadata and separate recipients.
-- Unknown/conflicting metadata and future-version fallback.
-- Bluetooth endpoint rotation while retaining one protocol recipient and the latest connection route.
-- Alias persistence by device identity, same-name disambiguation and the 40-character Unicode limit.
-- Discovery expiry at the ten-second boundary, removal of cached connection routes, and rejection of stale sends.
-- Scanner startup/runtime failure, late callbacks, partial packets, sender-only advertisements and endpoint rotation.
-- Closing the chooser during file preparation without losing the already-selected route.
-- ZIP response byte counts including empty payloads, failed writes and cancellation.
-- Correlated send rejection without replacing another active transfer.
-- Progress range limits, indeterminate phases and the distinction between all bytes sent and receiver-confirmed completion in English and Chinese.
+## 仓库打包与发现追试
 
-## Repository packaging verification
+迁入仓库后9测试及arm64 ad-hoc全构建deep/strict签名通过，bundle含LICENSE/NOTICE/依赖和中性ID。之前实机早于这些打包/About变化，未重传。
 
-After moving the source into this repository, all nine automated tests passed and a full arm64 ad-hoc build passed deep/strict signature verification. The resulting bundle contains LICENSE, NOTICE and dependency notices and uses a neutral default bundle identifier. Physical-device transfers above predate these packaging and About-dialog changes; they were not repeated for this import.
+手机与tablet同账号名、不同协议ID与brand/type同时被动可见，endpoint变而ID此轮稳定，未确定平板具体型号／未传文件。首native chooser通过Finder显示独立项，平板别名只影响自身。最终英中真实两候选、OPPO圆logo/phone/tablet SF Symbols确认，别名重启只留tablet后清除，10品牌图AppKit加载/manifest hash一致，完整及UI构建签名通过，无发送。
 
-## Recipient discovery follow-up
+## 候选过期追试
 
-The phone and a second OPPO device advertising the tablet flag were visible simultaneously with the same account name. Their brand/type flags and separate protocol IDs were observed without a preconnection. Bluetooth endpoint IDs changed during testing; protocol IDs remained stable within the observation. The tablet's model was not established. File transfer was not tested during this discovery probe; a later tablet-to-Mac result is recorded below.
+用户关手机可见后约55秒剩余观测无新广告；是无线观察，不是UI开关精确时间测量，10秒边界/错误单测，未计时自然10分钟。安装版Finder chooser继续零候选、无scanner错误、不重现旧项，签名通过，无发文件。macOS adapter用固定Bleak3.0.2自定义backend重复广告，升级依赖需复查，不为保活连接设备；UI还清静默流/蓝牙关/engine重启/chooser关闭。
 
-The first native chooser revision was opened through Finder Share and showed the phone and tablet as distinct entries. A temporary tablet alias changed only that entry. The final version uses an official brand logo in a circle, phone/tablet badge and sharing name, with the same identity and alias handling.
+## 发送进度追试
 
-The final chooser was visually checked through Finder Share in English and Simplified Chinese with two real recipients. Official OPPO artwork and the SF Symbols phone/landscape-tablet badges rendered correctly. The tablet alias persisted through restart without appearing on the phone, then was cleared. All ten bundled images loaded through AppKit and matched their manifest hashes. The full and subsequent UI builds passed deep/strict signature verification. No file-transfer request was sent during these UI checks.
+build5 Finder发64 MiB到OPPO，更新0/~4/23/40/60/84%，最后ZIP67,109,030 B（正文67,108,864，差为ZIP），Finishing后peer完成，native满蓝环Sent。ADB断开未核手机散列。早次等批准超时不算成功；合成37% native预览验证logo/角标/英语，只是展示。英中阶段单测、全/UI签名通过；菜单回进度未在此次实测，手机保留文件。
 
-## Recipient expiry follow-up
+## 待验证与清理
 
-A phone and tablet were observed through live advertisements. During a user-operated visibility-off test on the phone, new phone advertisements stopped; none arrived for the remaining approximately 55 seconds of that observation. This was a radio observation, not a timestamped measurement of the native UI switch. The ten-second expiry and error paths were checked separately by automated tests. A natural ten-minute timeout was not timed in this run.
+其他品牌／型号、Intel、旧OS、登录重启、长睡醒、大容量、满盘、真实中断、通知动作需各自测试。鸿蒙星河互联修复尽力而为，“先开anDrop总能解决”被重复试验否定，见[使用](usage.md)。早期试验后恢复手机联系人／本人可见、清醒屏设置、卸诊断app、删生成fixtures，raw日志／截图不提交。发现追试为用户临时公开两端，未改永久设置。
 
-The installed build was opened from Finder Share after the visibility-off test. Discovery updates continued normally with zero recipients and no scan error; the stopped recipients did not reappear. The full signed build passed deep/strict signature verification. No file was sent in this follow-up.
+## 无标题popup（build6）
 
-The macOS scanner adapter explicitly requests repeat advertisement delivery while the chooser is open. It uses a custom Bleak backend with the pinned 3.0.2 implementation; dependency upgrades must recheck this adapter. It does not connect to a device just to keep its row alive. The UI additionally expires a silent discovery stream and clears on Bluetooth-off, engine restart and chooser closure.
+UI-only编译/签名通过，真实AppModel/RecipientPanel合成预览查去标题/圆角/背景；发送态失焦仍在，成功态失焦关闭，未启BLE/文件，build5实机边界不扩大。
 
-## Outgoing progress follow-up
+## 平板接收恢复（build7）
 
-A 64 MiB test file was sent to the OPPO phone through Finder Share with build 5. The native app received outgoing byte updates at 0%, approximately 4%, 23%, 40%, 60% and 84%, followed by the full 67,109,030-byte ZIP response. It then entered Finishing and received the peer's completion acknowledgement. The file payload was 67,108,864 bytes; the difference is ZIP overhead. The final native window showed a full blue ring and Sent. A receiver-side file hash was not checked in this run because ADB was disconnected.
+用户平板发送在正文前Mac reset、平板称接收者拒绝，原reset原因未定。初始WebSocket元数据/正文前最多10秒4次重试route/reset/refused/abort；TLS/证书/HTTP/权限/取消不重试，无TLS降级或部分下载重放。15秒offer timer仅接收任务未起前到期，旧timer问题单测证实但不等于原reset原因。
 
-An earlier attempt timed out waiting for acceptance and showed the failure state. A separate native preview with synthetic data verified the final 37% ring, readable logo, device badge and English percentage label; that preview is not an additional real transfer measurement. Automated tests cover phase labels in English and Chinese.
+后续真实平板首host-unreachable、第二连成，83,249 B直接Downloads完成，用户确认/本机大小一致，未比发送散列，只证明该次恢复。通知用本地化可操作错误，不含endpoint/对象/名字，私诊断记阶段/类/errno/attempt，raw不提交。
 
-The final full build and UI refinement passed deep/strict signature verification. The percentage is based on response bytes written by the Mac; receiver storage completion is reported separately after its protocol acknowledgement. Reopening progress through the menu bar is implemented but was not exercised during this short real transfer. The temporary test file remains on the receiving phone.
+## 名称与自适应布局（build8–9）
 
-## Remaining validation
+build8真实grid合成短名/两行名旁pencil，点tablet铅笔只开改名取消、不发，UI编译签名通过。build9 Example一行独立居中、紧凑一排/sheet、40候选滚到最后header/footer固定、10logo+类型，均合成无BLE/传输。后续右键菜单取代铅笔。
 
-Other brands/models, Intel, older macOS, reboot/login, prolonged sleep/wake use, large files, full-disk conditions, interrupted real-device transfers and Notification Center action buttons need additional testing. The automated tests do not replace those checks.
+## 接收范围、控制中心与身份历史
 
-Petal repair remains best effort. Repeated tests disproved the assumption that starting anDrop first always solves the advertisement conflict. See [usage](usage.md).
+51 Python覆盖未列设备密钥前拒、已列仍批准、待批撤销和名字无关；10 Swift。独立UUID UserDefaults测离线候选/重名/增删忘/持久信任/运行即接收/endpoint/一次旧历史清理，未改安装版设置。签名通过，独立按count读回删除无endpoint历史、保留有身份记录。控制扩展注册／用户确认gallery和最初file-picker，后来单Receive项打开host panel；build36已移除。虚构英中UI复用品牌/角标，OPPO/vivo白绿白蓝、小米原橙。这些不证明其他厂商或加密身份。
 
-## Test cleanup
+## 历史GATT信任边界（后被senderId验证取代）
 
-After the earlier file-transfer tests, temporary phone-wide discoverability was restored to the contacts/own-devices setting. The testing-only screen-awake setting was reset, the diagnostic app was uninstalled, and generated phone fixtures were removed. Raw logs, screenshots and protocol captures are not committed.
+54 Python：未知/缺central无ready、停接收拒subscription、已批准后移信任仍保控制。13 Swift：未知/可信/坏值/不可接收、大小写UUID、仅已批准会话豁免，完成会话不豁免新offer。待批不豁免，撤销测试保留；GATT callbacks使用政策，单测不证明新ATT实机兼容。OShare17.2.36闻8881即加候选、不先读GATT，故不实现选择可见，见[机制](trusted-discovery.md)。
 
-For the recipient follow-up, the user manually enabled temporary visibility on both devices. No permanent visibility, screen-awake or phone-app setting was changed by this follow-up.
+## 移除控制中心与单取消（build36）
 
-## Titleless popup follow-up (build 6)
+安装仅Finder扩展，旧WidgetKit卸注册/删tile，无control-state entitlement/App Intents，签名通过。独立Prototypes/ReceivePanel保留英中虚构图和预览，验证范围/关禁行/Escape/无标题glass，不改真实设置。popup当时单footer Cancel在发前关、五活跃阶段取消对应ID、终态Done/Escape同动作、失焦后台继续。一次性native model用JSON sink无engine测正确ID/状态，54 Python/15 Swift；英中图重生，不重传。后续多目标流程见下。
 
-The UI-only build passed compilation and deep/strict signature verification. Native previews using the same AppModel and RecipientPanel checked title-bar removal, rounded corners and the original window background color. With a synthetic sending state, focusing an outside window and closing that window revealed the still-open progress popup. With a synthetic successful state, the same focus change dismissed the popup; closing the outside window left no recipient popup. The preview used no Bluetooth or file transfer. The earlier build-5 physical-device transfer result is unchanged; no new file transfer was performed for this UI-only change.
+## 1.0.0发行准备
 
-## Tablet receive recovery (build 7)
+官方Python3.14.7及固定wheels全构建，80 Mach-O arm64/最低14通过，无构建机库，不等于14实机。hardened signed engine清Python/DYLD环境后ready正常退出无stderr，无BLE/文件。54 Python/15 Swift；未来App Store无Sparkle typecheck不代表商店认证。
 
-The user reported a failed tablet-to-Mac receive: the Mac had a connection-reset error before receiving file data, while the tablet displayed a recipient-rejected message. The original reset's precise cause was not established.
+隔离UUID生产AppUpdates+Sparkle2.10.0，用loopback feed/合成UI/签名1.0.0DMG从0.9.9自动检查下载出现中文ready；Later留旧版，模拟活动传输禁安装，Restart and Update安装重启1.0.0，手动显示最新。关自动检查/下载独立读回并冷启保持，不改安装版。feed/archive签名，追加字节由Sparkle和嵌入公钥独立验证拒绝，不导私钥。
 
-Build 7 adds a bounded retry only while establishing the initial WebSocket, before transfer metadata or file bytes are exchanged. Retryable startup errors include temporary route unavailability, connection reset, refusal and abort. The whole connection retry window is at most ten seconds with up to four attempts; TLS/certificate failures, HTTP rejection, permission failure and cancellation are not retried. There is no TLS downgrade or replay of partial downloads. The earlier fifteen-second offer timer now expires only before a receive task starts, avoiding cancellation of an already-active connection attempt. The timer flaw was verified by tests, not identified as the definitive cause of the user's original reset.
+冻结479 code filename无绝对路径，所查常量无owner/home/team，source/history也查；只是聚焦隐私检查，不是任意数据自动匿名保证。英中生产虚构图重生，设置仅演示viewport扩展，真实可滚动。未新增手机传输。实际macOS26-only binary在最低14检查被正确拒。
 
-In a subsequent physical tablet-to-Mac test, the first connection attempt encountered the macOS host-unreachable error. Attempt two connected, and one 83,249-byte file completed download, saving and the completion exchange. The user confirmed success; local checks confirmed one saved file of that size directly in Downloads. A sender-side hash comparison was not performed. This demonstrates recovery in that attempt, not a guarantee that every connection reset is recoverable.
-
-Notifications now use localized, actionable messages for transfer errors rather than raw exception strings containing endpoints, object addresses or filenames. Local diagnostic summaries record phase, error class, numeric error code and attempt number; raw captures are excluded from the repository.
-
-## Inline rename control (build 8)
-
-A native preview with the same recipient grid verified the SF Symbols pencil beside a short name and a two-line name. Clicking the tablet pencil opened that device's name editor without starting a transfer; the editor was cancelled. The UI-only build passed compilation and deep/strict signature verification. No additional physical transfer was performed for this layout change.
-
-## Adaptive recipient layout (build 9)
-
-A native preview using the production views checked a one-line “Example” label, centered independently of the pencil; compact one-row height; and the compact name-edit sheet. A 40-device fixture scrolled to the final recipients while retaining the fixed header and footer. Ten bundled manufacturer logos were also displayed with phone/tablet badges. Fixtures used synthetic peers and no Bluetooth or file transfer. The UI build passed compilation and deep/strict signature verification.
-
-## Receive scope, Control Center and identity history update
-
-- Python suite: 51 tests pass, including rejection before key exchange for unlisted devices, mandatory approval for listed devices, revocation while approval is pending, and name-independent filtering.
-- Swift identity/progress suite: 10 tests pass.
-- Native model smoke checks ran in a fresh UUID-named UserDefaults test suite, without modifying the installed app’s settings. Offline history candidates, same-name device separation, Add/Remove/Forget, persisted trust, running=receiving, endpoint metadata, and the one-time legacy-history cleanup passed.
-- The installed build’s deep strict signature check passed. The one-time removal of history records without endpoint identifiers was independently read back by count; identified history was retained.
-- macOS registered the control extension. A user confirmed gallery visibility and the initial control-to-file-picker invocation during development. At that development stage, one Receive control opened the host-owned receive-scope panel. This integration was subsequently removed in build 36; its UI is preserved in the standalone prototype.
-- Production UI renders with fictional data cover English/Chinese receive scope and trusted-device history. Manufacturer artwork and phone/tablet badges are reused from the recipient chooser; OPPO/vivo use white logos on green/blue, and Xiaomi retains official orange artwork.
-- These checks do not establish physical-device coverage for other manufacturers or cryptographic peer authentication.
-
-
-## Historical GATT trust-boundary follow-up (superseded by sender-ID verification)
-
-- Python suite: **54 tests pass**, including no ready notification for an unlisted
-  or missing central, disabled-receiver subscription rejection, and a transfer
-  already accepted before trust removal retaining its control channel.
-- Swift suite: **13 tests pass**. New production-policy tests cover unknown,
-  trusted, malformed and unavailable-receiver cases, case-insensitive UUIDs and
-  the accepted-session exemption. A completed session grants no exemption for
-  a new offer.
-- Pending confirmation is excluded from the accepted-session exemption; existing
-  revocation-before-acceptance tests continue to pass.
-- GATT read/write/notification callbacks now apply that policy. Unit tests do
-  not establish physical-device compatibility of the changed ATT responses.
-- Read-only analysis of OShare `17.2.36` established that its `8881` discovery
-  path adds a candidate directly from advertising data before any GATT read.
-  These changes therefore do **not** implement selective visibility. See the
-  [investigation and remaining limitation](trusted-discovery.md).
-
-## Control Center removal and single Cancel action (build 36)
-
-- The installed app contains only the Finder Share extension. The old WidgetKit extension was unregistered and its existing anDrop tile removed. The host has no control-state App Group entitlement or App Intents metadata. The signed bundle passed deep/strict verification.
-- The compact receive panel is preserved outside the production build in `Prototypes/ReceivePanel`, with English/Chinese fictional captures and an independent interactive preview. Native preview checks verified scope selection, the switch disabling scope rows, Escape dismissal and the titleless system-glass wrapper. No production preferences or device trust records were changed by the preview.
-- The recipient popup now has one footer action: Cancel closes an unsent picker, targets the active transfer while preparing/waiting/connecting/sending/confirming, and becomes Done after a terminal result. Escape uses the same action. Outside clicks during sending still allow background transfer.
-- A disposable native-model check exercised the production cancel action with a local JSON-lines sink and no transfer engine: unsent closure, cancellation of the correct ID in all five active phases, and closure after a cancelled result passed.
-- Existing Python tests: **54 passed**. Swift identity/progress/policy tests: **15 passed**. The English and Chinese sending screenshots were regenerated from production views with mock data and show one Cancel button.
-- This UI/integration update did not repeat a physical-device file transfer.
-
-## Version 1.0.0 release preparation
-
-- The full app was rebuilt with the official Python 3.14.7 macOS runtime and pinned binary wheels. All **80 bundled Mach-O files** passed an arm64/macOS 14.0 deployment-target check; no load commands referred to the development machine’s library paths. This does not establish execution on physical macOS 14 hardware.
-- The signed hardened-runtime engine started with Python/DYLD environment overrides removed, emitted ready and exited normally with no stderr output. No file transfer or Bluetooth scan was started by this engine smoke check.
-- **54 Python tests and 15 Swift tests passed.** The future App Store build switch was separately typechecked without importing Sparkle; this is not store validation.
-- A separate UUID-identified fixture compiled the production AppUpdates implementation and embedded Sparkle 2.10.0. It used a loopback-only HTTP feed, synthetic UI and a signed 1.0.0 DMG; it had no transfer engine or Bluetooth advertising. From 0.9.9, automatic checking/download produced the Chinese ready dialog, Later retained the old version, a simulated active transfer disabled installation, and Restart and Update installed and relaunched **1.0.0**. A manual check then displayed Sparkle’s Chinese up-to-date dialog.
-- Disabling automatic checks/downloads was reflected in the UI, independently read back from that disposable fixture’s persistent preferences and retained after a cold relaunch. The fixture did not change the installed anDrop preferences.
-- Both the signed feed and update archive were verified. Appending bytes to the test archive caused signature verification to fail, using both Sparkle’s tool and an independent verification with the embedded public Ed25519 key. Private signing keys were not exported.
-- Frozen Python archives contained **479 code filenames**, none absolute; no project-owner name, private home path or signing-team identifier was found in their inspected string constants. The Git history and intended source changes were also screened for those private values. This is a focused publication check, not a claim that arbitrary data can be automatically anonymized.
-- Chinese and English documentation captures were regenerated from production views with fictional data. The mock Settings viewport is expanded to show the update controls and license/repository links. Normal Settings remains scrollable.
-- No additional physical-device transfer was performed for the updater/packaging change. Earlier physical test results above remain scoped to their recorded builds.
-
-The minimum-OS check was also exercised with an actual macOS 26-only binary and correctly rejected it when macOS 14 was declared.
-
-The 1.0.0 application subsequently passed Apple notarization. The exported application’s stapled ticket validated, deep/strict code-signature verification succeeded, and Gatekeeper reported `source=Notarized Developer ID`. The Developer ID-signed DMG mounted read-only, its checksums matched, and all **251 file/link entries** matched the notarized export. Installation from that DMG retained preferences/history and matched the same manifest. The installed Chinese Settings view showed 1.0.0, both update settings enabled, and the license/repository links. Host and bundled engine processes remained running.
-
-Published on 2026-10-17 as [v1.0.0](https://github.com/TakeruF/androp/releases/tag/v1.0.0). All three assets were downloaded again without GitHub authentication and matched the local release artifacts. Their SHA-256 checksums and the Ed25519 signatures of both appcast and DMG verified independently with the embedded public key. The installed production app read that public feed and displayed Sparkle’s Chinese confirmation that 1.0.0 was current. With Petal stopped, the installed host reported accessory activation policy (Dock hidden). macOS 14 physical-device testing remains outstanding.
-
+应用随后公证/staple/deep-strict/Gatekeeper Notarized Developer ID通过，Developer ID DMG只读挂载/校验/251 file-link manifest与公证export相同。安装保偏好历史，设置显示1.0.0与两更新选项/链接，host/engine运行。2026-10-17发布[v1.0.0](https://github.com/TakeruF/androp/releases/tag/v1.0.0)，三资产匿名重下字节一致、SHA256和appcast/DMG Ed25519独立验。安装版读公开feed显示1.0.0最新，鸿蒙星河互联停后accessory/Dock隐藏，14实机待证。
 
 ## 1.0.1 连接与受信任设备修复（2026-10-17）
 
@@ -255,11 +173,11 @@ TLS 控制连接一旦建立，就不再允许后续消息改换端点。重复�
 
 ## 1.0.1（10004）：修正应用注册类型导致的失焦
 
-10003 的应用包仍声明 `LSUIElement=false`（普通应用），而运行时在未使用 Petal 时切换为 accessory（菜单栏应用）。Finder 打开共享 URL 时，Launch Services 将应用恢复为 regular；两秒周期的环境检查又改回 accessory。该切换异步取消激活，将焦点交还 Finder。窗口实际仍存在，但被遮住。
+10003 的应用包仍声明 `LSUIElement=false`（普通应用），而运行时在未使用 鸿蒙星河互联 时切换为 accessory（菜单栏应用）。Finder 打开共享 URL 时，Launch Services 将应用恢复为 regular；两秒周期的环境检查又改回 accessory。该切换异步取消激活，将焦点交还 Finder。窗口实际仍存在，但被遮住。
 
 诊断构建连续记录应用激活状态、窗口可见／key 状态和激活策略，复现了 `regular + active + key` → `accessory + inactive + not key`。只在策略切换后立即激活，或在首次失活通知里激活，都仍会被后续的 Finder 激活覆盖，因此未采用这些补救方案。
 
-正式修复是将应用包声明为 `LSUIElement=true`，与其常驻行为保持一致。共享打开时不再从 regular 切换到 accessory。保留现有 Petal 运行时使用 regular 策略的逻辑；本轮未重新验证 Petal 的实际蓝牙广告共存。
+正式修复是将应用包声明为 `LSUIElement=true`，与其常驻行为保持一致。共享打开时不再从 regular 切换到 accessory。保留现有 鸿蒙星河互联 运行时使用 regular 策略的逻辑；本轮未重新验证 鸿蒙星河互联 的实际蓝牙广告共存。
 
 诊断构建中，修复后共享从始至终保持 accessory、active、key；验证期间不重新选择 anDrop 窗口。安装正式 10004 后，分别在应用已运行、完全退出的状态下从 Finder 发起共享，并独立只读检查前台应用仍是 anDrop；安装包与构建产物一致，诊断宿主已移除。此次没有传输用户文件，也不计为新的端到端传输测试。
 
@@ -292,74 +210,56 @@ Apple 公证完成，应用附带公证票据并通过 stapler、Gatekeeper 与 
 
 Apple 公证与票据验证、Gatekeeper、DMG 内容一致性检查均通过。DMG 使用 Developer ID 签名；自动更新包与 appcast 签名通过验证，版本、架构、最低系统、下载地址、文件长度和 SHA-256 已核对。仅发布 DMG、appcast.xml 与 SHA256SUMS.txt。
 
-## Recipient context menu and hidden devices (2026-10-17 development build)
+## 候选右键与隐藏（2026-10-17开发版）
 
-The recipient pencil has been replaced with Rename Device / Hide from Candidates in the device icon context menu. Settings manages persistent hidden records and restores them without needing an active discovery result. Hiding only filters outgoing candidates; receive access and trust are unchanged. Identity changes can make a device reappear, matching the existing alias identity scope.
+图标右键Rename/Hide替代铅笔，设置管理持久隐藏并离线恢复，只筛发送候选不改接收/信任，ID变可重现。真实Pura候选依次右键/改名/隐藏/重启保留/设置恢复/再发现，最后清试值，截图无铅笔。4新增模型测试存元数据不存raw身份、重名/发现持久/恢复，26 Swift与UI编译/签名/frozen self-check通过，engine同phase18完整双向三点版。活动传输tile保持只review未实传。私证据 `build/huawei-research/phase19/`，早铅笔记录只属旧构建。
 
-A native development build was operated against the real Pura 70 candidate: icon right-click showed both commands, renaming updated the label, hiding removed the candidate, restart preserved the hidden record and alias, Settings restored it, and rediscovery showed it again. The test alias and hidden entry were removed afterwards. A screenshot verified the pencil was absent. Four model tests cover stored metadata without raw identity, same-name devices, rediscovery persistence and restoration; all 26 Swift tests passed. UI compilation, deep/strict signature verification and the frozen engine self-check passed. The engine remained byte-identical to the phase18 full build used for three-file physical transfers in both directions. Active-transfer UI preservation was reviewed in code, not separately exercised during a physical transfer in this UI test.
+## Huawei图与computer类型（2026-10-17开发版）
 
-Private redacted evidence is under `build/huawei-research/phase19/`. Earlier pencil screenshots and notes above describe prior builds.
+本地原样官方96px favicon/manifest，Huawei/HUAWEI均支持；computer用desktopcomputer与英中Computer/电脑，覆盖候选/历史/记忆/隐藏。合成Huawei手机PC/HONOR小米PC/OPPO手机平板只证明展示。Huawei type12=公开0x0C，PC仍需SHARE，idle phone/pad例外不扩大，不猜HONOR/Xiaomi wire。新测试PC gate/本地化/隐藏roundtrip，176 Python/27 Swift，完整签名/self-check/目标OS通过，实候选logo/phone确认，无新传输/PC实机声明。`build/huawei-research/phase20/verification-redacted.json`。
 
-## Huawei artwork and computer presentation (2026-10-17 development build)
+## 照片预览修复（2026-10-17本地11002）
 
-Added the unchanged official Huawei 96px favicon locally (source and hash in the brand manifest), including both Huawei/HUAWEI brand spellings. Computer metadata now renders the `desktopcomputer` SF Symbol and localized Computer/电脑 label in candidate, history, remembered and hidden-device views. Production-view documentation fixtures cover Huawei phone/PC and HONOR/Xiaomi PCs alongside OPPO phone/tablet. The PC fixtures validate presentation only; they do not establish discovery or transfer compatibility with physical PCs.
+合成JPEG复现Pura Files图片发送失败：认证preview在11/12后加13，旧严格两项拒。batch有界允许11/12/13，13≤8KiB，拒未知/空/重复/超长并保全DFile名/大小/加密/内容；预览ACK后正常byte EOF不阻止file DONE ACK，截断仍失败。固定阶段/transfer ID诊断无原文/图。
 
-Huawei Share type 12 maps to computer, following OpenHarmony TYPE_PC_ID=0x0C. The existing exception for idle phone/tablet replies without SHARE capability remains restricted to those mobile types; PC replies still need SHARE capability. No unverified HONOR/Xiaomi wire-type values were introduced. The new tests exercise the PC advertisement gate and localization/hidden-record round-trip across three brands.
+179 Python/28 Swift，同ID/设置完整冻结Developer ID本地1.1.1/11002安装。native批准合成76,263 B JPEG，Downloads/quarantine/complete，内容SHA256一致/手机Sent，历史保留并留运行。未打开/重测用户原私照。`build/huawei-research/phase22/`。
 
-All 176 Python and 27 Swift tests passed. The full frozen build passed signature, self-check and deployment-target checks. Native UI inspection of the real Pura candidate confirmed the Huawei logo and phone badge. No transfer was performed in this artwork/type change, and no physical PC compatibility is claimed. Evidence: `build/huawei-research/phase20/verification-redacted.json`.
+## Huawei信任登记（2026-10-17）
 
-## Photo preview compatibility fix (2026-10-17, local build 11002)
+完成接收携 `huawei-key:`+规范DER RSA SHA256，仅有效加密offer证明私钥后暴露；手动登记可trusted-only，不是账号认证。旧历史无key或key变需Everyone新收再加，发现ID/名/IP不能登记授权。
 
-A reported Pura-to-Mac image failure was reproduced with a synthetic JPEG shared from Pura's Files image preview. Image sharing adds an authenticated preview tag 13 after tags 11/12; the previous exact two-field validator rejected it before file data. The bounded batch-preview parser now also accepts exactly 11/12/13, with an 8 KiB limit on tag 13, while rejecting unknown, empty, duplicate or oversized auxiliary fields and preserving all DFile name/size/crypto/content checks. An orderly byte-preview connection EOF after preview acknowledgement no longer prevents waiting for the file channel's verified DONE ACK; truncated headers/payloads remain failures. Fixed receive-stage tokens and transfer IDs improve diagnostics without logging remote text or image data.
+216 Python/30 Swift，追加配置回归及36 runtime通过：未知/变key/复制key坏加密、批准拒绝、待批撤销/停接收、拒发现ID、Huawei信任不开联盟GATT。生产AppModel隔离设置验证完成候选/元数据/增删忘/持久，英中渲染检查。
 
-All 179 Python and 28 Swift tests passed. A fully frozen, Developer ID signed local build (1.1.1/11002) replaced the installed application with its original identity and settings intact. The installed UI accepted a Pura-shared synthetic 76,263-byte JPEG, saved it to Downloads with quarantine, and recorded complete progress. File contents and SHA-256 matched, and Pura displayed Sent. Prior history was preserved and the app was left running for user testing. The user's original private photograph was not opened or retested by the agent. Evidence is under `build/huawei-research/phase22/`.
+完整engine重建签名，本地11019保ID/designated requirement、安装字节/设置一致。native看两旧信任与Huawei说明；用户Pura接收完成、保存大小=总量、持久key、native Add→Remove并保两旧条，未读私内容，`build/huawei-trust/`留备份/脱敏。
 
-## Huawei trusted-device enrollment (2026-10-17)
+下一trusted-only同key到批准，证明连续性，但单张thumbnail70,883 B超过估计60,000/件而receive_preview/thumbnail_size失败，不是信任拒绝。改缩略图受既有1MiB总preview预算而不绑件数，外帧仍MTU+28、完整性/已知唯一tag/名日期/DFile边界保留。107 Huawei测试含23/70,883/97实际形状的双重加密/大单图/超限/分片/认证失败。11020只外置模块重签host/扩展，同指定要求，冻结archive/native不变，三信任/模式保留；原失败照片该版成功尚待。
 
-Completed Huawei receipts now carry `huawei-key:` plus the SHA-256 fingerprint of the canonical transfer RSA public key. The handshake exposes that key only after a valid encrypted offer proves private-key possession. This permits explicit enrollment in Trusted Devices and trusted-only receiving; it does not authenticate a Huawei account. Older Huawei receipts have no key and require a new Everyone-mode receipt. Changed keys also require re-enrollment. Discovery IDs, names and IP addresses cannot enroll or authorize devices.
+11021诊断仅白名单模块名/有界行号，无路径/原错/locals/内容，完整重建，108 Huawei/31 Swift。10,990,916 B后来batch行151超旧8MiB单件但没超16MiB合计。随后两张2,685,997/2,979,527 B trusted-only成功、大小=complete总量/同登记key/用户确认，不看私内容，11020泛错未重现、原因未定。
 
-The 216-test Python suite and 30 Swift tests passed. A subsequently added configuration regression passed with all 36 Huawei runtime tests. Coverage includes unknown/changed keys, copied-key offers with invalid encryption, explicit acceptance/decline, trust removal or disabled reception while approval is pending, rejection of discovery IDs, and preventing Huawei trust from opening Alliance GATT negotiation. The production AppModel harness verifies completed-receipt enrollment, metadata, add/remove/forget, and persistence using isolated preferences. Both languages' documentation views were rendered and inspected.
+11022将单件接收与合计同为16MiB，参照/合成发送fixture旧限不变，合计内存/件数不变，外batch重签，109 Huawei含实际失败边界/16MiB/总超限。安装重启保三信任及trusted-only，10,990,916 B在最终变更后未重收。备份/结果 `build/huawei-trust/`。
 
-The full frozen engine was rebuilt and signed. Local build 11019 retains the original local bundle identifier and designated signing requirements; installed host/engine contents and existing settings were checked. Native UI inspection confirmed the two existing trusted records and the Huawei enrollment instructions. A user-initiated Pura 70 receipt then completed: saved file sizes matched the declared/completed total, the transfer key was persisted, and the native trusted-device sheet displayed Add. Enrollment changed that row to Remove while retaining the two existing records. The file's private contents were not inspected. Backups and redacted verification are under `build/huawei-trust/`.
+## 多目标（2026-10-17本地构建）
 
-The next physical transfer in Trusted Devices Only mode used the same enrolled key and reached approval, confirming key continuity across those two sessions. It failed after approval because its single-photo thumbnail was 70,883 bytes, above the estimated 60,000-bytes-per-file limit (`receive_preview` / `thumbnail_size`). This was a preview validation failure, not an untrusted-device rejection. The protocol now permits thumbnail data within the existing 1 MiB preview transport budget independently of file count. The entire encrypted frame remains bounded by that MTU plus the 28-byte outer crypto overhead; integrity, known/unique fields, name/metadata limits and DFile validation remain enforced.
+最初勾选+Send，多目标独立request/进度/结果/取消/重试，仅全成功可点外关。213 Python/29 Swift后加Huawei取消隔离；生产Swift模型覆盖多选/重复/隐藏消失/独立终态/活跃同伴重试/只取消活动/保后续选择。两隔离BLE模拟与真实loopback HTTPS/WebSocket并发传日文/空/二进制全字节一致；mock Huawei subprocess与真实OShare重叠、取消不影响同伴。英中生产图/完整打包签名runtime通过，备份安装匹配host/engine重启无启动错。仅模拟peer，不证明Huawei/OPPO实机同时收妥。
 
-All 107 Huawei tests passed, including a synthetic double-encryption round trip matching the reported field lengths (23 / 70,883 / 97 bytes), larger one-photo thumbnails, rejection above the bound, fragmented reads and authentication failures. Signed local build 11020 updates the externally loaded protocol module in the frozen engine bundle and re-signs the host and extension with their existing designated requirements. The frozen Python archive and native implementation are unchanged. All three trusted records and trusted-only mode are retained. Successful physical receipt of the previously failing photo on build 11020 remains pending.
+## 点击立即发送（2026-10-17 UI更新）
 
-Build 11021 adds only whitelisted local module names and bounded source line numbers to Huawei failure diagnostics, without paths, exception text, locals or file contents. The full engine and host were rebuilt, with 108 Huawei tests and 31 Swift tests passing. A later 10,990,916-byte receive failed at `batch` line 151: the old 8 MiB per-file bound, despite fitting the 16 MiB accepted total. Two subsequent user-initiated photo receives completed in Trusted Devices Only mode (2,685,997 and 2,979,527 bytes). Both saved sizes matched their completed totals and used the enrolled key; the user confirmed success. Private photo contents were not opened. The earlier generic receive error on build 11020 was not reproduced in these two successful transfers and its exact cause remains unconfirmed.
+取代勾选+Send：点候选即发，其他保持可点击，发现持续到关窗，已开tile即使停广告仍保，无勾选/独立Send。模型回归覆盖活跃时后续点击、去重、Finder排队新批时保原批、后发现新目标、隐藏/缺失/过期route拒、接收独占/独立重试取消/旧选择回归。30 Swift/5并发集成/生产模型通过，英中视图检查，复用安装engine，实机同时收妥仍未证。
 
-Build 11022 aligns the per-file incoming limit with the existing 16 MiB total budget. Reference/synthetic send fixtures keep their prior limits, and the aggregate memory/file-count bounds are unchanged. The externally loaded batch protocol was updated and the bundle re-signed with existing requirements. All 109 Huawei tests passed, including the actual failed file-size boundary, 16 MiB acceptance and rejection above the total. The installed app was restarted with the three trusted records and trusted-only mode intact. Physical receipt of the 10,990,916-byte file after this final limit change has not been retested. Local backups and redacted results remain under `build/huawei-trust/`.
+## 鸿蒙星河互联退出建议（2026-10-17源码）
 
-## Multiple recipients (2026-10-17, local build)
+英中README/设置建议完鸿蒙星河互联传输退出，用anDrop独立华为分享，共存实验性。新失败即时查bundle进程而不等timer，排本地化非模态弹窗，不挡其他传输/批准，同批失败合并一弹窗，不自动退出或断言因果。
 
-The recipient popup supports checkmarked multi-selection and a Send button. Each selected device gets an independent request, progress ring, result, cancellation and retry. The window dismisses on an outside click only after every recipient succeeds.
+生产AppModel隔离设置日志，只在OS边替换进程探测/弹窗，测收发/英中/UI状态过期时无进程/进程先于timer/成功拒绝取消不弹/重复并发/关闭/弹中进度/展示前退出/终止；英中原生alert渲染检查，Sparkle+arm64/macOS14 typecheck通过。无新实传／安装替换。
 
-Validation: 213 Python tests and 29 Swift tests passed, followed by an additional Huawei-cancellation isolation test. The production Swift model was exercised for multi-selection, duplicate clicks, hidden/disappeared candidates, independent terminal events, retry while another send remains active, cancelling only active recipients and preserving later file selections. Loopback integration used two isolated BLE peer fixtures and real HTTPS/WebSocket clients to verify concurrent transfers and byte-identical Japanese-named, empty and binary files. A mocked Huawei subprocess overlapped the production OShare sender; cancelling either recipient did not cancel its sibling. English and Chinese production views were rendered and inspected with selected recipients and independent progress rings. Full app packaging and signature/runtime validation passed. The installed app was backed up, replaced with the matching signed host and engine, and restarted; the engine was observed running without a reported startup error.
+## 1.2.0/12000：发行验证
 
-This verifies the implementation with simulated peers. Concurrent delivery to the physical Huawei and OPPO devices has not yet been verified.
+正式Huawei Share主打。当前完整219 Python/31 Swift，含编译native AppModel/loopback并发/分类/有界Huawei收发/信任。官方Python3.14.7完整冻结、Huawei self-check/Developer ID/arm64最低14通过，发行bundle ID保持，声明按精确runtime和官方Python文档更新。
 
-## Immediate recipient clicks (2026-10-17, local UI update)
+Apple公证/staple/Gatekeeper通过。public资产DMG/签名appcast/SHA256；source/history/assets与private日志/archive/device证据分别审查。8张英中生产虚构图重生目视，含Huawei候选/独立进度/信任/隐藏/自动安装/1.2.0，演示viewport扩大，真实可滚动。打包无新实机，最终16MiB边界、GiB发送、Huawei+OPPO同时、14实机/Intel仍待。
 
-Replaces the earlier checkmark-and-Send interaction: clicking a device starts it immediately, with other candidates remaining visible and clickable while sending. Discovery continues until the picker closes. Started recipients retain their own progress/results even when no longer advertising. No selection checkmarks or separate Send button remain.
+### 公开分发与安装更新
 
-The production Swift model regression passed for sequential recipient clicks during an active transfer, duplicate-click suppression, preserving the original batch when later Finder files are queued, adding a newly discovered recipient after earlier sends complete, hidden/missing/stale route rejection, receive exclusivity, independent retry and cancellation, and the previous file-selection regressions. All 30 Swift tests and the five parallel-send integration scenarios passed, together with the production Swift model regression. English and Chinese production views were rendered and inspected. The engine is reused from the installed build; physical simultaneous delivery is still unverified.
+历史发布检查GitHub Latest=v1.2.0，三资产匿名重下与本机逐字节一致，canonical latest/download/appcast.xml亦同；独立验DMG Ed25519/feed/版本build/最低OS/架构/DMG内容/票据/Gatekeeper/不变designated requirement。
 
-## Petal quit recommendation (2026-10-17, source update)
-
-The English and Chinese READMEs and Settings recommend finishing transfers in Petal Interconnect (鸿蒙星河互联), quitting it, and using anDrop's independent Huawei Share file-sharing support. Coexistence remains experimental. A newly failed send or receive checks the live Petal bundle identifier, rather than waiting for the environment timer, and queues a localized recommendation popup. The popup is nonmodal so other transfers and approval windows remain usable; one pending or visible popup covers concurrent failures. It does not quit Petal or assert that Petal caused the failure.
-
-The compiled production AppModel harness passed outgoing-selection, Huawei-trust and Petal-recommendation regressions using isolated preferences/logs, with only Petal process detection and popup presentation substituted at the OS boundary. Coverage includes sending and receiving, both languages, no Petal process despite stale UI state, a running process before the UI timer updates, success/decline/cancellation staying silent, duplicate and concurrent failures, dismissing the popup, continued transfer updates while it is open, Petal exiting before presentation, and app termination. English and Chinese native alert layouts were rendered and inspected. Production Swift type-checking with Sparkle and the arm64/macOS 14 deployment target passed. No new physical transfer or installed-app replacement was performed for this source update.
-
-## 1.2.0（12000）：release validation
-
-Official Huawei Share support is the headline feature. The complete current-source suite passed **219 Python tests and 31 Swift tests**, including the compiled native AppModel harness, loopback concurrent sends, file classification, bounded Huawei receive/send protocols and trusted-device checks. A full frozen build using the existing official Python 3.14.7 environment passed the Huawei runtime self-check, Developer ID signing and the arm64/macOS 14 deployment-target checks. The existing distributed bundle identifier is retained. Dependency notices were refreshed against the exact runtime and matching official Python documentation.
-
-Apple notarization, stapling and Gatekeeper validation passed. Public artifacts are the Developer ID signed DMG, signed Sparkle appcast and SHA-256 checksums. Public source/history and assets were reviewed separately from private logs, archives and device evidence. Eight English/Chinese mock documentation captures were regenerated from the current production views and visually inspected, including Huawei candidates, independent recipient progress, Huawei trust enrollment, hidden-device settings, automatic installation and the 1.2.0 version label. Documentation-only viewport expansion shows the complete controls; production windows remain scrollable.
-
-No new physical phone transfer was performed during release packaging. Earlier explicit physical results and pending retests above remain the applicable boundaries, including the final 16 MiB receive-limit retest, GiB-scale Huawei sends and simultaneous Huawei/OPPO physical delivery. macOS 14 physical-device and Intel testing remain outstanding.
-
-### Public distribution and installed update
-
-GitHub Latest points to v1.2.0. All three public assets were downloaded again without GitHub authentication and matched the local release artifacts byte for byte; the canonical `latest/download/appcast.xml` matched as well. Independent verification covered the DMG's Ed25519 update signature, signed feed, version/build, minimum OS, architecture, DMG contents, notarization ticket, Gatekeeper and the unchanged designated signing requirement.
-
-The existing installed 1.1.1/build11022 application then updated through Sparkle to **1.2.0/build12000** and relaunched. Installed host, engine and Finder extension bytes match the notarized release. Trust records, remembered devices, aliases, hidden devices, receive scope, save destination, sharing name and language were preserved. The installed Settings footer shows 1.2.0 and Huawei Share without the experimental label. A subsequent check against the public feed displayed Sparkle's confirmation that anDrop 1.2.0 is current. This proves the update/install/runtime path, not a new phone transfer.
+安装的1.1.1/11022通过Sparkle到1.2.0/12000并重启，host/engine/Finder字节同公证版；信任/记忆/别名/隐藏/范围/目录/名/语言保持，设置1.2.0与Huawei无实验标签，后续公开feed显示最新。证明更新安装运行，不是新手机传输。

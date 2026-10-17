@@ -1,35 +1,30 @@
-# 接收面板原型 / Receive-panel prototype
+# 接收面板原型
 
-此界面保留供将来复用，**不包含在 anDrop 正常构建或安装包中**。当前应用不提供控制中心项；接收范围仍可在菜单栏与设置中选择。
+简体中文 · [English](README.en.md)
 
-This UI is preserved for possible reuse. **It is excluded from the shipped app.** There is no current Control Center integration. Use the menu bar or Settings to choose a receive scope.
+保留将来复用，**不含正常构建／安装包**。现应用无控制中心项，接收范围用菜单栏／设置。
 
-## 预览 / Preview
+## 预览
 
-在 macOS 上，从仓库根目录运行（需要构建文档中的 Swift 工具链）：
+macOS仓库根目录、备构建文档Swift工具链：
 
 ```sh
 python3 Prototypes/ReceivePanel/preview.py
 python3 Prototypes/ReceivePanel/preview.py --english
 ```
 
-The standalone preview uses in-memory mock state. The switch and scope rows are interactive, but do not start anDrop, advertise Bluetooth, send files, read transfer history, change preferences or quit the installed app. Press Escape to exit. Chinese is the default; `--english` selects English.
+独立预览只用内存虚构状态，开关／范围可交互，不启动anDrop/蓝牙/文件/历史/设置写入或退出安装版。Escape退出，默认中文，--english英语。
 
-| 中文（虚构数据） | English (fictional data) |
+| 中文（虚构） | 英语（虚构） |
 | --- | --- |
-| ![接收面板预览](preview-zh.png) | ![Receive-panel preview](preview-en.png) |
+| ![中文预览](preview-zh.png) | ![英语预览](preview-en.png) |
 
-These archived captures show the SwiftUI layout. The live preview adds the native glass surface and follows system appearance. They do not establish real transfer compatibility.
+截图示SwiftUI布局，实时加native glass并跟系统外观，不证明传输。
 
-## 保留内容 / What is preserved
+## 保留内容与复用
 
-- `ReceiveControlsView.swift`: standalone bindings for on/off and receive scope, SF Symbols, native switch, full-row selection, hover and increased-contrast handling.
-- `makeReceiveControlsContent`: regular `NSGlassEffectView` on macOS 26+, standard popover material on earlier systems.
-- Original geometry: 308 pt width, 42 pt header, 32 pt rows, 26 pt symbol circles, 16 pt outer corners.
-- English and Simplified Chinese. Selected symbols use the system accent color.
+ReceiveControlsView.swift独立开关/范围bindings、SF Symbols/native switch/整行选择/hover/高对比；makeReceiveControlsContent在26+用NSGlassEffectView、旧系统标准popover。原尺寸308pt宽、42头、32行、26图标圆、16外角；英中，选中随系统accent。
 
-For reintegration, bind the switch to actual radio/host availability and the scope to the host’s trusted-device policy; turning off previously quit the host. `radiosAvailable` can disable the switch. Connect `dismiss` to the host-owned panel. Keep the existing warning that untrusted devices can still discover the Mac and their transfer requests are rejected.
+复用时switch绑定真实radio/host，范围绑定信任政策（旧关闭会退出host），radiosAvailable可禁开关，dismiss连host panel。保留未知仍能发现Mac但请求拒绝提示。
 
-The previous WidgetKit/App Intents extension, presentation-only App Group state and host window integration remain in Git history at commit `95e72ee`. Apple’s public Controls API did not allow embedding this custom panel inside the system Control Center; the former control opened a separate host-owned panel. Restoring that integration requires a deliberate build/signing/registration change; this prototype does not register an extension.
-
-Project source and captures are GPL-3.0-only. SF Symbols are rendered in the macOS interface, not redistributed as standalone artwork.
+旧WidgetKit/App Intents/presentation App Group/host集成在Git95e72ee；Apple Controls API不能把自定义panel嵌入系统控制中心，旧项只打开独立host panel。恢复需刻意构建/签名/注册，本原型不注册。原创源码/截图GPL-3.0-only，SF Symbols仅在UI渲染、不独立分发。

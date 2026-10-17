@@ -1,89 +1,65 @@
-# Android / OPPO受信通知のファイル種類宣言
+# Android / OPPO 接收通知的文件类型声明
 
-調査日: 2026-10-17 JST。対象: 調査時点のanDrop作業ツリーと、既存のローカルOShare逆コンパイル資料（17.2.36として記録されている版）。以下は変更前の静的調査記録。後続の実装状況は末尾に記載。他社Androidの表示は未確認。
+简体中文 · [English](android-file-type-research.en.md)
 
-## 結論
+调查日期：2026-10-17 JST。对象为调查时的 anDrop 工作树及已有本地 OShare 反编译资料（记录版本17.2.36）。前半是修改前静态调查，后半记录实现与实机反馈。其他 Android 厂商显示尚未确认。
 
-**Mac→OPPOでは種類を宣言できる。ただし承認前の通知はBLE初期要求の暗号化された `type` を使う。後段のWebSocket `sendRequest.mimeType` だけを変えても、最初の通知は直らない。** この段階の見落としによりbuild11015は利用者のPDF再試験で表示改善に失敗した。後述のBLE修正を参照。
+## 结论
 
-添付スクリーンショットの「？」アイコンは、この `file/*` が不明アイコンへ進む実装と整合する。ただし、その送信の実際のペイロードは採取していないため、当該通知の原因を実機で確定したわけではない。
+**Mac→OPPO 可以声明类型，但批准前通知使用 BLE 初始请求中加密的 `type`。仅修改后续 WebSocket `sendRequest.mimeType` 无法修复初始通知。** 最初遗漏这一层，使 build11015 在用户 PDF 复测中显示未改善；后续 BLE 修正见末尾。
 
-## anDrop側
+截图中的问号图标符合 `file/*` 回退未知图标的实现，但未捕获当次真实载荷，因此不能把该截图的具体原因视为独立实机定论。
 
-- `Sources/engine.py` の `Engine.send` は `sendRequest` に `fileName`、`fileCount`、`totalSize`、`mimeType` などを載せる。
-- 現在の指定は `'mimeType':'file/*'` 固定。
-- `fileName` には元の先頭ファイル名を渡しているが、下記のOPPO確認カード経路では、その名前から拡張子を自動補完しない。
-- `/download` の HTTP `Content-Type: application/zip` は転送用ZIPの型。通知用 `sendRequest.mimeType` は中身の分類なので、両者は別。通知修正のためにHTTPヘッダーを画像やPDFへ変更しない。
-- 現行のバージョン交渉はversion 1。
+## anDrop 与 OPPO 处理路径
 
-## OPPO側で追跡した経路
+修改前 `Sources/engine.py` 的 `Engine.send` 在 sendRequest 中发送fileName/fileCount/totalSize/mimeType，mimeType固定 `file/*`，先发原首文件名。下述确认卡路径不会从该名字自动补扩展名。HTTP `/download` 的 `Content-Type: application/zip` 描述传输封装，通知 MIME 描述内容；不能为图标将HTTP类型改图片／PDF。协商协议版本为1。
 
-ローカル解析ルート: `work/oshare-source/sources/`。ベンダーコードやAPKはこのリポジトリへコピーしていない。
+本地分析目录 `work/oshare-source/sources/`，厂商源码／APK未复制进本仓库。
 
-| 段階 | シンボルと確認事項 |
+| 步骤 | 符号与发现 |
 | --- | --- |
-| 要求の読み込み | `eb.d.i` はJSONの `mimeType` を保持し、`f()` で返す。`thumbnail` と寸法のフィールドも存在する |
-| LAN受信 | `fa.g.s0` は `sendRequest` を `eb.d` に読み込む |
-| 確認カードへ引き渡し | `fa.g.E0/G0` → `ConfirmSeedlingCard.F0` → `C0`。ファイル名とMIMEを渡すが、明示的な拡張子・プレビューURIは渡していない |
-| アイコンの決定 | `ConfirmSeedlingCard.b.g` は、URIがなければ明示的拡張子、さらにその指定がなければ `h0.a(mimeType)` の対応表を使い、`FilePreviewSrcUtils.a` へ渡す |
-| カードへの反映 | `ConfirmSeedlingCard` の `startSeedling` 処理が `b.g()` の結果を `previewSrc` として採用する |
-| メディア分類 | `h0.m/h/o` が `image/`・`audio/`・`video/` の前方一致で判定する |
-| 文書・アーカイブ分類 | `h0` のMIME→拡張子表と `FilePreviewSrcUtils` の拡張子→アイコン規則でPDF、Word、PowerPoint、ZIPなどを選ぶ |
-| フォールバック | `file/*` は上記に一致せず `images.preview_unknow` へ進む |
+| 请求解析 | `eb.d.i` 保留JSON mimeType，`f()`返回；另有thumbnail与尺寸字段 |
+| LAN接收 | `fa.g.s0` 将sendRequest解析为eb.d |
+| 确认卡 | `fa.g.E0/G0`→`ConfirmSeedlingCard.F0`→`C0`，传名字与MIME，不传显式扩展名／预览URI |
+| 图标选择 | `ConfirmSeedlingCard.b.g`无URI时先显式扩展名，否则 `h0.a(mimeType)`，交 `FilePreviewSrcUtils.a` |
+| 卡片更新 | startSeedling把 `b.g()`作为previewSrc |
+| 媒体分类 | `h0.m/h/o`按image/audio/video前缀判断 |
+| 文档／压缩 | MIME→扩展名表及扩展名→图标规则 |
+| 回退 | `file/*`不匹配，进入 `images.preview_unknow` |
 
-このLAN経路では、単に元ファイル名を `.pdf` にしても、確認カードのアイコン判定にその拡張子は渡らない。`application/pdf` を宣言することに意味がある。
+因此LAN路径仅把名字改.pdf不足，声明application/pdf才有意义；这不是批准前BLE路径的完整证据。
 
-## 宣言値と静的に確認できたアイコン
+## 静态确认的声明与图标
 
-以下は解析コード上の選択結果であり、変更版anDropからの実機表示成功を意味しない。
-
-| 内容 | 宣言するMIMEの例 | 選択されるアイコン |
+| 内容 | MIME | 图标 |
 | --- | --- | --- |
-| JPEG / PNG | `image/jpeg` / `image/png` | 画像 |
-| 動画 | `video/mp4` | 動画 |
-| 音声 | `audio/mpeg` | 音声 |
+| JPEG / PNG | `image/jpeg` / `image/png` | 图片 |
+| 视频 | `video/mp4` | 视频 |
+| 音频 | `audio/mpeg` | 音频 |
 | PDF | `application/pdf` | PDF |
-| テキスト | `text/plain` | TXT |
+| 文本 | `text/plain` | TXT |
 | Word | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Word |
 | Excel | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | Excel |
 | PowerPoint | `application/vnd.openxmlformats-officedocument.presentationml.presentation` | PowerPoint |
-| ZIPファイル自体の共有 | `application/zip` | ZIP |
-| 分類不能・混在 | 現行互換の `file/*` | 不明 |
+| ZIP文件本身 | `application/zip` | ZIP |
+| 未知／混合 | `file/*` | 未知 |
 
-画像は `image/*` でも画像分類に入る。PDFや文書を一律 `text/*` に丸めると、具体的な拡張子への変換情報を失うため、専用アイコン目的には具体的MIMEが適している。
+这些是静态选择结果，不是修改版实机显示证明。image/*也可进图片分类；把PDF等一律text/*会失去具体扩展映射。类型图标与照片缩略图不同，fa.g确认卡并未传preview URI，不能因有thumbnail字段便保证实图预览。version4以后另有image/*、video/*完全匹配和vision/*+number计数分支，不能假定version1媒体混合计数正确。旧Excel MIME `application/vnd.ms-excel`映射 `.xls`，图标却要 `xls`，可能无法专用显示，不以伪造MIME绕过。[Android官方分享文档](https://developer.android.com/develop/ui/compose/sharing/send)与OShare网络协议不同；此处结论来自实际OShare路径。
 
-注意点:
+## 实现与验证范围
 
-- 種類アイコンと写真そのもののサムネイルは別。`thumbnail` の存在は確認したが、今回追跡した `fa.g.E0/G0` の確認カード呼び出しにはプレビューURIを渡していない。フィールドを追加するだけで写真プレビューが出るとは断定できない。
-- `eb.d.i` の画像・動画個数の追加処理はprotocol version 4以降の分岐にあり、`image/*` / `video/*` の完全一致や `vision/*` + `number` の形式を使う。現行version 1で混在画像・動画の個数表示まで正しくなるとは仮定しない。
-- 古いExcel用 `application/vnd.ms-excel` は、この版の対応表では `.xls`（先頭ドット付き）になるが、アイコン規則は `xls` を要求する。この組み合わせは専用アイコンにならない可能性がある。MIMEを偽る回避策は採らない。
-- Android一般のアプリ間共有でも具体的なMIME指定が推奨されるが、Android IntentとOShareのネットワークプロトコルは別。上記の可否はAndroid一般論ではなく、OShareの該当経路を根拠にした。[Android公式: Send data to other apps](https://developer.android.com/develop/ui/compose/sharing/send)
+1. 单文件由扩展名或macOS类型得到真实MIME；同MIME批次用具体类型，同类图片／音频／视频用wildcard，异种／未知用file/*，不以首文件代表全批。
+2. 保持ZIP封装、HTTP头、文件名、内容与批准流程。
+3. 分别验证JPEG/PDF/TXT/ZIP/同类多件/混合、视频计数的请求值、批准前图标和文案、完成、保存位置与内容。
 
-## 実装する場合の範囲と検証
+用户要求实现后，新增 `Sources/file_types.py` 并连接WebSocket mimeType；压缩文件不冒充内部类型。分类与TLS/WebSocket集成覆盖PDF/JPEG/多图片/混合、原名字/件数/大小、HTTP ZIP与解压全内容，202 Python通过。BLE peer是模拟，不证明OPPO显示或落盘。
 
-1. 単一ファイルは拡張子やmacOSの型情報から実際のMIMEを求め、`sendRequest.mimeType` に設定する。
-2. 複数ファイルは、全件同一MIMEならそのMIME、全件画像・音声・動画の同一分類なら対応するワイルドカード、異種混在・不明なら現行 `file/*` を使う。先頭ファイルの種類だけで全体を宣言しない。
-3. 転送用ZIP、HTTPヘッダー、保存名、受信承認の仕組みはそのまま保つ。
-4. 合成のJPEG・PDF・TXT・ZIP・同種複数・異種混在で、送信要求の値、承認前のアイコンと文言、受信完了、保存先と内容一致を別々に確認する。動画は個数表示も確認する。
+完整本地1.1.1/build11015安装至 `/Applications/anDrop.app` 并重启，保留签名要求、ID、更新设置。旧11014备份 `build/android-mime-install/anDrop-before-install.app`。完整签名、macOS14运行库检查、冻结engine自检、安装模块PDF/混合分类、host/engine和发现／广告无错确认，记录 `build/android-mime-install/`，未公开发布。
 
-調査として確定したのは「種類宣言のフィールドがあり、OPPO側の通知アイコンまで利用される」という点。実装・設置版の更新・実機での表示改善は未実施。
+## build11015 的遗漏与 build11016 实机反馈
 
-## アプリへの反映（2026-10-17）
+用户报告PDF图标未变。安装／运行bundle确为11015，但BLE初始加密type仍file/*。OShare `com.oplus.oshare.ble.impl.w.e`先解type，经 `A()`→`B()`→`ConfirmSeedlingCard.C0`→`R0(..., false)`显示批准前卡，此时WebSocket未连接。原fa.g调查仅覆盖后续路径。
 
-利用者の実装依頼に基づき、`Sources/file_types.py` に拡張子からのMIME分類を追加し、`Engine.send` の `sendRequest.mimeType` へ接続した。単一または全件同一MIMEは具体的な型、異なる画像形式同士などは `image/*`・`audio/*`・`video/*`、異種混在と不明形式は `file/*` を送る。圧縮済みファイルを中身の型として宣言しない。ファイル名やバイト列は変更しない。
+修复为只计算一次MIME，同值用于BLE加密type和WebSocket mimeType。集成测试解BLE请求，覆盖接收者拒绝、从未进入WebSocket时PDF类型也正确。完整build11016同ID/签名要求安装重启，旧版备份 `build/android-mime-fix/anDrop-before-install.app`。203 Python重跑全通过；首次无关Huawei广告测试把随机token内0xff误判为payload边界而失败，单独及全量复查通过，未改该测试。签名/运行库/engine自检/host engine启动通过。
 
-分類テストとTLS/WebSocket送信統合テストで、PDF・JPEG・複数画像・画像/PDF混在の宣言、元のファイル名・件数・サイズ、HTTP ZIP型、展開後の全内容一致を確認。Python全202件成功。統合テストのBLE相手は模擬実装であり、OPPOの実機アイコン・文言・保存先は別途確認が必要。
-
-完全ビルドしたローカル版1.1.1/build11015を `/Applications/anDrop.app` へ設置して再起動。既存の署名要件・アプリID・更新設定を維持し、旧build11014のバンドルを `build/android-mime-install/anDrop-before-install.app` に退避した。完全署名、macOS 14向けランタイム検査、凍結engine自己検査、設置済みengine内の分類モジュールとPDF/混在の判定、ホストとengineの起動を確認。再起動後のステータスは探索イベント・広告ON・エラーなし。テストログと設置検証記録は `build/android-mime-install/` に保存。公開リリースは行っていない。
-
-## build11015で表示が変わらなかった原因と修正
-
-利用者がPDFの承認前アイコンに変化がないと報告。設置版・実行中のバンドルを再確認しbuild11015と一致したが、`Engine.send` のBLE初期要求は暗号化 `type='file/*'` のままだった。
-
-OShare `com.oplus.oshare.ble.impl.w.e` の初期要求処理は `type` を復号して保存し、`A()` → `B()` → `ConfirmSeedlingCard.C0` → `R0(..., false)` で承認前カードを表示する。この時点ではWebSocketはまだ接続していない。最初の調査が追った `fa.g` は後段であり、承認前表示の根拠としては不十分だった。
-
-MIMEを一度計算し、BLEの暗号化 `type` とWebSocketの `mimeType` の両方に同じ値を設定するよう修正。統合テストにもBLE要求の復号検査を追加し、受信者が拒否してWebSocketまで進まない場合にもPDFの型が届くことを検証する。
-
-修正版1.1.1/build11016を同一署名要件・IDで完全ビルド、設置、再起動した。旧版は `build/android-mime-fix/anDrop-before-install.app` へ退避。Python203件は再実行で全成功。初回は変更範囲外のHuawei広告テストがランダムトークン内の `0xff` をペイロード境界と誤認して失敗したため、当該テスト群と全体を再確認した（そのテストコードは変更していない）。署名・ランタイム検査・engine自己検査・ホスト/engineの起動も成功。
-
-設置済みアプリへFinder共有から合成PDF `androp-oppo-mime-check.pdf`（618 bytes）を渡し、OPPOスマートフォンを選んで実機送信した。転送状態は2026-10-17 21:08:23 JSTに `complete`。利用者から「うまくいった」と表示改善の確認を得た。表示成功は利用者確認に基づく。今回、端末上の保存内容の独立ハッシュ照合や他形式の実機表示確認は行っていない。記録は `build/android-mime-fix/`。
+Finder共享将合成PDF `androp-oppo-mime-check.pdf`（618 B）交安装版，选OPPO手机发送。2026-10-17 21:08:23 JST complete；用户确认显示改善。该结论基于用户观察，没有另做手机保存内容独立散列或其他格式实机显示验证。证据在 `build/android-mime-fix/`。

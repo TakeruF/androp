@@ -1,23 +1,19 @@
-# Licensing
+# 许可证
 
-## Project license
+简体中文 · [English](licensing.en.md)
 
-Project-authored code, documentation and icon assets use **GPL-3.0-only**, with the copyright label **anDrop contributors**. The complete license text is in [LICENSE](../LICENSE). Source files carry SPDX identifiers. This is a development project, provided without warranty under that license.
+## 项目与开发沿革
 
-An earlier prototype imported the GPL-3.0 mtapy protocol module. The present engine does not import or bundle it. GPL-3.0 was selected for this project to keep distribution aligned with that development lineage, rather than asserting a permissive-only provenance. This is a project licensing choice; merely reading another project's protocol documentation is not itself asserted here to determine a license obligation.
+原创代码／文档／应用图标采用GPL-3.0-only，版权标签anDrop contributors，全文[LICENSE](../LICENSE)，源码SPDX；按许可不担保。早期原型导入GPL-3.0 mtapy，当前engine不导入／同捆；项目选GPL为与开发沿革一致，不声称仅阅读协议文档就决定许可义务。
 
-The referenced mtapy revision's README, license field and LICENSE say GPL-3.0, despite an inconsistent MIT classifier in its package metadata. The original license text is retained. CatShare's MIT attribution is retained as a research reference. See [NOTICE.md](../NOTICE.md).
+参考mtapy revision的README、license字段、LICENSE均GPL-3.0，尽管metadata一个classifier误列MIT。保留原文；CatShare MIT声明作为参考保留，见[NOTICE](../NOTICE.md)。
 
-## Third-party components
+## 第三方与分发
 
-`ThirdPartyNotices/README.txt` records the inspected package versions and license identifiers. The license files alongside it apply to their respective upstream components, not to the whole application. Original upstream copyright notices must be kept, including upstream authors' names.
+ThirdPartyNotices/README.txt记录检查版本和许可，其旁原文只适用各组件，不适用全应用。保留上游版权姓名。Python/native库有各自许可；PyObjC用系统libffi，所查构建不另带libffi。PyInstaller bootloader exception/Apache runtime见[官方许可](https://pyinstaller.org/en/stable/license.html)与pyinstaller-COPYING.txt；community hooks区分构建hook与embedded runtime hook。
 
-Python and native runtime libraries have their own license texts. PyObjC uses macOS system libffi; no separate libffi runtime is included in the inspected build. PyInstaller's bootloader exception and Apache-licensed runtime files are described in its [official licensing documentation](https://pyinstaller.org/en/stable/license.html) and the included `pyinstaller-COPYING.txt`. The community hooks license distinguishes build hooks from embedded runtime hooks.
+再分发保留LICENSE/NOTICE/依赖许可。分发binary须按GPL提供该精确版对应源码／构建说明并核对实际同捆依赖，不能拿移动分支当旧binary对应源码，见[GPL全文](https://www.gnu.org/licenses/gpl-3.0.html)。
 
-## Distribution
+不含vendor APK/反编译源码/签名材料。官方logo隔离于Resources/BrandLogos并记URL/hash，不改为GPL。可下载不等于再分发许可，发布源码／binary前看权利人条款；产品名/logo仅表互通目标，无商标许可／官方认证暗示。
 
-Keep LICENSE, NOTICE and the applicable dependency licenses with redistributed copies. When distributing an app binary, provide the corresponding source and build instructions for that exact version in accordance with GPL-3.0, and review the actual bundled dependencies. Do not assume a moving branch is the corresponding source for an older binary. See the [GPL-3.0 text](https://www.gnu.org/licenses/gpl-3.0.html).
-
-No vendor APK, decompiled vendor source or signing material is included. Official manufacturer artwork is isolated in `Resources/BrandLogos` with its source URLs and hashes. It is not relicensed under GPL-3.0-only. Download availability does not itself establish redistribution permission; review each owner’s applicable terms before a public binary or source release. Product names and logos identify interoperability targets; no trademark permission or vendor certification is implied.
-
-The app icon is original folded-paper artwork rendered by `icon.swift`. SF Symbols such as `paperplane` are requested from macOS for interface controls and are not embedded in the app icon. See [Apple’s SF Symbols usage guidance](https://developer.apple.com/design/human-interface-guidelines/sf-symbols).
+应用图标为icon.swift原创折纸。paperplane等SF Symbols向macOS运行时请求，不嵌入应用图标；见[Apple指引](https://developer.apple.com/design/human-interface-guidelines/sf-symbols)。
