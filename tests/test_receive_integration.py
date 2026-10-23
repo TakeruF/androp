@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 anDrop contributors
 """Actual TLS/WebSocket/HTTP transfers; only the BLE transport is substituted."""
-import base64,asyncio,datetime,hashlib,io,json,socket,ssl,sys,tempfile,unittest,uuid,zipfile
+import base64,asyncio,datetime,hashlib,io,json,plistlib,socket,ssl,sys,tempfile,unittest,uuid,zipfile
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'Sources'))
@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from engine import Engine,wire,parse_wire,sender_identifier,Keys
 
 class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False,auto_accept=False):
+    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False,auto_accept=False,binary_control=False):
         files=files or {'日本語.txt':b'synthetic file\n','empty.bin':b''}
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);destination=root/'received';destination.mkdir()
@@ -31,11 +31,14 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
             downloads=[];events=[];udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);udp.bind(('127.0.0.1',0));udp.setblocking(False);udp_port=udp.getsockname()[1]
             async def websocket(request):
                 ws=web.WebSocketResponse();await ws.prepare(request)
+                async def control(value):
+                    if binary_control:await ws.send_bytes(value.encode('utf-8'))
+                    else:await ws.send_str(value)
                 with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as out:
                     for _ in range(64 if udp_probes else 0):out.sendto(bytes(4096),('127.0.0.1',udp_port));await asyncio.sleep(.001)
                 await ws.receive_str()
-                await ws.send_str(wire('action',1,'versionNegotiation',{}));await ws.receive_str()
-                await ws.send_str(wire('action',2,'sendRequest',{'id':'task-fixture','senderId':sender,'senderName':'Same account name','fileCount':len(files)+(1 if malformed_count else 0),'totalSize':sum(map(len,files.values())),'fileName':next(iter(files))}))
+                await control(wire('action',1,'versionNegotiation',{}));await ws.receive_str()
+                await control(wire('action',2,'sendRequest',{'id':'task-fixture','senderId':sender,'senderName':'Same account name','fileCount':len(files)+(1 if malformed_count else 0),'totalSize':sum(map(len,files.values())),'fileName':next(iter(files))}))
                 async for msg in ws:
                     if msg.type==web.WSMsgType.TEXT:
                         kind,index,name,p=parse_wire(msg.data)
@@ -95,7 +98,8 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(engine.session);self.assertFalse(engine.decisions)
                 self.assertEqual(sorted(x.name for x in destination.iterdir()),sorted(files) if should_succeed else [])
                 if should_succeed:
-                    for name,data in files.items():self.assertEqual(hashlib.sha256((destination/name).read_bytes()).digest(),hashlib.sha256(data).digest())
+                    for name,data in files.items():
+                        self.assertEqual(hashlib.sha256((destination/name).read_bytes()).digest(),hashlib.sha256(data).digest())
                     self.assertEqual(session.get('device_identifier'),sender_identifier(sender))
                 return events
             finally:
@@ -126,6 +130,23 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
         for allowed in [True,False,True,False]:await self.transfer(trusted=True,allowed=allowed)
 
     async def test_blocked_udp_does_not_break_working_tls_transfer(self):await self.transfer(udp_probes=False)
+
+    async def test_utf8_binary_control_frames_preserve_contents_and_approval(self):
+        events=await self.transfer(binary_control=True,udp_probes=False)
+        self.assertTrue(any(e.get('detail')=='control_message' and e.get('message_type')=='binary' for e in events))
+        self.assertTrue(any(e.get('state')=='request' for e in events))
+
+    async def test_binary_control_does_not_bypass_trusted_sender_check(self):
+        await self.transfer(binary_control=True,trusted=True,allowed=False)
+
+    async def test_url_and_text_files_remain_ordinary_files(self):
+        files={'Meeting.webloc':plistlib.dumps({'URL':'https://example.invalid/'}),
+               'Meeting.url':b'[InternetShortcut]\nURL=https://example.invalid/\n',
+               'Note.txt':b'https://example.invalid/'}
+        events=await self.transfer(files=files)
+        self.assertFalse(any(e.get('event')=='link_received' or e.get('content_kind')=='link' for e in events))
+        complete=next(e for e in events if e.get('state')=='complete')
+        self.assertEqual({Path(f['path']).name for f in complete['files']},set(files))
 
     async def test_cancel_mid_download_cleans_partial_files(self):
         await self.transfer(files={'cancel.bin':bytes(range(256))*32768},cancel_midstream=True)

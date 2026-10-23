@@ -231,6 +231,9 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 return
             }
             else if url.scheme == "androp", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), parts.host == "share" {
+                guard parts.queryItems?.allSatisfy({ $0.name == "file" }) == true else {
+                    error = L("URL and text sharing are not supported. Choose files to send.", "不支持 URL 或文本共享，请选择文件发送。"); showWindow(); return
+                }
                 let paths = parts.queryItems?.filter { $0.name == "file" }.compactMap(\.value) ?? []
                 addFiles(paths.filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) })
             }
@@ -1263,7 +1266,9 @@ private struct RecipientAvatar: View {
     var body: some View {
         Circle().fill(BrandLogos.background(for: peer.brand).map { Color(nsColor: $0) } ?? (BrandLogos.image(for: peer.brand) == nil ? Color(nsColor: .quaternaryLabelColor) : .white))
             .overlay {
-                if let logo = BrandLogos.image(for: peer.brand) {
+                if peer.brand == "Apple" {
+                    Image(systemName: "apple.logo").font(.system(size: 30)).foregroundStyle(.primary)
+                } else if let logo = BrandLogos.image(for: peer.brand) {
                     if peer.brand == "Xiaomi" {
                         Image(nsImage: logo).resizable().scaledToFill()
                             .frame(width: 62, height: 62).clipShape(Circle())

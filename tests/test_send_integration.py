@@ -10,7 +10,7 @@ from aiohttp import ClientSession
 from engine import Engine,Keys,wire,parse_wire,bu
 
 class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,ack_first=False,reject=False,wrong_peer=False,multiple=False,declined=False,fixtures=None,expected_mime='file/*'):
+    async def transfer(self,ack_first=False,reject=False,wrong_peer=False,multiple=False,declined=False,fixtures=None,expected_mime='file/*',binary_control=False):
         jobs=[];downloads=[];events=[];keys=Keys();callback=None;attempts=[];offers=[];content_types=[];initial_offers=[]
         if fixtures is None:fixtures=[('日本語.txt',b'fixture'),('empty.bin',b'')]
         async def peer(host,port):
@@ -20,17 +20,20 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
             async with ClientSession() as client:
                 if ack_first:ack();await asyncio.sleep(.02)
                 async with client.ws_connect(f'https://{host}:{port}/websocket',ssl=context) as ws:
+                    async def control(value):
+                        if binary_control:await ws.send_bytes(value.encode('utf-8'))
+                        else:await ws.send_str(value)
                     if not ack_first:ack()
                     async for m in ws:
                         if m.type.name!='TEXT':continue
                         kind,index,name,p=parse_wire(m.data)
-                        if name in ('wlanBandwidth','versionNegotiation'):await ws.send_str(wire('ack',index,name,{}))
+                        if name in ('wlanBandwidth','versionNegotiation'):await control(wire('ack',index,name,{}))
                         elif name=='sendRequest':
                             offers.append(p)
                             async with client.get(f'https://{host}:{port}/download',params={'taskId':p['id']},ssl=context) as response:
                                 content_types.append(response.headers['Content-Type'])
                                 downloads.append(await response.read())
-                            await ws.send_str(wire('action',10,'status',{'taskId':p['id'],'type':1}));break
+                            await control(wire('action',10,'status',{'taskId':p['id'],'type':1}));break
         class BLE:
             is_connected=False
             def __init__(self,*a,**k):pass
@@ -89,7 +92,7 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_wlan_rejection_does_not_offer_files(self):await self.transfer(reject=True)
     async def test_recipient_decline_is_distinct_from_transfer_failure(self):await self.transfer(declined=True)
     async def test_second_interface_after_explicit_rejection(self):await self.transfer(multiple=True)
-
+    async def test_utf8_binary_control_frames_complete_over_tls(self):await self.transfer(binary_control=True)
     async def test_typed_offers_preserve_zip_transport_and_contents(self):
         for fixtures,mime in [
             ([('書類.PDF',b'%PDF-1.4\nfixture')],'application/pdf'),
@@ -107,3 +110,13 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock
         with patch('engine.retry_local_route',new=AsyncMock(side_effect=OSError('UDP unavailable'))):
             await self.transfer()
+
+    async def test_url_and_text_commands_are_rejected_without_starting_transfer(self):
+        from unittest.mock import AsyncMock
+        engine=Engine()
+        for field in ('link','text'):
+            with patch.object(engine,'send',new_callable=AsyncMock) as send, patch('engine.emit') as emit:
+                await engine.command({'command':'send','peer':'peer','paths':['fixture.txt'],field:'https://example.invalid/'})
+                send.assert_not_awaited()
+                self.assertEqual(emit.call_args.args,('error',))
+                self.assertNotIn('example.invalid',emit.call_args.kwargs['detail'])

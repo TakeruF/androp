@@ -17,7 +17,9 @@ python3.14 -m venv .venv
 .venv/bin/python build.py
 ```
 
-输出 `build/anDrop.app`：编译Swift host/Finder扩展、PyInstaller冻结engine、同捆Sparkle/许可证、由内到外签名并验证；临时staging避免扩展属性破坏签名。完整构建后 `build.py --ui-only`可复用engine，改engine/Python/依赖必须完整重建；UI-only仍检查运行库兼容。
+输出 `build/anDrop.app`：编译Swift host/Finder扩展、PyInstaller冻结engine、同捆Sparkle/许可证、由内到外签名并验证；临时staging避免扩展属性破坏签名。构建还会编译并签名基于 AVFoundation／ImageIO／PhotoKit 的 `anDropLivePhoto` 辅助程序。打包检查要求冻结引擎能找到并执行此程序。`python3 scripts/test-live-photo-native.py` 使用合成素材验证转换及产品发送／接收流程，不访问照片图库。
+
+完整构建后 `build.py --ui-only`可复用engine，改engine/Python/依赖必须完整重建；UI-only仍检查运行库兼容。
 
 release.json保存版本、单调build、最低OS和公开feed。ANDROP_VERSION/ANDROP_BUILD可本地覆盖；正式打包拒绝与配置不符。
 

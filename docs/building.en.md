@@ -19,6 +19,8 @@ python3.14 -m venv .venv
 
 Output: `build/anDrop.app`. The script compiles the Swift host and Finder Share extension, freezes the Python engine with PyInstaller, embeds Sparkle and licenses, signs nested code from the inside out and verifies the complete signature. Temporary staging avoids extended filesystem attributes invalidating signatures.
 
+The build also compiles and signs `anDropLivePhoto`, an AVFoundation/ImageIO/PhotoKit helper. The frozen engine must resolve and execute this bundled helper during the packaging check. `python3 scripts/test-live-photo-native.py` verifies synthetic conversion and the production send/receive hooks without accessing the Photos library.
+
 After a complete build, `build.py --ui-only` reuses its engine. Rebuild fully after changing engine code, Python or dependencies. The runtime compatibility check still runs for a UI-only build.
 
 Version, monotonically increasing build number, minimum OS and public update feed live in `release.json`. `ANDROP_VERSION` and `ANDROP_BUILD` may override version/build for local tests. Release packaging rejects a mismatch with the release configuration.

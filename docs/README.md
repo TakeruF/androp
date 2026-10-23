@@ -7,6 +7,8 @@
 ## 指南与调查
 
 - [使用与排查](usage.md)
+- [实况照片与动态照片](live-photos.md)
+- [URL 与文本共享限制](link-sharing.md)
 - [兼容性](compatibility.md)
 - [架构与协议边界](architecture.md)
 - [构建、签名与发行](building.md)

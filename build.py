@@ -25,7 +25,7 @@ for path in ['Contents/MacOS','Contents/Resources','Contents/PlugIns/anDropShare
 # Declare a menu-bar app so URL launches do not promote it to regular and
 # trigger an asynchronous deactivation when the runtime restores accessory.
 # Petal coexistence still opts into regular activation explicitly at runtime.
-info={'CFBundleExecutable':'anDrop','CFBundleIdentifier':BUNDLE_ID,'CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'APPL','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSBluetoothAlwaysUsageDescription':'Discover nearby devices for file sharing through the Mutual Transfer Alliance (互传联盟) ecosystem.','NSLocalNetworkUsageDescription':'Send and receive files with Android devices on the same Wi-Fi.','NSHighResolutionCapable':True,'LSUIElement':True,'CFBundleURLTypes':[{'CFBundleURLName':BUNDLE_ID+'.share','CFBundleURLSchemes':['androp']}],'CFBundleDocumentTypes':[{'CFBundleTypeName':'Files','CFBundleTypeRole':'Viewer','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data']}],'CFBundleIconFile':'AppIconPaperplane','CFBundleIconName':'AppIconPaperplane'}
+info={'CFBundleExecutable':'anDrop','CFBundleIdentifier':BUNDLE_ID,'CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'APPL','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSBluetoothAlwaysUsageDescription':'Discover nearby devices for file sharing through the Mutual Transfer Alliance (互传联盟) ecosystem.','NSLocalNetworkUsageDescription':'Send and receive files with Android devices on the same Wi-Fi.','NSHighResolutionCapable':True,'LSUIElement':True,'CFBundleURLTypes':[{'CFBundleURLName':BUNDLE_ID+'.share','CFBundleURLSchemes':['androp']}],'CFBundleDocumentTypes':[{'CFBundleTypeName':'Files','CFBundleTypeRole':'Viewer','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','com.apple.live-photo-bundle','com.apple.private.live-photo-bundle']}],'CFBundleIconFile':'AppIconPaperplane','CFBundleIconName':'AppIconPaperplane'}
 if not APP_STORE:
  info.update({'SUFeedURL':os.environ.get('ANDROP_FEED_URL',CONFIG['feed_url']),'SUPublicEDKey':(ROOT/'Resources/UpdatePublicKey.txt').read_text().strip(),'SUEnableAutomaticChecks':True,'SUAutomaticallyUpdate':True,'SUEnableSystemProfiling':False,'SUVerifyUpdateBeforeExtraction':True,'SURequireSignedFeed':True,'SUScheduledCheckInterval':86400})
 (APP/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
@@ -40,7 +40,8 @@ if not APP_STORE:
  shutil.copytree(SPARKLE/'Sparkle.framework',APP/'Contents/Frameworks/Sparkle.framework',symlinks=True)
  framework_flags=['-F',SPARKLE,'-framework','Sparkle','-Xlinker','-rpath','-Xlinker','@executable_path/../Frameworks']
 run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,*(['-D','APP_STORE'] if APP_STORE else []),'-module-name','anDrop','-module-cache-path',cache,*framework_flags,*host_sources,'-o',APP/'Contents/MacOS/anDrop')
-run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,'-module-cache-path',cache,'-parse-as-library','-emit-executable','-Xlinker','-e','-Xlinker','_NSExtensionMain',ROOT/'Sources/Localization.swift',ROOT/'Sources/ShareViewController.swift','-o',ext/'Contents/MacOS/anDropShare')
+run('swiftc','-swift-version','6','-target',TARGET,'-module-cache-path',cache,'-parse-as-library',ROOT/'Sources/LivePhotoConverter.swift','-o',APP/'Contents/MacOS/anDropLivePhoto')
+run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,'-module-cache-path',cache,'-parse-as-library','-emit-executable','-Xlinker','-e','-Xlinker','_NSExtensionMain',ROOT/'Sources/Localization.swift',ROOT/'Sources/SharedFileStaging.swift',ROOT/'Sources/ShareViewController.swift','-o',ext/'Contents/MacOS/anDropShare')
 if '--ui-only' not in sys.argv:
  huawei_data=[]
  for name in ['huawei-auth-probe.py','huawei-transfer-probe.py','huawei-receive-probe.py','huawei-receive-channels.py','huawei-file-batch.py']:
@@ -51,6 +52,10 @@ if '--ui-only' not in sys.argv:
  shutil.copytree(ROOT/'build/engine-dist/anDropEngine',APP/'Contents/Resources/Engine',symlinks=True)
 if '--ui-only' in sys.argv:
  shutil.copytree(FINAL/'Contents/Resources/Engine',APP/'Contents/Resources/Engine',symlinks=True)
+live_probe=subprocess.run([str(APP/'Contents/Resources/Engine/anDropEngine'),'--live-photo-check'],
+ stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15)
+if live_probe.returncode or live_probe.stdout!=b'Live Photo helper packaging check passed\n':
+ raise SystemExit('Live Photo helper packaging check failed; rebuild the complete engine.')
 shutil.copytree(ROOT/'Resources/BrandLogos',APP/'Contents/Resources/BrandLogos')
 for name in ['LICENSE','NOTICE.md']:
  shutil.copyfile(ROOT/name,APP/'Contents/Resources'/name)
@@ -85,6 +90,7 @@ def sign(path, entitlement=None, preserve=False):
  elif preserve:args+=['--preserve-metadata=entitlements']
  run(*args,path)
 sign(ext,entitlements)
+sign(APP/'Contents/MacOS/anDropLivePhoto')
 # Sign leaves before containing framework/app bundles, preserving Sparkle helpers' entitlements.
 mach_magic={b'\xcf\xfa\xed\xfe',b'\xca\xfe\xba\xbe',b'\xfe\xed\xfa\xcf',b'\xca\xfe\xba\xbf'}
 leaves=[]
@@ -105,4 +111,6 @@ sign(APP)
 run('codesign','--verify','--deep','--strict',APP)
 if FINAL.exists():shutil.rmtree(FINAL)
 shutil.copytree(APP,FINAL,symlinks=True)
+# Source-mode engine tests use the same helper as the verified app bundle.
+shutil.copy2(FINAL/'Contents/MacOS/anDropLivePhoto',ROOT/'build/anDropLivePhoto')
 print(FINAL)

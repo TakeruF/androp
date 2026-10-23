@@ -6,6 +6,9 @@
 | --- | --- |
 | `Sources/main.swift` | AppKit菜单栏、SwiftUI设置／候选、通知、登录启动、CoreBluetooth peripheral和GATT |
 | `Sources/ShareViewController.swift` | Finder共享扩展，将所选URL交给host |
+| `Sources/SharedFileStaging.swift` | 回调作用域内共享文件的私有副本；旧 URL 与编码媒体 provider 备用读取 |
+| `Sources/motion_photos.py`、`live_photo_archives.py` | 动态照片封装、有界 OShare ZIP 验证及仅文件 `.pvt` 接收 |
+| `Sources/LivePhotoConverter.swift` | 内置 AVFoundation／ImageIO 转换与 PhotoKit 文件配对验证，不访问图库 |
 | `Sources/BrandLogos.swift` | 缓存本地官方品牌图，不在运行时下载 |
 | `Sources/TransferProgress.swift` | 发送阶段、有界百分比和候选快照 |
 | `Sources/discovery.py` | macOS重复广播回调与候选过期 |

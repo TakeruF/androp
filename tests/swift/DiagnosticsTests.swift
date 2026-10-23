@@ -3,6 +3,39 @@
 import Foundation
 import Testing
 
+@MainActor @Test func receiveConnectionContextIsBoundedAndPrivate() throws {
+    let id = UUID().uuidString
+    let offer = try #require(DiagnosticsStore.sanitized([
+        "event": "diagnostic", "detail": "receive_network_offer", "transfer_id": id,
+        "mode": "direct", "host": "192.168.3.9", "ssid": "private network", "psk": "private password"
+    ]))
+    #expect(offer.networkMode == "direct")
+    #expect(offer.transfer == id.lowercased())
+    let attempt = try #require(DiagnosticsStore.sanitized([
+        "event": "diagnostic", "detail": "receive_connect_attempt", "attempt": 4
+    ]))
+    #expect(attempt.attempt == 4)
+    #expect(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": "receive_connect_attempt", "attempt": 5])?.attempt == nil)
+    // Older stored reports omit these fields and must remain readable.
+    let decoded = try JSONDecoder().decode(DiagnosticsStore.Event.self, from: Data("{\"time\":\"2026-10-21T11:12:27Z\",\"event\":\"diagnostic\",\"code\":\"receive_failed\"}".utf8))
+    #expect(decoded.connectionIssue == nil && decoded.networkMode == nil && decoded.attempt == nil)
+    for issue in ["local_address_family_mismatch", "multiple_socket_errors", "interface_unavailable", "errno_unavailable"] {
+        let failure = try #require(DiagnosticsStore.sanitized([
+            "event": "diagnostic", "detail": "receive_connect_interrupted", "phase": "connect",
+            "connection_issue": issue, "error_type": "ClientConnectorError"
+        ]))
+        #expect(failure.connectionIssue == issue)
+    }
+    let rejected = try #require(DiagnosticsStore.sanitized([
+        "event": "diagnostic", "detail": "receive_failed", "phase": "connect",
+        "connection_issue": "private host 192.168.3.9", "mode": "private network", "attempt": 1
+    ]))
+    #expect(rejected.connectionIssue == nil && rejected.networkMode == nil && rejected.attempt == nil)
+    #expect(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": "receive_failed", "phase": "download", "connection_issue": "errno_unavailable"])?.connectionIssue == nil)
+    let encoded = String(decoding: try JSONEncoder().encode([offer, attempt, rejected]), as: UTF8.self)
+    #expect(!encoded.contains("private")); #expect(!encoded.contains("192.168"))
+}
+
 @MainActor @Test func huaweiFailureSourceIsBoundedAndDropsPrivateText() throws {
     var raw: [String: Any] = ["event": "diagnostic", "detail": "huawei_receive_failed",
         "receive_module": "batch", "receive_line": 421]
@@ -18,6 +51,31 @@ import Testing
     #expect(DiagnosticsStore.sanitized(raw)?.receiveLine == nil)
 }
 @testable import anDropIdentity
+
+@MainActor @Test func controlAndNetworkOfferDiagnosticsExcludePayloadValues() throws {
+    let event = try #require(DiagnosticsStore.sanitized([
+        "event": "diagnostic", "detail": "send_offer_fields", "offer_kind": "lan_request",
+        "offer_fields": ["wlan", "ip", "private@example.invalid", "ssid"],
+        "ip": "192.168.3.9", "ssid": "private network", "psk": "private password"
+    ]))
+    #expect(event.offerFields == ["ip", "ssid", "wlan"])
+    #expect(event.offerKind == "lan_request")
+    let text = String(decoding: try JSONEncoder().encode(event), as: UTF8.self)
+    #expect(!text.contains("private")); #expect(!text.contains("192.168"))
+    #expect(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": "control_message", "message_type": "binary"])?.messageType == "binary")
+    #expect(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": "control_message", "message_type": "private payload"])?.messageType == nil)
+    #expect(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": "control_action", "protocol_action": "sendRequest"])?.protocolAction == "sendRequest")
+    #expect(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": "control_action", "protocol_action": "private action"])?.protocolAction == nil)
+    for error in ["TypeError", "SocketTimeoutError", "ConnectionTimeoutError", "ConnectionError", "UnicodeDecodeError"] {
+        #expect(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": "receive_failed", "error_type": error])?.errorType == error)
+    }
+    for code in ["live_photo_converted", "live_photo_conversion_failed", "live_photo_cleanup_failed"] {
+        let converted = try #require(DiagnosticsStore.sanitized(["event": "diagnostic", "detail": code,
+            "path": "/private/photo.jpg", "error": "private conversion error", "identifier": "private identifier"]))
+        #expect(converted.code == code)
+        #expect(!String(decoding: try JSONEncoder().encode(converted), as: UTF8.self).contains("private"))
+    }
+}
 
 @MainActor @Test func diagnosticEventsExcludePrivatePayloads() throws {
     let secret = "private-name@example.invalid /Users/private/file.pdf 192.168.3.9 secret-key"

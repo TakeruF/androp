@@ -6,9 +6,95 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 from aiohttp import ClientConnectorError, ClientConnectorSSLError, WSServerHandshakeError
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'Sources'))
-from engine import Engine, TransferError, connect_receive_channel, transfer_error_detail
+from engine import Engine, TransferError, connect_receive_channel, connection_error_fields, transfer_error_detail, control_message
+from aiohttp import WSMessage, WSMsgType
 
 class ReceiveConnectionTests(unittest.IsolatedAsyncioTestCase):
+    def test_missing_errno_classification_is_finite_and_never_includes_messages(self):
+        examples=[('no matching local address with family=<AddressFamily.AF_INET6: 30> found','local_address_family_mismatch'),
+                  ('Multiple exceptions: private endpoint, private path','multiple_socket_errors'),
+                  ('no interface with this name: private interface','interface_unavailable'),
+                  ('unknown private host 192.168.3.9:4567 /Users/private','errno_unavailable'),
+                  ('private prefix no matching local address with family=30','errno_unavailable')]
+        for message,expected in examples:
+            with self.subTest(expected=expected):
+                wrapped=ClientConnectorError(None,OSError(message))
+                self.assertEqual(connection_error_fields(wrapped),{'connection_issue':expected})
+
+    def test_errno_is_numeric_bounded_and_takes_priority_over_issue(self):
+        for number in [errno.ECONNRESET,errno.EACCES,-2]:
+            error=ClientConnectorError(None,OSError(number,'Multiple exceptions: private endpoint'))
+            self.assertEqual(connection_error_fields(error),{'errno':number})
+        for number in [True,65536,-65536,'private endpoint']:
+            error=RuntimeError('unknown private data');error.errno=number
+            self.assertEqual(connection_error_fields(error),{'connection_issue':'errno_unavailable'})
+
+    def test_nested_metadata_cycles_and_depth_are_bounded_without_stringification(self):
+        class PrivateError(OSError):
+            def __str__(self):raise AssertionError('Do not stringify private errors')
+        nested=PrivateError('no matching local address with family=30 found')
+        wrapped=ClientConnectorError(None,nested)
+        wrapped.__cause__=nested;nested.__context__=wrapped
+        self.assertEqual(connection_error_fields(wrapped),{'connection_issue':'local_address_family_mismatch'})
+        error=RuntimeError('private wrapper');error.__cause__=OSError(errno.EHOSTUNREACH,'private endpoint')
+        self.assertEqual(connection_error_fields(error),{'errno':errno.EHOSTUNREACH})
+        error=RuntimeError('private root');tail=error
+        for _ in range(100):
+            tail.__cause__=RuntimeError('private nested');tail=tail.__cause__
+        tail.__cause__=OSError(errno.EACCES,'private endpoint')
+        self.assertEqual(connection_error_fields(error),{'connection_issue':'errno_unavailable'})
+
+    async def test_missing_errno_connect_failure_is_classified_without_new_retry(self):
+        error=ClientConnectorError(None,OSError('no matching local address with family=30 found private host'))
+        operation=AsyncMock(side_effect=error);diagnostic=Mock()
+        with patch('engine.asyncio.sleep',new_callable=AsyncMock) as sleep:
+            with self.assertRaises(ClientConnectorError):await connect_receive_channel(operation,diagnostic)
+        self.assertEqual(operation.await_count,1);sleep.assert_not_awaited()
+        diagnostic.assert_any_call('receive_connect_interrupted',error_type='ClientConnectorError',connection_issue='local_address_family_mismatch')
+        self.assertNotIn('private',str(diagnostic.call_args_list))
+
+    async def test_receive_terminal_connection_diagnostic_uses_same_safe_fields(self):
+        engine=Engine();engine.notify=Mock();engine.reset=AsyncMock();engine.update=Mock()
+        session={'id':'synthetic-transfer','central':'synthetic-central','local_address':'192.0.2.1'}
+        error=ClientConnectorError(None,OSError('Multiple exceptions: private host:4567 /Users/private'))
+        with patch('engine.TCPConnector',side_effect=error),patch('engine.emit') as events:
+            await engine.receive(session,'192.0.2.2',4567,None)
+        events.assert_any_call('diagnostic',detail='receive_failed',transfer_id='synthetic-transfer',phase='connect',
+                               error_type='ClientConnectorError',connection_issue='multiple_socket_errors')
+        self.assertNotIn('private',str(events.call_args_list))
+        engine.update.assert_any_call(session,'failed',detail=unittest.mock.ANY)
+        engine.reset.assert_awaited_once_with(session)
+
+    async def test_network_offer_carries_transfer_id_and_existing_mode_only(self):
+        for is_lan,mode in [(True,'lan'),(False,'direct')]:
+            engine=Engine();engine.notify=Mock()
+            session={'id':'synthetic-transfer','central':'synthetic-central','keys':Mock()};engine.session=session
+            def launch(coroutine):
+                coroutine.close()
+                return Mock()
+            engine.launch=Mock(side_effect=launch)
+            with patch('engine.local_endpoint',return_value='192.0.2.1'),patch('engine.interface_for_address',return_value=None),\
+                 patch('engine.bind_interface'),patch('engine.socket.socket'),patch('engine.emit') as events:
+                await engine.replace_receive_route(session,'192.0.2.2',4567,is_lan)
+            events.assert_any_call('diagnostic',detail='receive_network_offer',transfer_id='synthetic-transfer',mode=mode)
+
+    def test_control_close_reports_connection_error_without_parsing_private_reason(self):
+        diagnostic=Mock()
+        with self.assertRaises(ConnectionError):control_message(WSMessage(WSMsgType.CLOSE,1000,'private reason'),diagnostic)
+        diagnostic.assert_called_once_with('control_message',message_type='close')
+
+    def test_binary_control_rejects_non_utf8_and_oversized_payloads(self):
+        for data in [b'\xff',b'x'*131073]:
+            with self.assertRaises((ValueError,UnicodeDecodeError)):
+                control_message(WSMessage(WSMsgType.BINARY,data,''),Mock())
+
+    def test_control_diagnostics_never_emit_unknown_action_or_payload_values(self):
+        diagnostic=Mock()
+        control_message(WSMessage(WSMsgType.TEXT,'action:1:private@example.invalid?{"ip":"192.168.3.9"}',''),diagnostic)
+        diagnostic.assert_any_call('control_action',protocol_action='other')
+        self.assertNotIn('private',str(diagnostic.call_args_list))
+        self.assertNotIn('192.168',str(diagnostic.call_args_list))
+
     async def test_reset_before_handshake_recovers_without_replaying_transfer(self):
         operation=AsyncMock(side_effect=[ClientConnectorError(None,ConnectionResetError(errno.ECONNRESET,'reset')),'channel'])
         diagnostic=Mock()

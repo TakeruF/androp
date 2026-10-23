@@ -8,6 +8,7 @@ import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, s
 from pathlib import Path, PurePosixPath
 from peer_metadata import parse_peer_metadata, peer_identifier
 from file_types import offer_mime_type
+from motion_photos import MotionPhotoError, prepare_send, materialize_received
 from network_routes import lan_addresses, private_ipv4, direct_local_address, interface_for_address, bind_interface, lan_socket, client_socket_factory
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, Fingerprint, WSMsgType, ClientConnectionError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
 from bleak import BleakClient, BleakScanner
@@ -35,6 +36,34 @@ def parse_wire(raw):
     obj=json.loads(body) if sep and body else {}
     if not isinstance(obj,dict): raise ValueError('Invalid message payload')
     return kind,int(index),name,obj
+
+def control_message(message,diagnostic):
+    # Some sharing implementations send the same UTF-8 control protocol as
+    # WebSocket binary frames. Apply the identical size and protocol validation;
+    # never decode arbitrary file data or include payload values in diagnostics.
+    message_type=message.type.name.lower()
+    diagnostic('control_message',message_type=message_type)
+    if message.type==WSMsgType.TEXT:raw=message.data
+    elif message.type==WSMsgType.BINARY:
+        if len(message.data)>131072:raise ValueError('Invalid protocol message')
+        raw=message.data.decode('utf-8')
+    elif message.type in (WSMsgType.CLOSE,WSMsgType.CLOSED,WSMsgType.CLOSING):
+        raise ConnectionResetError('Peer closed the control channel')
+    elif message.type==WSMsgType.ERROR:
+        error=message.data
+        if isinstance(error,Exception):raise error
+        raise ConnectionError('Control channel failed')
+    else:raise ValueError('Unsupported control frame')
+    result=parse_wire(raw)
+    action=result[2] if result[2] in ('wlanBandwidth','versionNegotiation','sendRequest','status') else 'other'
+    diagnostic('control_action',protocol_action=action)
+    return result
+
+def send_offer_diagnostic(payload,transfer_id):
+    fields={'wlan','wlan_accept','ip','port','ssid','psk','reuse','key','state','number','type','taskId','id','status','reason'}
+    kind=('lan_accepted' if payload.get('wlan_accept') is True else 'lan_rejected') if 'wlan_accept' in payload else ('lan_request' if 'wlan' in payload else 'direct_request' if 'ssid' in payload else 'reuse_request' if 'reuse' in payload else 'other')
+    emit('diagnostic',detail='send_offer_fields',transfer_id=transfer_id,
+         offer_fields=sorted(fields.intersection(payload)),offer_kind=kind)
 
 class Keys:
     def __init__(self): self.private=ec.generate_private_key(ec.SECP256R1()); self.key=None
@@ -98,8 +127,40 @@ class TransferError(ValueError):
     """A deliberate, localized message that is safe to show in a notification."""
 
 
+def connection_error_fields(error):
+    """Finite diagnostic metadata only; never stringify errors or endpoints.
+
+    aiohttp wraps the original OSError in os_error, sometimes without errno.
+    Inspect only bounded exception metadata and exact SDK message prefixes.
+    This classification must not affect connection retries or permission checks.
+    """
+    pending=[error];seen=set();issue=None
+    prefixes=(('no matching local address with family=','local_address_family_mismatch'),
+              ('Multiple exceptions:','multiple_socket_errors'),
+              ('no interface with this name','interface_unavailable'))
+    for _ in range(8):
+        if not pending:break
+        current=pending.pop(0)
+        if not isinstance(current,BaseException) or id(current) in seen:continue
+        seen.add(id(current))
+        number=getattr(current,'errno',None)
+        if type(number) is int and -65535<=number<=65535:return {'errno':number}
+        if issue is None and isinstance(current,(OSError,RuntimeError)):
+            for value in current.args[:2]:
+                if type(value) is str:
+                    issue=next((code for prefix,code in prefixes if value.startswith(prefix)),None)
+                    if issue:break
+        if isinstance(current,ClientConnectionError):
+            nested=getattr(current,'os_error',None)
+            if isinstance(nested,BaseException):pending.append(nested)
+        pending.extend(item for item in (current.__cause__,current.__context__) if isinstance(item,BaseException))
+    return {'connection_issue':issue or 'errno_unavailable'}
+
+
 def transfer_error_detail(error,receiving=True):
     if isinstance(error,TransferError):return str(error)
+    if isinstance(error,MotionPhotoError):
+        return t('Could not prepare this Live Photo. Export its original image and paired video, then choose them together.', '无法准备此实况照片。请导出原始照片与配对视频，然后一起选择。')
     if isinstance(error,(ssl.SSLError,ClientSSLError,ServerFingerprintMismatch)):
         return t('Could not establish a secure connection with the other device. Keep its sharing screen open and try again.','无法与对方设备建立安全连接。请保持对方互传页面打开后重试。')
     if isinstance(error,PermissionError):
@@ -130,7 +191,7 @@ async def connect_receive_channel(operation,diagnostic):
             try:return await operation()
             except (ClientSSLError,ssl.SSLError,ServerFingerprintMismatch,WSServerHandshakeError):raise
             except OSError as error:
-                diagnostic('receive_connect_interrupted',error_type=type(error).__name__,errno=error.errno)
+                diagnostic('receive_connect_interrupted',error_type=type(error).__name__,**connection_error_fields(error))
                 if error.errno not in transient or attempt==len(delays):raise
                 await asyncio.sleep(delays[attempt])
 
@@ -240,6 +301,11 @@ class Engine:
     def update(self,session,state,**kwargs):
         session['state']=state
         emit('transfer',id=session['id'],direction=session['direction'],peer=session.get('peer','Android'),state=state,device_identifier=session.get('device_identifier') or session.get('central'),transport_identifier=session.get('central'),device_kind=session.get('kind'),device_brand=session.get('brand'),**kwargs)
+    def complete_received_files(self,session,files,count,total):
+        fields={}
+        if count==1 and any(file.get('kind')=='live_photo' for file in files):
+            fields['name']=t('Live Photo','实况照片')
+        self.update(session,'complete',files=files,count=count,total=total,completed=total,**fields)
     def progress(self,s,n,total):
         now=time.monotonic()
         if now-s.get('last_progress',0)>.2 or n>=total:
@@ -348,7 +414,7 @@ class Engine:
                 emit('diagnostic',detail='receive_endpoint_replaced')
             if self.session is not s or s.get('cancel_requested'):return
             s['route']=route;s['route_changes']=s.get('route_changes',0)+1;s['local_address']=local
-            emit('diagnostic',detail='receive_network_offer',mode='lan' if is_lan else 'direct')
+            emit('diagnostic',detail='receive_network_offer',transfer_id=s['id'],mode='lan' if is_lan else 'direct')
             udp=None
             try:
                 udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -398,7 +464,7 @@ class Engine:
                     await ws.send_str(wire('ack',0,'wlanBandwidth',{'speed':f'{speed:.2f}'}))
                     async with asyncio.timeout(45):
                         while True:
-                            raw=await ws.receive_str();kind,index,name,p=parse_wire(raw)
+                            kind,index,name,p=control_message(await ws.receive(),diagnostic)
                             if kind!='action':continue
                             if name=='wlanBandwidth':await ws.send_str(wire('ack',index,name,{'speed':f'{speed:.2f}'}))
                             elif name=='versionNegotiation':await ws.send_str(wire('ack',index,name,{'version':1,'threadLimit':1}))
@@ -426,7 +492,8 @@ class Engine:
                     await ws.send_str(wire('action',100,'status',{'taskId':taskid,'id':taskid,'type':1,'reason':'ok'}))
                     try:await asyncio.wait_for(ws.receive(),2)
                     except TimeoutError:pass
-                    self.update(s,'complete',files=saved,count=count,total=size,completed=size)
+                    saved=await materialize_received(saved,diagnostic)
+                    self.complete_received_files(s,saved,count,size)
         except asyncio.CancelledError:
             if asyncio.current_task() in s.get('superseded_tasks',()):return
             if ws and not ws.closed:
@@ -434,7 +501,7 @@ class Engine:
                 except Exception:pass
             self.notify('cancel',s['central']);self.update(s,'cancelled')
         except Exception as e:
-            diagnostic('receive_failed',error_type=type(e).__name__,errno=getattr(e,'errno',None))
+            diagnostic('receive_failed',error_type=type(e).__name__,**connection_error_fields(e))
             self.notify('cancel',s['central']);self.update(s,'failed',detail=transfer_error_detail(e))
         finally:
             bw.cancel()
@@ -508,10 +575,12 @@ class Engine:
         s['device_identifier']=device.address
         if not self.start_outgoing(s,peer_id):
             self.update(s,'failed',detail=t('This device or the receiver is busy. Please try again shortly.','此设备或接收服务正忙，请稍后重试。'));return
-        runner=None;client=None;ws=None
+        runner=None;client=None;ws=None;photo_workspace=None
         try:
             self.update(s,'preparing',name=Path(paths[0]).name if paths else '',count=len(paths))
             if not 1<=len(paths)<=10000:raise TransferError(t('Choose files to send.','请选择要发送的文件。'))
+            photo_workspace=tempfile.TemporaryDirectory(prefix='anDrop-LivePhoto-send-')
+            paths=await prepare_send(paths,photo_workspace.name)
             files=[];names=set();total=0
             for raw in paths:
                 p=Path(raw).resolve(strict=True)
@@ -557,8 +626,7 @@ class Engine:
                     await ws.send_str(wire('action',0,'wlanBandwidth',{}))
                     try:
                         async for m in ws:
-                            if m.type!=WSMsgType.TEXT:continue
-                            kind,index,action,p=parse_wire(m.data)
+                            kind,index,action,p=control_message(m,lambda code,**fields:emit('diagnostic',detail=code,transfer_id=s['id'],phase='negotiate',**fields))
                             emit('diagnostic',detail=f'{kind}:{index}:{action}')
                             if kind=='ack' and action=='wlanBandwidth':await ws.send_str(wire('action',1,'versionNegotiation',{'versions':[1],'version':1}))
                             elif kind=='ack' and action=='versionNegotiation':
@@ -613,7 +681,8 @@ class Engine:
                             return
                         if raw.startswith(b'{'):
                             p=json.loads(raw)
-                            emit('diagnostic',detail='send_offer_fields',fields=list(p))
+                            if not isinstance(p,dict):raise ValueError('Invalid network offer')
+                            send_offer_diagnostic(p,s['id'])
                             if 'wlan' in p and 'wlan_accept' not in p:break
                 # Prefer a directly attached subnet; never advertise a VPN default
                 # route or a dormant hotspot address as this Mac's LAN endpoint.
@@ -636,6 +705,8 @@ class Engine:
                             if raw in (b'3',b'cancel'):raise TransferError(t('The recipient cancelled the transfer.','对方已取消传输。'))
                             if not raw.startswith(b'{'):continue
                             p=json.loads(raw)
+                            if not isinstance(p,dict):raise ValueError('Invalid network offer')
+                            send_offer_diagnostic(p,s['id'])
                             if 'wlan_accept' not in p:continue
                             if p['wlan_accept'] is not True:
                                 if candidate_index+1==len(candidates):raise TransferError(t('The other device could not reach this Mac over the local network. Another interconnect session or network isolation may be blocking it.','对方无法通过局域网连接此 Mac。其他设备互联连接或网络隔离可能阻止了通信。'))
@@ -670,6 +741,7 @@ class Engine:
                 if ws is not None and not ws.closed:await ws.close()
                 if runner:await runner.cleanup()
             finally:
+                if photo_workspace is not None:photo_workspace.cleanup()
                 await self.reset(s)
     def local_ipv4(self):
         addresses=lan_addresses()
@@ -700,7 +772,11 @@ class Engine:
             elif command=='decision':
                 future=self.decisions.get(obj.get('id'))
                 if future and not future.done():future.set_result(bool(obj.get('accept')))
-            elif command=='send':await self.send(obj['peer'],obj['paths'],obj.get('peer_label'),obj.get('request_id'))
+            elif command=='send':
+                if 'link' in obj or 'text' in obj:
+                    emit('error',detail=t('URL and text sharing are not supported. Choose files to send.','不支持 URL 或文本共享，请选择文件发送。'))
+                    return
+                await self.send(obj['peer'],obj.get('paths',[]),obj.get('peer_label'),obj.get('request_id'))
             elif command=='cancel' and obj.get('id') in self.outgoing:
                 s=self.outgoing[obj['id']];s['cancel_requested']=True
                 task=s.get('task')
@@ -757,4 +833,11 @@ if __name__=='__main__':
     elif sys.argv[1:2]==['--huawei-check']:
         from huawei_runtime import runtime_check
         runtime_check()
+    elif sys.argv[1:2]==['--live-photo-check']:
+        import subprocess
+        from motion_photos import helper_path
+        probe=subprocess.run([str(helper_path())],capture_output=True,timeout=10)
+        if probe.returncode==0 or probe.stderr!=b'invalid_arguments\n':
+            raise RuntimeError('Live Photo helper packaging check failed')
+        print('Live Photo helper packaging check passed')
     else:asyncio.run(Engine().run())

@@ -6,13 +6,40 @@ import UniformTypeIdentifiers
 
 @objc(ShareViewController)
 @MainActor final class ShareViewController: NSViewController {
-    private let titleLabel = NSTextField(labelWithString: L("Opening files in anDrop…", "正在将文件传递给 anDrop…"))
+    private let titleLabel = NSTextField(labelWithString: L("Opening in anDrop…", "正在传递给 anDrop…"))
     private var started = false
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 160))
-        titleLabel.frame = NSRect(x: 24, y: 92, width: 332, height: 42); titleLabel.maximumNumberOfLines = 2; titleLabel.font = .systemFont(ofSize: 15)
+        preferredContentSize = NSSize(width: 480, height: 210)
+        view = NSView(frame: NSRect(origin: .zero, size: preferredContentSize))
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.maximumNumberOfLines = 0
+        titleLabel.preferredMaxLayoutWidth = preferredContentSize.width - 48
+        titleLabel.usesSingleLineMode = false
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.cell?.wraps = true
+        titleLabel.cell?.isScrollable = false
+        titleLabel.font = .systemFont(ofSize: 15)
         view.addSubview(titleLabel)
-        let close = NSButton(title: L("Close", "关闭"), target: self, action: #selector(finish)); close.frame = NSRect(x: 260, y: 28, width: 96, height: 32); view.addSubview(close)
+        let close = NSButton(title: L("Close", "关闭"), target: self, action: #selector(finish))
+        close.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(close)
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            titleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
+            titleLabel.bottomAnchor.constraint(lessThanOrEqualTo: close.topAnchor, constant: -20),
+            close.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            close.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
+            close.widthAnchor.constraint(greaterThanOrEqualToConstant: 96)
+        ])
+    }
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let width = max(1, view.bounds.width - 48)
+        if titleLabel.preferredMaxLayoutWidth != width {
+            titleLabel.preferredMaxLayoutWidth = width
+            titleLabel.invalidateIntrinsicContentSize()
+        }
     }
     override func viewDidAppear() {
         super.viewDidAppear()
@@ -21,20 +48,43 @@ import UniformTypeIdentifiers
     }
     private func share() async {
         var urls: [URL] = []
-        for item in extensionContext?.inputItems as? [NSExtensionItem] ?? [] {
-            for provider in item.attachments ?? [] {
-                guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { continue }
-                let url: URL? = await withCheckedContinuation { continuation in
-                    provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { value, _ in
-                        if let url = value as? URL { continuation.resume(returning: url) }
-                        else if let data = value as? Data { continuation.resume(returning: URL(dataRepresentation: data, relativeTo: nil)) }
-                        else { continuation.resume(returning: nil) }
-                    }
-                }
-                if let url, url.isFileURL { urls.append(url) }
+        var handedOff = false
+        defer {
+            if !handedOff {
+                for url in urls { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
             }
         }
-        guard !urls.isEmpty else { titleLabel.stringValue = L("Could not open these files. Use Send Files in anDrop.", "无法获取这些文件。请使用 anDrop 的发送文件功能。"); return }
+        for item in extensionContext?.inputItems as? [NSExtensionItem] ?? [] {
+            for provider in item.attachments ?? [] {
+                let livePhotoTypes = ["com.apple.live-photo-bundle", "com.apple.private.live-photo-bundle"]
+                if let type = livePhotoTypes.first(where: { provider.hasItemConformingToTypeIdentifier($0) }) {
+                    // The provider's URL may disappear when its callback returns.
+                    // Copy both resources while access is valid, before dismissing
+                    // Photos' share sheet. The unsandboxed host can read this cache.
+                    let bundle: URL? = await withCheckedContinuation { continuation in
+                        provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
+                            guard let url else { continuation.resume(returning: nil); return }
+                            continuation.resume(returning: try? SharedFileStaging.copyLivePhoto(url))
+                        }
+                    }
+                    guard let bundle else {
+                        titleLabel.stringValue = L("Could not read the full Live Photo. Export the unmodified image and video from Photos, then choose both in anDrop.", "无法读取完整实况照片。请从照片导出未修改的照片和视频，然后在 anDrop 中一起选择。")
+                        return
+                    }
+                    urls.append(bundle)
+                    continue
+                }
+                let url: URL
+                do {
+                    url = try await SharedFileStaging.loadFile(from: provider)
+                } catch {
+                    titleLabel.stringValue = L("Could not read the shared file. Share it again or export it and use Send Files in anDrop. URL and text sharing are not supported.", "无法读取共享文件。请重新共享，或导出后使用 anDrop 的发送文件功能。不支持 URL 或文本共享。")
+                    return
+                }
+                urls.append(url)
+            }
+        }
+        guard !urls.isEmpty else { titleLabel.stringValue = L("Choose files to share. URL and text sharing are not supported.", "请选择文件共享，不支持 URL 或文本共享。"); return }
         var components = URLComponents(); components.scheme = "androp"; components.host = "share"
         components.queryItems = urls.map { URLQueryItem(name: "file", value: $0.path) }
         guard let url = components.url, NSWorkspace.shared.urlForApplication(toOpen: url) != nil,
@@ -42,8 +92,13 @@ import UniformTypeIdentifiers
         // Dismissing the host's share sheet restores its focus. Finish that
         // handoff before opening our recipient window, otherwise Finder can
         // immediately cover the window we just activated.
+        let copies = urls
+        handedOff = true
         context.completeRequest(returningItems: nil) { expired in
-            guard !expired else { return }
+            guard !expired else {
+                for copy in copies { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+                return
+            }
             Task { @MainActor in
                 NSWorkspace.shared.open(url)
             }

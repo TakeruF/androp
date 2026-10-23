@@ -6,6 +6,9 @@
 | --- | --- |
 | `Sources/main.swift` | AppKit menu bar, SwiftUI settings/recipient panel, notifications, login item, CoreBluetooth peripheral and GATT |
 | `Sources/ShareViewController.swift` | Finder Share extension; hands selected file URLs to the native host |
+| `Sources/SharedFileStaging.swift` | Private copies of callback-scoped share files; legacy URL and encoded-media provider fallbacks |
+| `Sources/motion_photos.py`, `live_photo_archives.py` | Moving-photo framing, bounded OShare ZIP validation and file-only `.pvt` receipt |
+| `Sources/LivePhotoConverter.swift` | Bundled AVFoundation/ImageIO conversion and PhotoKit file-pair validation without library access |
 | `Sources/BrandLogos.swift` | Cached, bundled official manufacturer images; no runtime image downloads |
 | `Sources/TransferProgress.swift` | Sending phases, bounded percentage and recipient snapshot for the progress view |
 | `Sources/discovery.py` | macOS repeat-advertisement delivery for live recipient expiry |

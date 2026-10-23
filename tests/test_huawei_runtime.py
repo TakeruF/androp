@@ -25,7 +25,7 @@ HOST = '192.168.30.3'
 def packet(**changes):
     wire = advertisement(HOST, 33651, 'test-ephemeral-id', 'Huawei test', True)
     marker = wire.index(b'\xff', 6)
-    value = json.loads(wire[marker + 1:]); value['type'] = 14; value.update(changes)
+    value = json.loads(wire[marker + 1:]); value.update(type=14, extendServiceData='osType:0,nbVer:9,rssi:-58,abl:8'); value.update(changes)
     return wire[:marker + 1] + json.dumps(value).encode()
 
 
@@ -108,6 +108,37 @@ class DiscoveryValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             decode_advertisement(packet(type=12, capabilityBitmap=[192]), HOST, LOCAL)
 
+    def test_existing_mac_advertisement_is_apple_without_changing_transport_identity(self):
+        for discovering in (False, True):
+            # Exercise the real outbound packet, including older anDrop builds
+            # that already published this shape. Names are not model evidence.
+            raw = advertisement(HOST, 33651, 'test-ephemeral-id', 'Office', discovering)
+            peer = decode_advertisement(raw, HOST, LOCAL)[0]
+            self.assertEqual((peer['brand'], peer['kind'], peer['name']), ('Apple', 'computer', 'Office'))
+            huawei = decode_advertisement(packet(type=12), HOST, LOCAL)[0]
+            self.assertEqual(peer['id'], huawei['id'])
+            self.assertEqual(peer['port'], huawei['port'])
+
+    def test_mac_hint_requires_pc_and_one_exact_os_type(self):
+        for extension in (None, {}, 2, '', 'osType:0', 'osType:1', 'osType:20',
+                          'otherosType:2', 'osType:2,osType:0', 'osType:2,osType:2', 'osType:2,' + 'x' * 256):
+            with self.subTest(extension=extension):
+                peer = decode_advertisement(packet(type=12, devicename='MacBook Air', extendServiceData=extension), HOST, LOCAL)[0]
+                self.assertEqual(peer['brand'], 'Huawei')
+        for kind in (14, 17, 156):
+            self.assertEqual(decode_advertisement(packet(type=kind, extendServiceData='osType:2'), HOST, LOCAL)[0]['brand'], 'Huawei')
+        peer = decode_advertisement(packet(type=12, extendServiceData='nbVer:9,osType:2,abl:8'), HOST, LOCAL)[0]
+        self.assertEqual(peer['brand'], 'Apple')
+
+    def test_mac_hint_is_display_metadata_and_does_not_grant_trust(self):
+        engine = Engine(); runtime = engine.huawei; engine.discovering = True
+        runtime.local = LOCAL; runtime.enabled = True; runtime.port = 12345; runtime.identity = 'local-test'
+        raw = advertisement(HOST, 33651, 'test-ephemeral-id', 'Office')
+        with patch.object(runtime, 'emit'), patch('engine.emit'):
+            runtime.datagram({'local': LOCAL.address, 'host': HOST, 'port': 5684, 'data': base64.b64encode(raw).decode()})
+        self.assertEqual(runtime.visible_peers()[0]['brand'], 'Apple')
+        self.assertEqual(engine.trusted_ids, set())
+
     def test_rejections_report_fixed_codes_and_ignore_bare_acks(self):
         engine = Engine(); runtime = engine.huawei
         runtime.local = LOCAL; runtime.enabled = True; runtime.port = 12345; runtime.identity = 'local-test'
@@ -144,6 +175,41 @@ class DiscoveryValidation(unittest.TestCase):
 
 
 class ApprovalIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_mac_send_retains_apple_metadata_through_completion(self):
+        engine = Engine(); engine.discovering = True
+        peer = decode_advertisement(advertisement(HOST, 33651, 'mac-test', 'Office'), HOST, LOCAL)[0]
+        engine.huawei.peers[peer['id']] = peer
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'fixture.txt'; source.write_bytes(b'fixture')
+            def launch(command, **kwargs):
+                Path(command[command.index('--output') + 1]).write_text(json.dumps({'dfile_transfer_done_received': True}))
+                return SimpleNamespace(pid=99999999, stdin=None, stdout=None, poll=lambda: 0, wait=lambda timeout: 0)
+            with patch('huawei_runtime.subprocess.Popen', side_effect=launch), patch('engine.emit') as events:
+                await engine.send(peer['id'], [str(source)], peer['name'], None)
+        completed = [c.kwargs for c in events.call_args_list if c.kwargs.get('state') == 'complete']
+        self.assertEqual(len(completed), 1)
+        self.assertEqual((completed[0]['device_brand'], completed[0]['device_kind']), ('Apple', 'computer'))
+
+    async def test_mac_receive_uses_apple_metadata_for_approval(self):
+        engine = Engine(); runtime = engine.huawei; runtime.local = LOCAL
+        runtime.loop = asyncio.get_running_loop()
+        peer = decode_advertisement(advertisement(HOST, 33651, 'mac-test', 'Office'), HOST, LOCAL)[0]
+        runtime.peers[peer['id']] = peer
+        prompts = []
+        async def approval(session, result):
+            prompts.append((session['brand'], session['kind']))
+            return False
+        def offer(process, raw, result, save, **kwargs):
+            self.assertFalse(kwargs['approve']())
+            result['inspection_offer_rejected'] = True
+        runtime.receiver = SimpleNamespace(transfer=SimpleNamespace(auth=SimpleNamespace(read_frame=lambda *a: b'')), inspect_offer=offer)
+        with tempfile.TemporaryDirectory() as folder:
+            engine.destination = folder
+            lsof = SimpleNamespace(stdout=f'p1\nn{LOCAL.address}:5555->{HOST}:40000\n')
+            with patch('huawei_runtime.subprocess.run', return_value=lsof), patch('engine.emit'), patch.object(runtime, 'approval', side_effect=approval):
+                await runtime.receive(SimpleNamespace(pid=1), huawei_runtime.Processes())
+        self.assertEqual(prompts, [('Apple', 'computer')])
+
     async def test_configuration_retains_only_valid_persistent_huawei_keys(self):
         engine = Engine()
         identity = 'huawei-key:' + 'a' * 64

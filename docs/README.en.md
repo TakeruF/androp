@@ -7,6 +7,8 @@ All project-authored documentation is maintained in Simplified Chinese (`.md`) a
 ## Guides and research
 
 - [Usage and troubleshooting](usage.en.md)
+- [Live Photos and moving pictures](live-photos.en.md)
+- [URL and text sharing limits](link-sharing.en.md)
 - [Compatibility](compatibility.en.md)
 - [Architecture and protocol boundaries](architecture.en.md)
 - [Building, signing and releases](building.en.md)

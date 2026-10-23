@@ -23,6 +23,7 @@ import threading
 import time
 import uuid
 from network_routes import interfaces, private_ipv4
+from motion_photos import prepare_send, materialize_received
 
 # This Mac's own Huawei Share name (RSA-2048, owner-only). Phones remember it
 # after a transfer, which "Visible to devices shared with" requires. It is not
@@ -180,7 +181,15 @@ def decode_advertisement(data, host, local):
         raise ValueError('invalid discovery identity metadata')
     # Ephemeral routing ID only: never feed this into anDrop's trusted-device IDs.
     identifier = 'huawei:' + hashlib.sha256((host + '\0' + identity).encode()).hexdigest()
-    return {'id': identifier, 'host': host, 'port': int(ports[0]), 'name': name, 'brand': 'Huawei',
+    # PC + osType:2 is the Apple compatibility advertisement already emitted
+    # by anDrop and Petal. Transport is not manufacturer identity. Use this
+    # optional, self-reported hint only for display, never for peer trust.
+    extension = value.get('extendServiceData')
+    os_types = []
+    if isinstance(extension, str) and len(extension) <= 256:
+        os_types = [item.partition(':')[2] for item in extension.split(',') if item.partition(':')[0] == 'osType']
+    brand = 'Apple' if kind == 'computer' and os_types == ['2'] else 'Huawei'
+    return {'id': identifier, 'host': host, 'port': int(ports[0]), 'name': name, 'brand': brand,
             'kind': kind, 'last': time.monotonic()}, confirmable, data[2:4]
 
 
@@ -492,7 +501,7 @@ class HuaweiRuntime:
             self.emit('diagnostic', detail='huawei_incoming_rejected', phase='busy' if self.engine.busy else 'undiscovered_peer')
             children.close(); return
         peer = max(candidates, key=lambda p: p['last'])
-        session = {'id': uuid.uuid4().hex, 'direction': 'receive', 'peer': peer['name'], 'brand': 'Huawei',
+        session = {'id': uuid.uuid4().hex, 'direction': 'receive', 'peer': peer['name'], 'brand': peer['brand'],
                    'kind': peer['kind'], 'central': '', 'protocol': 'huawei'}
         session['task'] = asyncio.current_task()
         self.active = children
@@ -539,8 +548,9 @@ class HuaweiRuntime:
                 await asyncio.to_thread(shutil.rmtree, folder, True)
             if self.engine.session is session:
                 if result.get('dfile_done_ack_verified'):
-                    self.engine.update(session, 'complete', files=result['saved_files'], count=result['accepted_file_count'],
-                                       total=result['accepted_total_bytes'], completed=result['accepted_total_bytes'])
+                    files = await materialize_received(result['saved_files'],
+                        lambda code: self.emit('diagnostic', detail=code, transfer_id=session['id']))
+                    self.engine.complete_received_files(session, files, result['accepted_file_count'], result['accepted_total_bytes'])
                 elif result.get('inspection_offer_rejected'):
                     self.engine.update(session, 'declined')
                 else:
@@ -564,6 +574,8 @@ class HuaweiRuntime:
         session = {'id': uuid.UUID(request_id).hex if request_id else uuid.uuid4().hex, 'direction': 'send',
                    'peer': label or 'Huawei', 'brand': 'Huawei', 'protocol': 'huawei'}
         self.visible_peers(); peer = self.peers.get(peer_id)
+        if peer:
+            session.update(brand=peer['brand'], kind=peer['kind'])
         if not self.engine.huawei_enabled or not self.engine.discovering or not peer:
             self.engine.update(session, 'failed', detail=t('This device is no longer available. Open Huawei Share and choose it again.',
                                                          '此设备已不可用。请打开华为分享后重新选择。')); return
@@ -575,6 +587,7 @@ class HuaweiRuntime:
         try:
             self.engine.update(session, 'preparing', count=len(paths))
             with tempfile.TemporaryDirectory(prefix='anDrop-Huawei-send-') as folder:
+                paths = await prepare_send(paths, Path(folder) / 'live-photos', target='huawei')
                 output = Path(folder) / 'state.json'
                 snapshots = Path(folder) / 'files'
                 snapshots.mkdir(mode=0o700)

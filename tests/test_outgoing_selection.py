@@ -46,8 +46,12 @@ class OutgoingSelectionTests(unittest.TestCase):
             presentation = 'NSApp.activate(ignoringOtherApps: true)\n            alert.window.makeKeyAndOrderFront(nil)'
             self.assertEqual(source.count(presentation), 1)
             source = source.replace(presentation, 'petalTestAlerts.append(alert)')
+            notification = 'UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: transfer.id, content: content, trigger: nil))'
+            self.assertEqual(source.count(notification), 1)
+            source = source.replace(notification, 'selectionTestNotifications.append((transfer.id, category))')
             source = ('let selectionTestDefaults = UserDefaults(suiteName: CommandLine.arguments[2])!\n'
                       'var petalTestRunning = false\nvar petalTestAlerts: [NSAlert] = []\n'
+                      'var selectionTestNotifications: [(String, String)] = []\n'
                       + source)
             source += '\n' + (ROOT / 'tests/ui/OutgoingSelectionTests.swift').read_text()
             source += '\n' + (ROOT / 'tests/ui/TrustedHuaweiTests.swift').read_text()
@@ -59,7 +63,8 @@ class OutgoingSelectionTests(unittest.TestCase):
                 'UserDefaults.standard', 'selectionTestDefaults'))
             sources = ['AppUpdates.swift', 'Localization.swift', 'Peer.swift',
                        'ReceiveAccessPolicy.swift', 'TransferProgress.swift',
-                       'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift']
+                       'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift',
+                       'LivePhotoImporter.swift']
             compiled = subprocess.run([
                 'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
                 '-module-cache-path', str(stage / 'module-cache'),
