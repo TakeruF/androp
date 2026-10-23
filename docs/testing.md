@@ -339,3 +339,9 @@ OShare 的 `<UUID>@olive.zip` 之前按普通压缩包保存。现在接收端�
 版本 1.2.2／构建 12200 通过发布范围内的 282 项 Python 测试与 45 项 Swift 测试；另行未公开的原生 OShare 研究用例不计入该数量。打包后的原生合成往返验证通过 PhotoKit 文件配对载入、照片／视频标识及时间、JPEG 压缩像素保留、HEIC 转换、音视频直通、旋转、Android／华为封装、`.pvt` 重发、隔离属性及 OShare ZIP 删除。这些测试不写入个人照片图库，也不证明真实手机相册识别。
 
 完整冻结引擎构建通过 81 个 Mach-O 文件的运行时目标／库路径检查及 helper 打包验证，保留发行版 bundle 标识、Developer ID 要求及 Sparkle 信任配置。公开资产与发布在公证完成后单独核验。照片 provider 备用读取已有合成测试；仍待重新实测“照片”到手机传输。
+
+## 1.2.2 公开发布与安装（2026-10-23）
+
+发布提交 `d2f6d8e` 已以 [v1.2.2](https://github.com/TakeruF/androp/releases/tag/v1.2.2) 公开。应用通过 Apple 公证、staple 验证与 Gatekeeper 检查。签名 DMG 仅含 anDrop 与 Applications 快捷方式；已验证 DMG／内嵌 appcast 的 Sparkle 签名、版本／构建 1.2.2／12200、最低 macOS 14、arm64 要求及 SHA-256 清单。
+
+GitHub Latest 返回 v1.2.2；无认证重新下载的 DMG、appcast、校验清单与已检查的本地公开资产逐字节一致，latest-download appcast 端点提供同一签名 feed。本机应用空闲时以已公证 1.2.2／构建 12200 完整包替换；签名、staple 票据、Gatekeeper、四个可执行文件 hash、引擎启动及设置／信任记录保留均通过。这是完整应用包替换，不是新增 Sparkle 安装流程或实体手机传输实测。仅上传 DMG、签名 appcast 与校验清单，私有发布记录不公开。
