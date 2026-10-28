@@ -36,3 +36,6 @@ __pycache__/
 # Swift test build products
 /.build/
 /.swiftpm/
+
+# Editor settings
+/.vscode/
