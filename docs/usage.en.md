@@ -12,6 +12,8 @@ To receive, select files in the device's built-in compatible 互传 feature, cho
 
 Folders should be compressed first. Send files with identical base names in separate transfers. Outgoing transfers to different devices can run concurrently. Receiving remains exclusive. Notification banners follow macOS notification and Focus settings; progress and approval remain available in the menu bar.
 
+Sent, received and failed transfer notifications are removed from Notification Center three minutes after delivery while anDrop is running. Overdue notifications are also cleared at launch and after waking from sleep. Transfer history remains in the app; approval requests and active-transfer notifications keep their actions.
+
 ## Recognizing recipients
 
 The recipient grid uses an official brand logo in a circle with a phone/tablet badge and the sharing name below it. A sharing name can be the account holder's name and can be identical on several devices. The badge uses explicitly recognized advertisement metadata; unknown manufacturers or types remain generic. A tooltip and accessibility label also include the device category. This is not exact model identification.

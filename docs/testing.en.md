@@ -2,6 +2,14 @@
 
 [简体中文](testing.md) · English
 
+## Notification cleanup, 1.2.3 (2026-10-31)
+
+The production AppModel regression harness covers the three-minute deadline for completed and failed notifications, preservation of approval/active-transfer notifications, and keeping the earliest cleanup deadline when more notifications arrive. The release source passed 289 Python tests and 45 Swift tests, plus the native synthetic Live Photo checks.
+
+On the local signed build 12201, real Notification Center entries for completed, failed and active transfers were observed through 170 seconds. At 180 seconds, the completed and failed entries had disappeared while the active-transfer entry remained. The temporary test notifications were then removed. Settings, trusted-device records and history were preserved. This checks actual macOS notification removal; wake-from-sleep and menu-tracking behavior are implemented but were not separately timed on the Mac.
+
+The 1.2.3/build 12300 candidate reuses the unchanged frozen engine and passes packaging/helper checks, Developer ID signature verification and compatibility checks for 81 arm64 Mach-O files targeting macOS 14 or earlier. Public release and notarization are verified separately.
+
 Recorded on 2026-10-16. This is a summary of observed tests, not a certification or a claim that all file sizes, devices or network configurations work.
 
 ## Physical-device results

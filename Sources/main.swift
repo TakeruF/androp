@@ -196,10 +196,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         removeLegacyHistoryOnce()
         setupMenus()
         setupNotifications()
-        clearExpiredSentNotifications()
-        notificationCleanupTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.clearExpiredSentNotifications() }
-        }
+        clearExpiredTransferNotifications()
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: L("Receive files from nearby devices", "接收附近设备的文件"))
         startAtLogin = SMAppService.mainApp.status == .enabled
         startEngine()
@@ -243,7 +240,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         addFiles(filenames.map { URL(fileURLWithPath: $0) }); showRecipients(); sender.reply(toOpenOrPrint: .success)
     }
-    @objc func woke() { clearPeers(); refreshEnvironment(); advertise() }
+    @objc func woke() { clearExpiredTransferNotifications(); clearPeers(); refreshEnvironment(); advertise() }
     private func setupMenus() {
         let menu = NSMenu(); let appItem = NSMenuItem(); menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
@@ -986,20 +983,56 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         let content = UNMutableNotificationContent(); content.title = title; content.body = body; content.categoryIdentifier = category; content.threadIdentifier = transfer.id
         content.userInfo = ["direction": transfer.direction]
         if transfer.state != "transferring" { content.sound = .default }
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: transfer.id, content: content, trigger: nil))
+        let request = UNNotificationRequest(identifier: transfer.id, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
+            guard error == nil else { return }
+            Task { @MainActor [weak self] in
+                guard let deadline = Self.transferNotificationExpiration(category: category, deliveredAt: Date()) else { return }
+                self?.scheduleNotificationCleanup(at: deadline)
+            }
+        }
     }
-    private func clearExpiredSentNotifications() {
-        // History identifies sent notifications delivered by older app versions.
-        let sentIDs = Set(transfers.filter { $0.direction == "send" }.map(\.id))
-        let cutoff = Date().addingTimeInterval(-120)
-        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
-            let expired = notifications.filter { notification in
-                let request = notification.request
-                guard request.content.categoryIdentifier == "complete", notification.date <= cutoff else { return false }
-                if let direction = request.content.userInfo["direction"] as? String { return direction == "send" }
-                return sentIDs.contains(request.identifier)
-            }.map { $0.request.identifier }
-            if !expired.isEmpty { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: expired) }
+    private static func transferNotificationExpiration(category: String, deliveredAt: Date) -> Date? {
+        // Both directions expire, including notifications from older versions
+        // without userInfo. Requests and active transfers still need their actions.
+        guard category == "complete" || category == "failed" else { return nil }
+        return deliveredAt.addingTimeInterval(3 * 60)
+    }
+    private func scheduleNotificationCleanup(at deadline: Date) {
+        if let timer = notificationCleanupTimer, timer.isValid, timer.fireDate <= deadline { return }
+        notificationCleanupTimer?.invalidate()
+        let timer = Timer(fire: deadline, interval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.notificationCleanupTimer = nil
+                self?.clearExpiredTransferNotifications()
+            }
+        }
+        notificationCleanupTimer = timer
+        // Menu tracking must not postpone removal until the menu closes.
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    private func clearExpiredTransferNotifications() {
+        UNUserNotificationCenter.current().getDeliveredNotifications { [weak self] notifications in
+            // Copy values before crossing to the main actor; UNNotification
+            // itself is not Sendable under Swift 6 strict concurrency.
+            let delivered = notifications.map {
+                (id: $0.request.identifier, category: $0.request.content.categoryIdentifier, date: $0.date)
+            }
+            Task { @MainActor [weak self] in
+                let now = Date()
+                var expired: [String] = []
+                var nextDeadline: Date?
+                for notification in delivered {
+                    guard let deadline = Self.transferNotificationExpiration(
+                        category: notification.category,
+                        deliveredAt: notification.date
+                    ) else { continue }
+                    if deadline <= now { expired.append(notification.id) }
+                    else { nextDeadline = min(nextDeadline ?? deadline, deadline) }
+                }
+                if !expired.isEmpty { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: expired) }
+                if let nextDeadline { self?.scheduleNotificationCleanup(at: nextDeadline) }
+            }
         }
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) { completionHandler([.banner, .sound]) }
