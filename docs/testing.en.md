@@ -2,6 +2,8 @@
 
 [简体中文](testing.md) · English
 
+Initially recorded on 2026-10-16; later entries identify their dates and builds. This is a summary of observed tests, not a certification or a claim that all file sizes, devices or network configurations work.
+
 ## Notification cleanup, 1.2.3 (2026-10-31)
 
 The production AppModel regression harness covers the three-minute deadline for completed and failed notifications, preservation of approval/active-transfer notifications, and keeping the earliest cleanup deadline when more notifications arrive. The release source passed 289 Python tests and 45 Swift tests, plus the native synthetic Live Photo checks.
@@ -9,8 +11,6 @@ The production AppModel regression harness covers the three-minute deadline for 
 On the local signed build 12201, real Notification Center entries for completed, failed and active transfers were observed through 170 seconds. At 180 seconds, the completed and failed entries had disappeared while the active-transfer entry remained. The temporary test notifications were then removed. Settings, trusted-device records and history were preserved. This checks actual macOS notification removal; wake-from-sleep and menu-tracking behavior are implemented but were not separately timed on the Mac.
 
 The 1.2.3/build 12300 candidate reuses the unchanged frozen engine and passes packaging/helper checks, Developer ID signature verification and compatibility checks for 81 arm64 Mach-O files targeting macOS 14 or earlier. Public release and notarization are verified separately.
-
-Recorded on 2026-10-16. This is a summary of observed tests, not a certification or a claim that all file sizes, devices or network configurations work.
 
 ## Physical-device results
 
@@ -389,3 +389,9 @@ The complete frozen-engine build passed runtime deployment/library checks for 81
 Release commit `d2f6d8e` is published as [v1.2.2](https://github.com/TakeruF/androp/releases/tag/v1.2.2). Apple notarization, stapling validation and Gatekeeper assessment passed for the app. The signed DMG contains only anDrop and the Applications shortcut. Sparkle signatures for the DMG and embedded appcast, version/build 1.2.2/12200, macOS 14 minimum, arm64 requirement and SHA-256 manifest were verified.
 
 GitHub Latest reports v1.2.2. Unauthenticated downloads of the DMG, appcast and checksums match the checked local public artifacts byte for byte; the latest-download appcast endpoint serves the same signed feed. The idle local app was replaced with the notarized 1.2.2/build 12200 bundle. Signature, stapled ticket, Gatekeeper, all four executable hashes, engine startup and settings/trusted-device retention passed. This installation used complete-bundle replacement; it was not a new Sparkle installation-flow or physical-phone transfer test. Only the DMG, signed appcast and checksum manifest were uploaded; private release records remain excluded.
+
+## 1.2.3 public release and Sparkle update (2026-10-31)
+
+Source commit `99bf42b` was published as [v1.2.3](https://github.com/TakeruF/androp/releases/tag/v1.2.3), build 12300. The app passed Apple notarization, stapling and Gatekeeper checks. The signed DMG contains the verified app and Applications shortcut. The embedded public key independently verified both the appcast and DMG signatures; version, build, macOS 14 minimum, arm64 requirement and checksum manifest were checked.
+
+GitHub Latest returns v1.2.3. All three assets downloaded without authentication match the verified local files byte for byte, and the ordinary latest-download feed and a cache-busted request return the same signed appcast. The local app then used Settings → Check for Updates → Install Update to download from that public feed, install and relaunch as 1.2.3. All 259 installed file/link entries match the notarized app in the DMG; signature, stapling, Gatekeeper, host and engine startup passed. Settings and trusted-device fingerprints are unchanged; persisted transfer history remains readable. Only the DMG, signed appcast and checksum manifest were published.
