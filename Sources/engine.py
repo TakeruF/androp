@@ -8,6 +8,7 @@ import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, s
 from pathlib import Path, PurePosixPath
 from peer_metadata import parse_peer_metadata, peer_identifier
 from file_types import offer_mime_type
+from sandbox_files import BookmarkAccess
 from motion_photos import MotionPhotoError, prepare_send, materialize_received
 from network_routes import lan_addresses, private_ipv4, direct_local_address, interface_for_address, bind_interface, lan_socket, client_socket_factory
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, Fingerprint, WSMsgType, ClientConnectionError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
@@ -277,6 +278,7 @@ class Engine:
         self.destination=str(Path.home()/'Downloads');self.name='anDrop Mac';self.keys=Keys();self.session=None
         self.scanner=None;self.scan_token=None;self.devices={};self.peers={};self.decisions={};self.scan_enabled=True;self.discovering=False;self.jobs=set()
         self.outgoing={}
+        self.destination_access=None
         self.huawei_enabled=True
         from huawei_runtime import HuaweiRuntime
         self.huawei=HuaweiRuntime(self,emit)
@@ -756,7 +758,14 @@ class Engine:
                 self.trusted_only=bool(obj.get('trusted_only',False))
                 self.auto_accept_trusted=bool(obj.get('auto_accept_trusted',True))
                 self.trusted_ids={identifier for value in obj.get('trusted_ids',[]) if (identifier:=valid_trust_identifier(value))}
-                self.destination=obj.get('destination',self.destination);self.name=obj.get('name',self.name);self.read_state()
+                if 'destination' in obj:
+                    access = BookmarkAccess([obj['destination_bookmark']], [obj['destination']]) if 'destination_bookmark' in obj else None
+                    if os.environ.get('ANDROP_SANDBOXED') == '1' and access is None:
+                        raise ValueError('Save folder access is unavailable')
+                    if self.destination_access: self.destination_access.close()
+                    self.destination_access=access
+                    self.destination=obj['destination']
+                self.name=obj.get('name',self.name);self.read_state()
                 self.huawei_enabled=bool(obj.get('huawei_enabled',self.scan_enabled))
             elif command=='enabled':
                 self.scan_enabled=bool(obj.get('value'))
@@ -776,7 +785,14 @@ class Engine:
                 if 'link' in obj or 'text' in obj:
                     emit('error',detail=t('URL and text sharing are not supported. Choose files to send.','不支持 URL 或文本共享，请选择文件发送。'))
                     return
-                await self.send(obj['peer'],obj.get('paths',[]),obj.get('peer_label'),obj.get('request_id'))
+                paths=obj.get('paths',[])
+                if 'bookmarks' in obj:
+                    with BookmarkAccess(obj['bookmarks'], paths):
+                        await self.send(obj['peer'],paths,obj.get('peer_label'),obj.get('request_id'))
+                elif os.environ.get('ANDROP_SANDBOXED') == '1':
+                    raise ValueError('File access is unavailable')
+                else:
+                    await self.send(obj['peer'],paths,obj.get('peer_label'),obj.get('request_id'))
             elif command=='cancel' and obj.get('id') in self.outgoing:
                 s=self.outgoing[obj['id']];s['cancel_requested']=True
                 task=s.get('task')
@@ -801,6 +817,12 @@ class Engine:
                     else:self.notify('cancel',s.get('central'));self.update(s,'cancelled');await self.reset(s)
         except Exception as e:
             if obj.get('command') in ('send','cancel'):
+                if obj.get('command')=='send' and ('bookmarks' in obj or os.environ.get('ANDROP_SANDBOXED')=='1'):
+                    try:identifier=uuid.UUID(obj.get('request_id','')).hex
+                    except (ValueError,TypeError,AttributeError):identifier=None
+                    if identifier and identifier not in self.outgoing:
+                        self.update({'id':identifier,'direction':'send','peer':obj.get('peer_label','Android')},'failed',
+                                    detail=t('Choose the files again to allow access.','请重新选择文件，以允许访问。'))
                 # An invalid request must not cancel a different destination.
                 emit('error',detail=t('Could not process the transfer request.','无法处理传输请求。'));return
             if obj.get('command')=='write' and self.session and obj.get('central')!=self.session.get('central'):
@@ -822,6 +844,7 @@ class Engine:
             self.huawei.cancel()
             for task in list(self.jobs):task.cancel()
             await asyncio.gather(*self.jobs,return_exceptions=True)
+            if self.destination_access: self.destination_access.close()
             loop.remove_signal_handler(signal.SIGTERM)
 
 if __name__=='__main__':

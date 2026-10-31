@@ -131,7 +131,7 @@ def main():
         if options.app:
             assert helper.is_file(), 'The app does not contain the Live Photo helper'
         else:
-            run("xcrun", "swiftc", *flags, ROOT / "Sources/LivePhotoConverter.swift", "-o", helper)
+            run("xcrun", "swiftc", *flags, ROOT / "Sources/FileAccess.swift", ROOT / "Sources/LivePhotoConverter.swift", "-o", helper)
         run("xcrun", "swiftc", *flags, ROOT / "Sources/Localization.swift", ROOT / "Sources/LivePhotoImporter.swift",
             ROOT / "scripts/LivePhotoFixture.swift", "-o", fixture)
         invoke(fixture, "generate", work)

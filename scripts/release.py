@@ -54,6 +54,7 @@ def assert_release(app):
         if info.get(key) != value:
             raise SystemExit(f'Release updater configuration mismatch: {key}')
     run('codesign', '--verify', '--deep', '--strict', app)
+    run(sys.executable, ROOT / 'scripts/check-sandbox.py', app)
     details = run('codesign', '-d', '--verbose=4', app, capture=True)
     team = re.search(r'^TeamIdentifier=(.+)$', details, re.M)
     if not team or 'Authority=Developer ID Application:' not in details or 'runtime' not in details:

@@ -35,6 +35,8 @@ Developer ID certificates identify the signer. Anonymous Git metadata does not a
 
 ## Automatic updates
 
+The host and bundled tools now use App Sandbox. See [sandbox integration and validation](sandbox.en.md) for file grants, migration, isolated test builds and the remaining device/update checks.
+
 The app embeds the public Ed25519 key in `Resources/UpdatePublicKey.txt`. The matching private key stays in the login Keychain under the account named in `release.json`; do not commit or export it. Create your own key when distributing a fork:
 
 ```sh

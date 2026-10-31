@@ -4,9 +4,13 @@
 
 extension AppModel {
     func exerciseOutgoingSelection() throws {
-        let first = URL(fileURLWithPath: "/mock/前回.txt")
-        let second = URL(fileURLWithPath: "/mock/今回.pdf")
-        let third = URL(fileURLWithPath: "/mock/追加.png")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appendingPathComponent("前回.txt")
+        let second = folder.appendingPathComponent("今回.pdf")
+        let third = folder.appendingPathComponent("追加.png")
+        for file in [first, second, third] { try Data("selection fixture".utf8).write(to: file) }
         let peer = Peer(id: "mock-phone", name: "Test phone", brand: "OPPO", kind: .phone)
 
         func selectPeer() {

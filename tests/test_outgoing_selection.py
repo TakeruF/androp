@@ -66,7 +66,7 @@ class OutgoingSelectionTests(unittest.TestCase):
             localization = stage / 'Localization.swift'
             localization.write_text((ROOT / 'Sources/Localization.swift').read_text().replace(
                 'UserDefaults.standard', 'selectionTestDefaults'))
-            sources = ['AppUpdates.swift', 'Localization.swift', 'Peer.swift',
+            sources = ['AppUpdates.swift', 'FileAccess.swift', 'Localization.swift', 'Peer.swift',
                        'ReceiveAccessPolicy.swift', 'TransferProgress.swift',
                        'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift',
                        'LivePhotoImporter.swift']

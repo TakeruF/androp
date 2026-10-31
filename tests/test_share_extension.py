@@ -57,7 +57,7 @@ print("Share extension wrapping and close-button layout passed")
             main = stage / 'main.swift'
             main.write_text(source)
             built = subprocess.run(['swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
-                                    str(ROOT / 'Sources/Localization.swift'),
+                                    str(ROOT / 'Sources/Localization.swift'), str(ROOT / 'Sources/FileAccess.swift'),
                                     str(ROOT / 'Sources/SharedFileStaging.swift'), str(main),
                                     '-o', str(executable)], capture_output=True, text=True, timeout=120)
             self.assertEqual(built.returncode, 0, built.stderr)
