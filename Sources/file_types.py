@@ -5,8 +5,15 @@
 import mimetypes
 from pathlib import Path
 
-# A private database keeps OS/user mime.types files from changing wire metadata.
-_TYPES = mimetypes.MimeTypes()
+# Even a private MimeTypes() first initializes the global database, reading
+# /etc/apache2/mime.types on macOS. Only use Python's built-in wire mappings;
+# system files are both unnecessary and unavailable inside App Sandbox.
+_knownfiles = mimetypes.knownfiles
+try:
+    mimetypes.knownfiles = []
+    _TYPES = mimetypes.MimeTypes()
+finally:
+    mimetypes.knownfiles = _knownfiles
 _EXTRA = {
     '.heic': 'image/heic', '.heif': 'image/heif', '.avif': 'image/avif',
     '.webp': 'image/webp', '.mkv': 'video/x-matroska',

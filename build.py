@@ -4,7 +4,7 @@
 from pathlib import Path
 import json, os, platform, plistlib, re, runpy, shutil, subprocess, sys, tempfile
 ROOT=Path(__file__).resolve().parent
-FINAL=ROOT/'build/anDrop.app'
+FINAL=Path(os.environ.get('ANDROP_OUTPUT',str(ROOT/'build/anDrop.app'))).resolve()
 APP=Path(tempfile.mkdtemp(prefix='androp-build-'))/'anDrop.app'
 IDENTITY=os.environ.get('ANDROP_SIGN_IDENTITY','-')
 BUNDLE_ID=os.environ.get('ANDROP_BUNDLE_ID','org.androp.mac')
@@ -27,21 +27,25 @@ for path in ['Contents/MacOS','Contents/Resources','Contents/PlugIns/anDropShare
 # Petal coexistence still opts into regular activation explicitly at runtime.
 info={'CFBundleExecutable':'anDrop','CFBundleIdentifier':BUNDLE_ID,'CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'APPL','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSBluetoothAlwaysUsageDescription':'Discover nearby devices for file sharing through the Mutual Transfer Alliance (互传联盟) ecosystem.','NSLocalNetworkUsageDescription':'Send and receive files with Android devices on the same Wi-Fi.','NSHighResolutionCapable':True,'LSUIElement':True,'CFBundleURLTypes':[{'CFBundleURLName':BUNDLE_ID+'.share','CFBundleURLSchemes':['androp']}],'CFBundleDocumentTypes':[{'CFBundleTypeName':'Files','CFBundleTypeRole':'Viewer','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','com.apple.live-photo-bundle','com.apple.private.live-photo-bundle']}],'CFBundleIconFile':'AppIconPaperplane','CFBundleIconName':'AppIconPaperplane'}
 if not APP_STORE:
- info.update({'SUFeedURL':os.environ.get('ANDROP_FEED_URL',CONFIG['feed_url']),'SUPublicEDKey':(ROOT/'Resources/UpdatePublicKey.txt').read_text().strip(),'SUEnableAutomaticChecks':True,'SUAutomaticallyUpdate':True,'SUEnableSystemProfiling':False,'SUVerifyUpdateBeforeExtraction':True,'SURequireSignedFeed':True,'SUScheduledCheckInterval':86400})
+ info.update({'SUFeedURL':os.environ.get('ANDROP_FEED_URL',CONFIG['feed_url']),'SUPublicEDKey':(ROOT/'Resources/UpdatePublicKey.txt').read_text().strip(),'SUEnableAutomaticChecks':True,'SUAutomaticallyUpdate':True,'SUEnableSystemProfiling':False,'SUVerifyUpdateBeforeExtraction':True,'SURequireSignedFeed':True,'SUScheduledCheckInterval':86400,'SUEnableInstallerLauncherService':True})
 (APP/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+# Migrate only this application's support data, including Huawei key continuity.
+# macOS migrates the bundle's preferences separately on first sandbox launch.
+if BUNDLE_ID=='org.androp.mac':
+ (APP/'Contents/Resources/container-migration.plist').write_bytes(plistlib.dumps({'Move':['${ApplicationSupport}/anDrop']}))
 ext=APP/'Contents/PlugIns/anDropShare.appex'
 extinfo={'CFBundleIconFile':'ShareIcon','CFBundleIconName':'AppIconPaperplane','CFBundleExecutable':'anDropShare','CFBundleIdentifier':BUNDLE_ID+'.Share','CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'XPC!','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationDictionaryVersion':2,'NSExtensionActivationSupportsFileWithMaxCount':1000,'NSExtensionActivationSupportsImageWithMaxCount':1000,'NSExtensionActivationSupportsMovieWithMaxCount':1000}}}}
 (ext/'Contents/Info.plist').write_bytes(plistlib.dumps(extinfo))
 cache=ROOT/'build/module-cache';cache.mkdir(parents=True,exist_ok=True)
-host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','Diagnostics.swift','BrandLogos.swift','HuaweiLANDiscovery.swift','main.swift']]
+host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','FileAccess.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','Diagnostics.swift','BrandLogos.swift','HuaweiLANDiscovery.swift','main.swift']]
 framework_flags=[]
 if not APP_STORE:
  (APP/'Contents/Frameworks').mkdir()
  shutil.copytree(SPARKLE/'Sparkle.framework',APP/'Contents/Frameworks/Sparkle.framework',symlinks=True)
  framework_flags=['-F',SPARKLE,'-framework','Sparkle','-Xlinker','-rpath','-Xlinker','@executable_path/../Frameworks']
 run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,*(['-D','APP_STORE'] if APP_STORE else []),'-module-name','anDrop','-module-cache-path',cache,*framework_flags,*host_sources,'-o',APP/'Contents/MacOS/anDrop')
-run('swiftc','-swift-version','6','-target',TARGET,'-module-cache-path',cache,'-parse-as-library',ROOT/'Sources/LivePhotoConverter.swift','-o',APP/'Contents/MacOS/anDropLivePhoto')
-run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,'-module-cache-path',cache,'-parse-as-library','-emit-executable','-Xlinker','-e','-Xlinker','_NSExtensionMain',ROOT/'Sources/Localization.swift',ROOT/'Sources/SharedFileStaging.swift',ROOT/'Sources/ShareViewController.swift','-o',ext/'Contents/MacOS/anDropShare')
+run('swiftc','-swift-version','6','-target',TARGET,'-module-cache-path',cache,'-parse-as-library',ROOT/'Sources/FileAccess.swift',ROOT/'Sources/LivePhotoConverter.swift','-o',APP/'Contents/MacOS/anDropLivePhoto')
+run('swiftc','-swift-version','6','-default-isolation','MainActor','-target',TARGET,'-module-cache-path',cache,'-parse-as-library','-emit-executable','-Xlinker','-e','-Xlinker','_NSExtensionMain',ROOT/'Sources/Localization.swift',ROOT/'Sources/FileAccess.swift',ROOT/'Sources/SharedFileStaging.swift',ROOT/'Sources/ShareViewController.swift','-o',ext/'Contents/MacOS/anDropShare')
 if '--ui-only' not in sys.argv:
  huawei_data=[]
  for name in ['huawei-auth-probe.py','huawei-transfer-probe.py','huawei-receive-probe.py','huawei-receive-channels.py','huawei-file-batch.py']:
@@ -51,7 +55,11 @@ if '--ui-only' not in sys.argv:
  if (APP/'Contents/Resources/Engine').exists():shutil.rmtree(APP/'Contents/Resources/Engine')
  shutil.copytree(ROOT/'build/engine-dist/anDropEngine',APP/'Contents/Resources/Engine',symlinks=True)
 if '--ui-only' in sys.argv:
- shutil.copytree(FINAL/'Contents/Resources/Engine',APP/'Contents/Resources/Engine',symlinks=True)
+ engine_app=Path(os.environ.get('ANDROP_ENGINE_APP',str(FINAL))).resolve()
+ shutil.copytree(engine_app/'Contents/Resources/Engine',APP/'Contents/Resources/Engine',symlinks=True)
+ # Packaging probes run outside a sandboxed parent. Strip only the staged
+ # copy's inherited sandbox before probing, then restore it at final signing.
+ run('codesign','--force','--sign','-',APP/'Contents/Resources/Engine/anDropEngine')
 live_probe=subprocess.run([str(APP/'Contents/Resources/Engine/anDropEngine'),'--live-photo-check'],
  stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15)
 if live_probe.returncode or live_probe.stdout!=b'Live Photo helper packaging check passed\n':
@@ -83,14 +91,20 @@ shutil.copyfile(APP/'Contents/Resources/Assets.car',ext/'Contents/Resources/Asse
 
 run(sys.executable, ROOT/'scripts/check-runtime.py', APP, '--minimum', MIN_OS, '--arch', platform.machine())
 run('xattr','-cr',APP)
-entitlements=ROOT/'build/share-entitlements.plist';entitlements.write_bytes(plistlib.dumps({'com.apple.security.app-sandbox':True,'com.apple.security.files.user-selected.read-only':True}))
+entitlements=APP.parent/'share-entitlements.plist';entitlements.write_bytes(plistlib.dumps({'com.apple.security.app-sandbox':True,'com.apple.security.files.user-selected.read-only':True}))
+host_entitlements=APP.parent/'host-entitlements.plist'
+host_rights={'com.apple.security.app-sandbox':True,'com.apple.security.device.bluetooth':True,'com.apple.security.network.client':True,'com.apple.security.network.server':True,'com.apple.security.files.downloads.read-write':True,'com.apple.security.files.user-selected.read-write':True,'com.apple.security.files.bookmarks.app-scope':True}
+if not APP_STORE:host_rights['com.apple.security.temporary-exception.mach-lookup.global-name']=[BUNDLE_ID+'-spks',BUNDLE_ID+'-spki']
+host_entitlements.write_bytes(plistlib.dumps(host_rights))
+inherit_entitlements=APP.parent/'inherit-entitlements.plist'
+inherit_entitlements.write_bytes(plistlib.dumps({'com.apple.security.app-sandbox':True,'com.apple.security.inherit':True}))
 def sign(path, entitlement=None, preserve=False):
  args=['codesign','--force','--sign',IDENTITY,*SIGN_OPTIONS]
  if entitlement:args+=['--entitlements',entitlement]
  elif preserve:args+=['--preserve-metadata=entitlements']
  run(*args,path)
 sign(ext,entitlements)
-sign(APP/'Contents/MacOS/anDropLivePhoto')
+sign(APP/'Contents/MacOS/anDropLivePhoto',inherit_entitlements)
 # Sign leaves before containing framework/app bundles, preserving Sparkle helpers' entitlements.
 mach_magic={b'\xcf\xfa\xed\xfe',b'\xca\xfe\xba\xbe',b'\xfe\xed\xfa\xcf',b'\xca\xfe\xba\xbf'}
 leaves=[]
@@ -103,14 +117,19 @@ for parent in [APP/'Contents/Resources/Engine',APP/'Contents/Frameworks']:
 # codesign can treat a framework's main Mach-O as the containing framework.
 # Finish nested helpers first; parallel mutation leaves transient .cstemp files
 # inside that container and can invalidate the outer signing operation.
-for p in sorted(leaves,key=lambda p:(-len(p.parts),str(p))):sign(p,preserve=True)
+for p in sorted(leaves,key=lambda p:(-len(p.parts),str(p))):
+ # Only the engine executable inherits; libraries and Sparkle's independent
+ # updater/XPC services retain their own signing requirements.
+ sign(p,inherit_entitlements if p==APP/'Contents/Resources/Engine/anDropEngine' else None,preserve=True)
 containers=[p for p in APP.rglob('*') if p.is_dir() and not p.is_symlink() and p.suffix in ('.app','.xpc','.framework')]
 for p in sorted(containers,key=lambda p:len(p.parts),reverse=True):sign(p,preserve=True)
 run('xattr','-cr',APP)
-sign(APP)
+sign(APP,host_entitlements)
 run('codesign','--verify','--deep','--strict',APP)
+run(sys.executable,ROOT/'scripts/check-sandbox.py',APP)
 if FINAL.exists():shutil.rmtree(FINAL)
+FINAL.parent.mkdir(parents=True,exist_ok=True)
 shutil.copytree(APP,FINAL,symlinks=True)
 # Source-mode engine tests use the same helper as the verified app bundle.
-shutil.copy2(FINAL/'Contents/MacOS/anDropLivePhoto',ROOT/'build/anDropLivePhoto')
+if FINAL==ROOT/'build/anDrop.app':shutil.copy2(FINAL/'Contents/MacOS/anDropLivePhoto',ROOT/'build/anDropLivePhoto')
 print(FINAL)

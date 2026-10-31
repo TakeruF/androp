@@ -2,12 +2,28 @@
 # Copyright (c) 2026 anDrop contributors
 import sys
 import unittest
+import subprocess
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'Sources'))
 from file_types import offer_mime_type
 
 
 class OfferFileTypes(unittest.TestCase):
+    def test_fresh_import_does_not_read_system_mime_files(self):
+        result = subprocess.run([sys.executable, '-c', '''
+import builtins, mimetypes, sys
+sys.path.insert(0, sys.argv[1])
+original = builtins.open
+def restricted(path, *args, **kwargs):
+    if str(path) in mimetypes.knownfiles:
+        raise PermissionError('synthetic sandbox denial')
+    return original(path, *args, **kwargs)
+builtins.open = restricted
+from file_types import offer_mime_type
+assert offer_mime_type(['fixture.pdf']) == 'application/pdf'
+''', str(Path(__file__).resolve().parents[1] / 'Sources')], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_specific_types(self):
         cases = {
             '写真.JPG': 'image/jpeg', 'photo.png': 'image/png',

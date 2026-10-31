@@ -82,6 +82,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         self?.diagnostics.record(entry)
     })
     let updates = AppUpdates()
+    private let fileAccess = FileAccess()
+    private var destinationReady = false
     private let diagnostics = DiagnosticsStore(folder: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("anDrop/Diagnostics"))
     @Published var showingDiagnostics = false
     @Published private(set) var diagnosticText = ""
@@ -146,7 +148,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private var compactName = false
     let receiving = true
     @Published private(set) var radiosAvailable = true
-    var receiveSwitchIsOn: Bool { receiving && radiosAvailable }
+    var receiveSwitchIsOn: Bool { receiving && radiosAvailable && destinationReady }
     @Published var engineReady = false
     @Published var notificationsAllowed = false
     @Published var destination = UserDefaults.standard.string(forKey: "destination") ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
@@ -192,6 +194,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     var byteFormat: ByteCountFormatter { let f = ByteCountFormatter(); f.countStyle = .file; return f }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        do { destination = try fileAccess.restoreDestination().path; destinationReady = true }
+        catch { self.error = L("Choose the save folder again to allow receiving files.", "请重新选择保存文件夹，以允许接收文件。") }
         if let data = UserDefaults.standard.data(forKey: "history"), let history = try? JSONDecoder().decode([Transfer].self, from: data) { transfers = history }
         removeLegacyHistoryOnce()
         setupMenus()
@@ -218,6 +222,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         cancelOutgoingRetry()
         notificationCleanupTimer?.invalidate()
         terminating = true; huaweiLAN.stop(); peripheral?.stopAdvertising(); input?.closeFile(); process?.terminate(); saveHistory()
+        fileAccess.close()
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
@@ -228,11 +233,11 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 return
             }
             else if url.scheme == "androp", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), parts.host == "share" {
-                guard parts.queryItems?.allSatisfy({ $0.name == "file" }) == true else {
+                guard let items = parts.queryItems, !items.isEmpty, items.allSatisfy({ $0.name == "bookmark" && $0.value != nil }) else {
                     error = L("URL and text sharing are not supported. Choose files to send.", "不支持 URL 或文本共享，请选择文件发送。"); showWindow(); return
                 }
-                let paths = parts.queryItems?.filter { $0.name == "file" }.compactMap(\.value) ?? []
-                addFiles(paths.filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) })
+                do { addFiles(try fileAccess.resolveShared(items.compactMap(\.value))) }
+                catch { self.error = L("Could not access the shared files. Share them again.", "无法访问共享文件，请重新共享。"); showWindow(); return }
             }
         }
         if !selectedFiles.isEmpty { showRecipients() }
@@ -532,6 +537,12 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         guard let resource = Bundle.main.resourceURL else { return }
         let executable = resource.appendingPathComponent("Engine/anDropEngine")
         let p = Process(); p.executableURL = executable
+        // Python's Path.home()/tempfile must use this app's container too.
+        var environment = ProcessInfo.processInfo.environment
+        environment["HOME"] = NSHomeDirectory()
+        environment["TMPDIR"] = NSTemporaryDirectory()
+        environment["ANDROP_SANDBOXED"] = "1"
+        p.environment = environment
         let stdin = Pipe(); let stdout = Pipe(); let stderr = Pipe()
         p.standardInput = stdin; p.standardOutput = stdout; p.standardError = stderr
         input = stdin.fileHandleForWriting
@@ -568,7 +579,22 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         do { try input.write(contentsOf: bytes + Data([10])); return true }
         catch { self.error = L("Could not connect to the sharing service.", "无法连接到共享服务。"); return false }
     }
-    func configureEngine() { configuredName = sharingName; command(["command": "configure", "destination": destination, "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "auto_accept_trusted": autoAcceptTrusted, "trusted_ids": trustedDevices.map(\.id), "huawei_enabled": receiving]); command(["command": "enabled", "value": receiveSwitchIsOn]) }
+    func configureEngine() {
+        configuredName = sharingName
+        var configuration: [String: Any] = ["command": "configure", "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "auto_accept_trusted": autoAcceptTrusted, "trusted_ids": trustedDevices.map(\.id), "huawei_enabled": receiving && destinationReady]
+        if destinationReady {
+            do {
+                configuration["destination_bookmark"] = try FileBookmarks.encode(URL(fileURLWithPath: destination))
+                configuration["destination"] = destination
+            } catch {
+                destinationReady = false
+                configuration["huawei_enabled"] = false
+                self.error = L("Choose the save folder again to allow receiving files.", "请重新选择保存文件夹，以允许接收文件。")
+            }
+        }
+        command(configuration)
+        command(["command": "enabled", "value": receiveSwitchIsOn])
+    }
     private func consume(_ data: Data) {
         outputBuffer.append(data)
         if outputBuffer.count > 4_194_304 { outputBuffer.removeAll(); error = L("The sharing service returned an invalid response.", "共享服务返回了无效响应。"); return }
@@ -593,7 +619,9 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             }
             switch event {
             case "ready":
-                engineReady = true; error = ""; advertise()
+                engineReady = true
+                if destinationReady { error = "" }
+                advertise()
                 if recipientPanel?.isVisible == true { command(["command": "scan", "value": true]) }
             case "ble_read":
                 if let obj = value["value"] { readValue = (try? JSONSerialization.data(withJSONObject: obj)) ?? Data() }
@@ -739,15 +767,23 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     func addFiles(_ urls: [URL]) {
         cancelOutgoingRetry()
         if !outgoingActive { outgoing = [] }
+        for url in urls where url.isFileURL { fileAccess.retain(url) }
         selectedFiles = Array(Set(selectedFiles + urls.filter(\.isFileURL))).sorted { $0.lastPathComponent < $1.lastPathComponent }; tab = 0
+        fileAccess.releaseFiles(except: selectedFiles + outgoing.flatMap(\.files))
     }
     func chooseFiles() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true; panel.message = L("Choose files to send", "选择要发送的文件"); panel.prompt = L("Select", "选择")
         if panel.runModal() == .OK { addFiles(panel.urls) }
     }
     func chooseDestination() {
+        guard !busy else { return }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.prompt = L("Use This Folder", "使用此文件夹"); panel.directoryURL = URL(fileURLWithPath: destination)
-        if panel.runModal() == .OK, let url = panel.url { destination = url.path; UserDefaults.standard.set(url.path, forKey: "destination"); configureEngine() }
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try fileAccess.selectDestination(url)
+                destination = url.path; destinationReady = true; error = ""; configureEngine(); advertise()
+            } catch { self.error = L("Could not keep access to this folder. Choose it again.", "无法保留此文件夹的访问权限，请重新选择。") }
+        }
     }
     func send(to requestedPeer: Peer) {
         expirePeerUpdates()
@@ -769,7 +805,12 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         else { outgoing.append(item) }
         transfers.insert(Transfer(id: id, direction: "send", peer: label, state: "preparing", name: files[0].lastPathComponent, count: files.count, deviceKind: peer.kind.rawValue, deviceBrand: peer.brand), at: 0)
         error = ""
-        if !command(["command": "send", "request_id": id, "peer": peer.id, "peer_label": label, "paths": files.map(\.path)]) {
+        let bookmarks: [String]
+        do { bookmarks = try files.map(FileBookmarks.encode) }
+        catch {
+            updateTransfer(["id": id, "state": "failed", "detail": L("Choose the files again to allow access.", "请重新选择文件，以允许访问。")]); return
+        }
+        if !command(["command": "send", "request_id": id, "peer": peer.id, "peer_label": label, "paths": files.map(\.path), "bookmarks": bookmarks]) {
             updateTransfer(["id": id, "state": "failed", "detail": L("Could not connect to the sharing service.", "无法连接到共享服务。")])
         }
     }

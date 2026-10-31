@@ -60,7 +60,7 @@ import UniformTypeIdentifiers
                 if let type = livePhotoTypes.first(where: { provider.hasItemConformingToTypeIdentifier($0) }) {
                     // The provider's URL may disappear when its callback returns.
                     // Copy both resources while access is valid, before dismissing
-                    // Photos' share sheet. The unsandboxed host can read this cache.
+                    // Photos' share sheet. Bookmarks grant the host cache access.
                     let bundle: URL? = await withCheckedContinuation { continuation in
                         provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
                             guard let url else { continuation.resume(returning: nil); return }
@@ -86,7 +86,8 @@ import UniformTypeIdentifiers
         }
         guard !urls.isEmpty else { titleLabel.stringValue = L("Choose files to share. URL and text sharing are not supported.", "请选择文件共享，不支持 URL 或文本共享。"); return }
         var components = URLComponents(); components.scheme = "androp"; components.host = "share"
-        components.queryItems = urls.map { URLQueryItem(name: "file", value: $0.path) }
+        do { components.queryItems = try urls.map { URLQueryItem(name: "bookmark", value: try FileBookmarks.encode($0)) } }
+        catch { titleLabel.stringValue = L("Could not grant access to the shared files. Share them again.", "无法授予共享文件的访问权限，请重新共享。"); return }
         guard let url = components.url, NSWorkspace.shared.urlForApplication(toOpen: url) != nil,
               let context = extensionContext else { titleLabel.stringValue = L("Open anDrop once, then try sharing again.", "请先启动 anDrop，然后重试共享。"); return }
         // Dismissing the host's share sheet restores its focus. Finish that

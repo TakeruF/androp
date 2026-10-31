@@ -15,6 +15,7 @@ import plistlib
 import re
 import struct
 import sys
+from sandbox_files import bookmarks_for
 import tempfile
 import xml.etree.ElementTree as ET
 from live_photo_archives import is_olive_archive, extract_olive_archive
@@ -207,9 +208,11 @@ async def native(command, image, video, output=None, timestamp=-1):
     args = [str(helper_path()), command, str(image), str(video)]
     if output is not None:
         args += [str(output), str(timestamp)]
-    process = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+    bookmarks = bookmarks_for([image, video] + ([Path(output).parent] if output is not None else []))
+    if bookmarks: args.append('--sandbox-bookmarks')
+    process = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
     try:
-        stdout, _ = await asyncio.wait_for(process.communicate(), 90)
+        stdout, _ = await asyncio.wait_for(process.communicate(json.dumps(bookmarks).encode()), 90)
         if process.returncode or len(stdout) > 8192:
             raise MotionPhotoError('motion_photo_conversion_failed')
         result = json.loads(stdout)

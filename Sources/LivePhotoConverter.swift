@@ -343,7 +343,17 @@ private func remux(_ info: MovieInfo, to url: URL, identifier: String?, stillTim
 private enum LivePhotoConverter {
     static func main() async {
         do {
-            let args = Array(CommandLine.arguments.dropFirst())
+            var args = Array(CommandLine.arguments.dropFirst())
+            var grants: [URL] = []
+            defer { for url in grants { url.stopAccessingSecurityScopedResource() } }
+            if args.last == "--sandbox-bookmarks" {
+                args.removeLast()
+                let data = FileHandle.standardInput.readDataToEndOfFile()
+                guard data.count <= 1_048_576,
+                      let bookmarks = try JSONSerialization.jsonObject(with: data) as? [String],
+                      (2...3).contains(bookmarks.count) else { throw ConversionError.arguments }
+                for bookmark in bookmarks { grants.append(try FileBookmarks.resolve(bookmark)) }
+            }
             guard args.count >= 3, ["inspect", "apple", "android"].contains(args[0]),
                   args[0] == "inspect" ? args.count == 3 : (4...5).contains(args.count) else {
                 throw ConversionError.arguments
