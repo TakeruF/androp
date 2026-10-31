@@ -29,8 +29,9 @@ converter access. Huawei's sender works from snapshots inside the app container.
 Custom save folders use persistent app-scoped bookmarks, refreshed when stale.
 The host restores access on launch and passes an implicit bookmark to the engine.
 An old path string, corrupt bookmark or revoked grant requires reselecting the
-folder; receiving remains disabled until access is available. The default save
-folder remains Downloads. Folder changes are disabled during transfers.
+folder; receiving remains disabled until access is available. Downloads uses the
+inherited static entitlement directly, without issuing an unnecessary bookmark
+at first launch. The default save folder remains Downloads. Folder changes are disabled during transfers.
 
 The host explicitly supplies its container home and temporary directory to Python.
 MIME classification uses Python's built-in mappings without reading system MIME
@@ -85,9 +86,10 @@ files are removed; macOS-owned containers with unique test IDs remain untouched.
 
 Basic OPPO/Huawei round trips with content hashes and actual Finder Share passed;
 see [physical verification](testing.en.md#app-sandbox-branch-validation-2026-10-31).
-Before promoting this branch, verify actual Photos Share invocation, save-folder revocation/reselection,
-identity/settings migration from the installed version, login-item behavior and
-a complete Sparkle install/relaunch. Synthetic checks do not prove these flows.
+Isolated legacy migration and a complete signed sandbox-to-sandbox Sparkle
+installation/relaunch also passed for 1.3.0. Remaining manual scope includes
+actual Photos Share, OS permission revocation, clean-install login registration
+and physical macOS14 testing. See the release validation record in testing.en.md.
 
 References: [Apple file access](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox),
 [sandbox inheritance](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html),

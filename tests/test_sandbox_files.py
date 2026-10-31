@@ -14,6 +14,19 @@ from engine import Engine
 
 @unittest.skipUnless(sys.platform == 'darwin', 'Foundation required')
 class FileGrantTests(unittest.TestCase):
+    def test_only_default_downloads_can_be_configured_without_a_dynamic_grant(self):
+        async def exercise():
+            engine = Engine()
+            with patch.dict(os.environ, {'ANDROP_SANDBOXED': '1'}), patch('engine.emit') as emit:
+                downloads = str(Path.home() / 'Downloads')
+                await engine.command({'command': 'configure', 'destination': downloads})
+                self.assertEqual(engine.destination, downloads)
+                self.assertFalse(any(c.args == ('error',) for c in emit.call_args_list))
+                await engine.command({'command': 'configure', 'destination': '/a/custom/folder'})
+                self.assertEqual(engine.destination, downloads)
+                self.assertTrue(any(c.args == ('error',) for c in emit.call_args_list))
+        asyncio.run(exercise())
+
     def test_roundtrip_and_mismatched_grant(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / '選択.txt'

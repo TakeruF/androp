@@ -7,8 +7,11 @@ ROOT=Path(__file__).resolve().parent
 FINAL=Path(os.environ.get('ANDROP_OUTPUT',str(ROOT/'build/anDrop.app'))).resolve()
 APP=Path(tempfile.mkdtemp(prefix='androp-build-'))/'anDrop.app'
 IDENTITY=os.environ.get('ANDROP_SIGN_IDENTITY','-')
-BUNDLE_ID=os.environ.get('ANDROP_BUNDLE_ID','org.androp.mac')
 CONFIG=json.loads((ROOT/'release.json').read_text())
+BUNDLE_ID=os.environ.get('ANDROP_BUNDLE_ID',CONFIG['bundle_identifier'])
+# Keep the selected Xcode compiler and SDK together even when the invoking
+# shell exports a newer Command Line Tools SDKROOT.
+os.environ['SDKROOT']=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip()
 VERSION=os.environ.get('ANDROP_VERSION',CONFIG['version'])
 BUILD=os.environ.get('ANDROP_BUILD',str(CONFIG['build']))
 if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',VERSION) or not BUILD.isdigit():raise SystemExit('Invalid version/build number')
@@ -31,7 +34,7 @@ if not APP_STORE:
 (APP/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
 # Migrate only this application's support data, including Huawei key continuity.
 # macOS migrates the bundle's preferences separately on first sandbox launch.
-if BUNDLE_ID=='org.androp.mac':
+if BUNDLE_ID==CONFIG['bundle_identifier']:
  (APP/'Contents/Resources/container-migration.plist').write_bytes(plistlib.dumps({'Move':['${ApplicationSupport}/anDrop']}))
 ext=APP/'Contents/PlugIns/anDropShare.appex'
 extinfo={'CFBundleIconFile':'ShareIcon','CFBundleIconName':'AppIconPaperplane','CFBundleExecutable':'anDropShare','CFBundleIdentifier':BUNDLE_ID+'.Share','CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'XPC!','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationDictionaryVersion':2,'NSExtensionActivationSupportsFileWithMaxCount':1000,'NSExtensionActivationSupportsImageWithMaxCount':1000,'NSExtensionActivationSupportsMovieWithMaxCount':1000}}}}

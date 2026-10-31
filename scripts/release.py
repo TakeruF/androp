@@ -44,10 +44,11 @@ def signing_identity():
 
 def assert_release(app):
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-    if (info['CFBundleShortVersionString'] != VERSION or
+    if (info['CFBundleIdentifier'] != CONFIG['bundle_identifier'] or
+            info['CFBundleShortVersionString'] != VERSION or
             info['CFBundleVersion'] != str(CONFIG['build']) or
             info['LSMinimumSystemVersion'] != CONFIG['minimum_macos']):
-        raise SystemExit('The app version, build or minimum OS differs from release.json; rebuild it.')
+        raise SystemExit('The app identifier, version, build or minimum OS differs from release.json; rebuild it.')
     expected_key = (ROOT / 'Resources/UpdatePublicKey.txt').read_text().strip()
     for key, value in {'SUPublicEDKey': expected_key, 'SUFeedURL': CONFIG['feed_url'],
                        'SURequireSignedFeed': True, 'SUVerifyUpdateBeforeExtraction': True}.items():

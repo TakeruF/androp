@@ -584,7 +584,12 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         var configuration: [String: Any] = ["command": "configure", "name": configuredName, "language": appLanguage(), "trusted_only": trustedOnly, "auto_accept_trusted": autoAcceptTrusted, "trusted_ids": trustedDevices.map(\.id), "huawei_enabled": receiving && destinationReady]
         if destinationReady {
             do {
-                configuration["destination_bookmark"] = try FileBookmarks.encode(URL(fileURLWithPath: destination))
+                let url = URL(fileURLWithPath: destination)
+                // Downloads is already granted to host and inherited children.
+                // Issuing an unnecessary extension can block first launch.
+                if FileAccess.needsDestinationGrant(url) {
+                    configuration["destination_bookmark"] = try FileBookmarks.encode(url)
+                }
                 configuration["destination"] = destination
             } catch {
                 destinationReady = false

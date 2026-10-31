@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Verify the concrete signed host, extension, inherited tools and updater."""
 import argparse
+import json
 from pathlib import Path
 import plistlib
 import subprocess
@@ -19,6 +20,14 @@ def require(condition, message):
 
 def check(app):
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+    config = json.loads((Path(__file__).resolve().parents[1] / 'release.json').read_text())
+    migration = app / 'Contents/Resources/container-migration.plist'
+    if info['CFBundleIdentifier'] == config['bundle_identifier']:
+        require(migration.is_file() and plistlib.loads(migration.read_bytes()) == {
+            'Move': ['${ApplicationSupport}/anDrop'],
+        }, 'Production support-data migration missing or changed')
+    else:
+        require(not migration.exists(), 'Isolated build must not migrate production support data')
     host = entitlements(app)
     required = {'com.apple.security.app-sandbox', 'com.apple.security.device.bluetooth',
                 'com.apple.security.network.client', 'com.apple.security.network.server',

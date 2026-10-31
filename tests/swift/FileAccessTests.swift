@@ -2,6 +2,13 @@ import Foundation
 import Testing
 @testable import anDropIdentity
 
+@Test @MainActor func downloadsUseStaticRightsAndCustomFoldersNeedGrants() {
+    let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+    #expect(!FileAccess.needsDestinationGrant(downloads))
+    #expect(!FileAccess.needsDestinationGrant(URL(fileURLWithPath: downloads.path)))
+    #expect(FileAccess.needsDestinationGrant(downloads.appendingPathComponent("custom")))
+}
+
 @Test @MainActor func implicitBookmarksShareFilesAndRejectCorruptData() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
