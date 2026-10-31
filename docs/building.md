@@ -27,7 +27,7 @@ release.json保存版本、单调build、最低OS和公开feed。ANDROP_VERSION/
 
 主程序与辅助工具现已接入 App Sandbox。文件授权、迁移、独立测试构建及待验证项目见 [沙盒说明](sandbox.md)。
 
-默认ad-hoc，本地配置ANDROP_SIGN_IDENTITY用于Developer ID发行，启hardened runtime/安全时间戳。证书、identity、team ID、私钥不进tracked文件。默认bundle `org.androp.mac`，ANDROP_BUNDLE_ID可本地覆盖；升级保留发行ID，否则可能重置权限／设置／登录项／扩展注册。Developer ID证书标识签名者，匿名Git不能隐藏，上传前检查实际产物。
+默认ad-hoc，本地配置ANDROP_SIGN_IDENTITY用于Developer ID发行，启hardened runtime/安全时间戳。证书、identity、team ID、私钥不进tracked文件。发行bundle在release.json固定为 `com.takeruf.anDrop`，ANDROP_BUNDLE_ID仅用于本地隔离测试；升级保留发行ID，否则可能重置权限／设置／登录项／扩展注册。Developer ID证书标识签名者，匿名Git不能隐藏，上传前检查实际产物。
 
 Ed25519公钥在Resources/UpdatePublicKey.txt，私钥存release.json账号对应login Keychain，不提交／导出。fork自行生成：
 

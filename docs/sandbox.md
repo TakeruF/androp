@@ -22,6 +22,7 @@
 
 自选保存目录使用持久 app-scoped bookmark，启动时恢复，过期时刷新，再将隐式书签传给
 引擎。旧路径字符串、损坏或失效书签需要重新选择目录；授权恢复前停止接收。
+默认下载目录直接使用主／子进程已有的静态权限，不在初次启动时请求多余书签。
 默认保存位置仍为下载目录，传输中不可更改目录。
 
 主程序向 Python 明确提供容器的 home 和临时目录。MIME 类型只使用 Python 内置映射，
@@ -65,9 +66,8 @@ Developer ID 签名通过本地 `ANDROP_SIGN_IDENTITY` 配置。UI-only 构建�
 
 OPPO／华为基本双向传输、内容哈希及 Finder 实际共享入口已通过，详见
 [实机验证](testing.md#app-sandbox-分支验证2026-10-31)。
-合入正常发行前仍需验证：照片的实际共享入口、
-保存目录授权失效与重选、已安装版本的身份／设置迁移、登录项，以及完整 Sparkle 更新重启。
-合成测试不能证明这些真实流程。
+1.3.0另通过隔离的旧版迁移及完整签名沙盒间Sparkle安装／重启。
+照片实际共享、系统授权撤销、全新安装登录项注册及macOS14实机仍待手动验证，详见testing.md。
 
 参考：[Apple 文件访问](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)、
 [沙盒继承](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html)、

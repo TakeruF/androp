@@ -4,8 +4,9 @@
 
 ## Requirements
 
-- Xcode 26 or later and Swift 6.2+ (`-default-isolation MainActor`). The release was built on Apple Silicon with macOS 27.0.1 and Swift 6.4.
+- Xcode 26 or later and Swift 6.2+ (`-default-isolation MainActor`). Version 1.3.0 was built on Apple Silicon with macOS 27.2, Xcode 27.1 and Swift 6.4.
 - Python 3.14 and the pinned dependencies in `requirements.txt`. Version 1.0.0 uses the official python.org 3.14.7 runtime and binary wheels.
+- The build resolves SDKROOT from the selected Xcode to avoid mixing its compiler with a newer Command Line Tools SDK.
 - The build machine must match the target CPU architecture. The published 1.0.0 DMG is arm64 only; Intel is untested.
 - Normal builds fetch official Sparkle 2.10.0 from the URL in `release.json`, verify its pinned SHA-256 and embed the framework. Build-time network access is required on the first run.
 
@@ -29,7 +30,7 @@ Version, monotonically increasing build number, minimum OS and public update fee
 
 Default local builds are ad-hoc signed. Supply a configured Developer ID Application identity through the local `ANDROP_SIGN_IDENTITY` environment variable for a release. Real signatures use hardened runtime and secure timestamps. Certificates, identity strings, team identifiers and private keys must remain outside tracked files.
 
-The default bundle identifier is `org.androp.mac`; `ANDROP_BUNDLE_ID` can override it locally. Preserve the distributed identifier across updates. Changing it can reset permissions, preferences, login items and extension registration.
+The distributed bundle identifier is `com.takeruf.anDrop`, fixed in `release.json`; `ANDROP_BUNDLE_ID` can override it for isolated local tests. Preserve the distributed identifier across updates. Changing it can reset permissions, preferences, login items and extension registration.
 
 Developer ID certificates identify the signer. Anonymous Git metadata does not anonymize a signed app. Inspect the concrete signed artifact and resolve any publication/privacy constraint before uploading it.
 

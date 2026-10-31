@@ -24,6 +24,11 @@ final class FileAccess {
     private var files: [URL: URL] = [:]
     private var destinationScope: URL?
 
+    static func needsDestinationGrant(_ url: URL) -> Bool {
+        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        return url.resolvingSymlinksInPath().path != downloads.resolvingSymlinksInPath().path
+    }
+
     func retain(_ url: URL) {
         guard files[url] == nil else { return }
         if url.startAccessingSecurityScopedResource() { files[url] = url }
@@ -79,7 +84,7 @@ final class FileAccess {
             } catch { url.stopAccessingSecurityScopedResource(); throw error }
         }
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-        if let path = defaults.string(forKey: "destination"), URL(fileURLWithPath: path).resolvingSymlinksInPath() != downloads.resolvingSymlinksInPath() {
+        if let path = defaults.string(forKey: "destination"), Self.needsDestinationGrant(URL(fileURLWithPath: path)) {
             // Pre-sandbox custom-folder path strings do not grant access.
             throw CocoaError(.fileReadNoPermission)
         }

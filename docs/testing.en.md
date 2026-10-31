@@ -419,3 +419,16 @@ Physical Huawei receive testing found two sandbox incompatibilities: `lsof` insp
 Settings → Check for Updates reached Sparkle's current-version confirmation from the signed public feed. That proves checking, not installation/relaunch. The installed binary and its trust settings were retained; comparison sends added test history. Temporary extension elections were restored after the Finder test. Local evidence is under ignored `build/sandbox-device-results.json` and `build/sandbox-*-tests.log`.
 
 Before promotion, actual Photos/Live Photo Share invocation, production identity/settings migration, login-item registration and a sandbox-to-sandbox Sparkle installation remain unverified. See [App Sandbox](sandbox.en.md).
+
+
+## 1.3.0 release validation (2026-10-31)
+
+The release candidate uses the existing distributed bundle identifier `com.takeruf.anDrop`, now fixed in release.json and checked during packaging. Its signed artifact must include the exact support-data migration manifest; isolated builds must omit it. The build selects the SDK belonging to the active Xcode rather than an unrelated shell SDKROOT.
+
+299 Python tests and 48 Swift tests passed. The signed sandbox probe passed 20 checks, including native default-Downloads classification and inherited static Downloads write access. Nine additional checks launched a non-sandboxed legacy fixture through Launch Services, waited for durable preferences, then launched its sandboxed successor with the same identity. Support data, trust settings, history, sharing name and the default destination were retained; legacy custom destinations required reselection. This test uses only uniquely named synthetic app data and preferences.
+
+Updater testing exposed a first-launch hang while issuing an unnecessary bookmark for Downloads. Downloads now uses its inherited static entitlement; both Swift and Python classify the same canonical path, while other save folders still require grants. Actual application startup and its Settings window passed after this fix.
+
+A separately identified sandbox copy of the production host updated from build12999 to13000 using the real Sparkle UI, a locally served signed feed and signed ZIP. Download, extraction, install and relaunch completed. The installed executable matched the target, and its signature and sandbox checks passed. This is sandbox-to-sandbox installer evidence with isolated metadata; public-feed and installed-production verification are recorded separately after publication. Synthetic native Live Photo conversion/send/receive tests also passed without modifying a Photos library.
+
+Actual Photos/Live Photo Share, OPPO Find X9 Pro on the sandbox release, macOS14 hardware and clean-install login registration remain outside the verified scope.

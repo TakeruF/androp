@@ -23,6 +23,8 @@ struct SandboxChecks {
         let denied = URL(fileURLWithPath: request["denied"] as! String)
         var checks = ["host_container": NSHomeDirectory().contains("/Library/Containers/"),
                       "host_denied": (try? Data(contentsOf: denied)) == nil]
+        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        checks["native_default_downloads_static"] = !FileAccess.needsDestinationGrant(URL(fileURLWithPath: downloads.path))
         let folder: URL
         if request["restore"] as? Bool == true {
             folder = try access.restoreDestination()

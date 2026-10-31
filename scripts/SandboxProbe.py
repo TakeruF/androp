@@ -35,6 +35,15 @@ async def main():
         checks['child_denied'] = True
     service = engine.Engine()
     with patch.object(engine, 'emit') as emit:
+        await service.command({'command': 'configure', 'destination': str(Path.home() / 'Downloads')})
+        checks['static_downloads_configured'] = not any(c.args == ('error',) for c in emit.call_args_list)
+    default_file = Path.home() / 'Downloads' / ('anDrop-Sandbox-QA-' + __import__('uuid').uuid4().hex + '.txt')
+    try:
+        default_file.write_bytes(b'static Downloads entitlement')
+        checks['static_downloads_write'] = default_file.read_bytes() == b'static Downloads entitlement'
+    finally:
+        default_file.unlink(missing_ok=True)
+    with patch.object(engine, 'emit') as emit:
         await service.command({'command': 'configure', 'destination': request['destination'],
                                'destination_bookmark': request['destination_bookmark']})
         checks['engine_configured'] = not any(c.args == ('error',) for c in emit.call_args_list)

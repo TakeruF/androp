@@ -756,7 +756,8 @@ class Engine:
                 self.trusted_ids={identifier for value in obj.get('trusted_ids',[]) if (identifier:=valid_trust_identifier(value))}
                 if 'destination' in obj:
                     access = BookmarkAccess([obj['destination_bookmark']], [obj['destination']]) if 'destination_bookmark' in obj else None
-                    if os.environ.get('ANDROP_SANDBOXED') == '1' and access is None:
+                    if (os.environ.get('ANDROP_SANDBOXED') == '1' and access is None
+                            and Path(obj['destination']).resolve() != (Path.home() / 'Downloads').resolve()):
                         raise ValueError('Save folder access is unavailable')
                     if self.destination_access: self.destination_access.close()
                     self.destination_access=access
