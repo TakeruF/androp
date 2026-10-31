@@ -48,6 +48,8 @@ The official Sparkle tools generate signed update archives and a signed appcast.
 
 `build.py --app-store` excludes Sparkle, its feed and updater UI. This is a build switch for future store distribution, not a claim of App Store approval or complete store compliance.
 
+Both distribution configurations set `LSApplicationCategoryType` to `public.app-category.utilities` (Utilities) and show Settings → Privacy Policy in the app language. The public policy is at `https://takeruf.com/en/projects/androp/privacy` (Chinese: `/zh/projects/androp/privacy`). When preparing an App Store listing, use that policy URL and select Utilities as the primary category in App Store Connect; the build does not change the listing automatically. The source policies are `docs/privacy.en.md` and `docs/privacy.md`; keep their copies in `TakeruF/me` (`src/content/androp/privacy.en.md` and `privacy.zh.md`) and the Japanese/Korean translations in sync when data handling changes.
+
 ## Notarization and DMG packaging
 
 The release helper never publishes. It keeps public assets separate from private signing/notarization records. Set `ANDROP_SIGN_IDENTITY` locally first, then run:

@@ -37,6 +37,8 @@ build/dependencies/Sparkle-2.10.0/bin/generate_keys --account org.example.your-a
 
 Sparkle官方工具签更新包及appcast，要求feed签名与解包前验证。feed为公开GitHub latest资产appcast.xml。自动检查／安装默认开，保留既有选择；验证下载后无传输即安装重启，有传输则结束后，前后通知。关闭自动安装时定期检查用gentle reminder通知，点击开更新对话框。界面跟应用语言。`build.py --app-store`排除Sparkle/feed/更新UI，仅未来商店构建开关，不代表审核／合规完成。
 
+两种分发构建均将 `LSApplicationCategoryType` 设为 `public.app-category.utilities`（工具），并在“设置 → 隐私政策”中按应用语言打开公开政策。英语地址为 `https://takeruf.com/en/projects/androp/privacy`，中文为 `/zh/projects/androp/privacy`。准备 App Store 页面时，使用此政策 URL，并在 App Store Connect 选择“工具”为主类别；构建不会自动修改商店页面。源文档为 `docs/privacy.en.md` 和 `docs/privacy.md`。数据处理变化时，同步更新 `TakeruF/me` 中的英语／中文副本（`src/content/androp/privacy.en.md` 与 `privacy.zh.md`）及日语／韩语翻译。
+
 ## 公证与DMG
 
 helper不会发布，public资产与private签名／公证记录分离。先本地设ANDROP_SIGN_IDENTITY：
