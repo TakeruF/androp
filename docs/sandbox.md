@@ -14,7 +14,8 @@
 不使用临时文件系统例外、App Group 或照片图库权限。
 
 共享扩展在提供方回调仍有效时复制文件，通过 `androp://share?bookmark=…` 传递
-隐式安全作用域书签；不再接受仅含路径的共享链接。主程序保留选择／重试所需的访问权，
+隐式安全作用域书签；不再接受仅含路径的共享链接。扩展明确打开其所属主程序，
+不依赖该 URL scheme 的系统默认处理应用。主程序保留选择／重试所需的访问权，
 通过现有私有 JSON-lines 管道给已启动的引擎传递新书签。每个发送操作独立持有并释放权限，
 取消时也释放。转换工具通过标准输入获得自己的输入／输出目录书签；引擎获得的动态权限
 不会自动传给转换工具。华为发送子进程使用应用容器内的文件快照。
@@ -27,6 +28,10 @@
 不再读取系统 MIME 配置。生产 Bundle ID 的构建包含容器迁移清单，迁移
 `Library/Application Support/anDrop`（包括华为身份密钥）；偏好设置由 macOS 单独迁移。
 其他 Bundle ID 的测试构建不包含此清单，避免迁移已安装版本的数据。
+
+华为接收的控制、预览和文件通道使用引擎直接持有的 TCP socket，以内核返回的连接来源
+核对当前发现的设备，不再通过 `lsof` 检查 `nc` 子进程。保存时保留 macOS 自动添加的
+隔离属性；仅在缺少时添加，无法标记则不发布文件，不清除或降低系统隔离标记。
 
 ## 更新与产物检查
 
@@ -53,15 +58,19 @@ Developer ID 签名通过本地 `ANDROP_SIGN_IDENTITY` 配置。UI-only 构建�
 `ANDROP_ENGINE_APP=/path/to/anDrop.app` 复用完整引擎；Python 修改必须完整重建。
 
 `test-sandbox.py` 创建独立标识的测试应用，仅使用虚拟文件和合成视频。子进程先于动态
-授权启动；检查主／子进程对未授权文件的实际访问拒绝、书签转授、生产 ZIP 解包保存、
-构建后的转换工具及第二次启动的保存目录恢复。测试不访问个人照片图库，不连接手机。
+授权启动；检查主／子进程对未授权文件的实际访问拒绝、书签转授、生产 ZIP／华为保存及
+隔离属性、TCP 来源及读写、构建后的转换工具及第二次启动的保存目录恢复。
+测试不访问个人照片图库，不连接手机。
 临时构建与素材会移除；由 macOS 管理的唯一测试容器保持原状。
 
-合入正常发行前仍需验证：OPPO／华为双向传输与内容哈希、Finder／照片的实际共享入口、
+OPPO／华为基本双向传输、内容哈希及 Finder 实际共享入口已通过，详见
+[实机验证](testing.md#app-sandbox-分支验证2026-10-31)。
+合入正常发行前仍需验证：照片的实际共享入口、
 保存目录授权失效与重选、已安装版本的身份／设置迁移、登录项，以及完整 Sparkle 更新重启。
 合成测试不能证明这些真实流程。
 
 参考：[Apple 文件访问](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)、
 [沙盒继承](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html)、
 [容器迁移](https://developer.apple.com/documentation/security/migrating-your-app-s-files-to-its-app-sandbox-container)、
+[自动隔离属性](https://developer.apple.com/forums/thread/811450)、
 [Sparkle 沙盒配置](https://sparkle-project.github.io/documentation/sandboxing/)。

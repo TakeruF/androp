@@ -24,6 +24,8 @@ import time
 import uuid
 from network_routes import interfaces, private_ipv4
 from motion_photos import prepare_send, materialize_received
+from huawei_tcp import TCPListener
+from received_files import mark_download
 
 # This Mac's own Huawei Share name (RSA-2048, owner-only). Phones remember it
 # after a transfer, which "Visible to devices shared with" requires. It is not
@@ -214,7 +216,7 @@ def place_exclusive(source, destination):
 
 
 def publish_files(staging, destination, stopped=None):
-    """Move completed files directly into Downloads, retaining existing names."""
+    """Publish completed files in the granted folder, retaining existing names."""
     destination = Path(destination).resolve(strict=True)
     if not destination.is_dir():
         raise ValueError('save folder unavailable')
@@ -226,14 +228,7 @@ def publish_files(staging, destination, stopped=None):
             if not path.is_file() or path.is_symlink():
                 raise ValueError('invalid staged receive file')
             data = path.read_bytes()
-            # Same quarantine semantics as the existing archive receiver.
-            import ctypes
-            libc = ctypes.CDLL(None, use_errno=True)
-            setter = libc.setxattr
-            setter.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
-            attribute = f'0083;{int(time.time()):x};anDrop;'.encode()
-            if setter(os.fsencode(path), b'com.apple.quarantine', attribute, len(attribute), 0, 0) != 0:
-                raise OSError(ctypes.get_errno(), 'could not mark received file')
+            mark_download(path)
             for attempt in range(10000):
                 if stopped is not None and stopped.is_set():
                     raise ValueError('receive cancelled')
@@ -459,7 +454,6 @@ class HuaweiRuntime:
         import select
         return bool(select.select([self.listener.stdout], [], [], .1)[0])
     async def open_listener(self):
-        import socket
         from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
         self.receiver = protocol('huawei-receive-probe')
@@ -476,11 +470,9 @@ class HuaweiRuntime:
         public = self.private.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
         self.identity = self.receiver.auth.protocol_v2_identity(public)
         self.node_id = self.receiver.auth.meta_node_id(public)
-        with socket.socket() as reservation:
-            reservation.bind((self.local.address, 0)); self.port = reservation.getsockname()[1]
         self.children = Processes()
-        self.listener = subprocess.Popen(['/usr/bin/nc', '-l', self.local.address, str(self.port)], stdin=subprocess.PIPE,
-                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        self.listener = TCPListener(self.local.address)
+        self.port = self.listener.port
         self.children.append(self.listener)
     async def approval(self, session, result):
         if self.engine.busy or not self.engine.huawei_enabled:
@@ -491,12 +483,12 @@ class HuaweiRuntime:
     async def receive(self, process, children):
         # Kernel TCP source must be a currently discovered LAN peer; payload fields
         # cannot redirect this session to a different host.
-        connection = await asyncio.to_thread(subprocess.run,
-            ['/usr/sbin/lsof', '-nP', '-a', '-p', str(process.pid), '-iTCP', '-sTCP:ESTABLISHED', '-Fn'],
-            capture_output=True, text=True, timeout=3)
-        hosts = [line.split('->', 1)[1].rsplit(':', 1)[0] for line in connection.stdout.splitlines() if line.startswith('n') and '->' in line]
+        try:
+            host = process.peer_address()
+        except OSError:
+            children.close(); return
         self.visible_peers()
-        candidates = [p for p in self.peers.values() if hosts == [p['host']]]
+        candidates = [p for p in self.peers.values() if host == p['host']]
         if not candidates or self.engine.busy:
             self.emit('diagnostic', detail='huawei_incoming_rejected', phase='busy' if self.engine.busy else 'undiscovered_peer')
             children.close(); return
@@ -522,7 +514,7 @@ class HuaweiRuntime:
                 batch = t.batch_files.IncomingBatch(result['accepted_file_count'], result['accepted_total_bytes'])
                 self.channels.receive(t, process, device_hash, key, self.local.address, peer['host'], children,
                     Path(folder) / 'staging', result, save, batch, publish_files=lambda staging, _: publish_files(staging, destination, children.stopped),
-                    display_name=self.engine.name, node_id=self.node_id)
+                    display_name=self.engine.name, node_id=self.node_id, listener_factory=TCPListener)
             self.receiver.inspect_offer(process, raw, result, save, private=self.private, receive=receive_files,
                                         accept_bounded_files=True, approve=approve,
                                         identify=lambda public: session.update(device_identifier='huawei-key:' + hashlib.sha256(public).hexdigest()))

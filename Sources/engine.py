@@ -240,12 +240,8 @@ async def unpack(archive_path, destination, count, total, progress):
                         out.flush();os.fsync(out.fileno())
                     if n!=entry.file_size: raise ValueError('Incomplete file')
                     # Mark downloaded content; opening remains an explicit user action.
-                    import ctypes
-                    libc=ctypes.CDLL(None)
-                    attribute=f'0083;{int(time.time()):x};anDrop;'.encode()
-                    setter=libc.setxattr
-                    setter.argtypes=[ctypes.c_char_p,ctypes.c_char_p,ctypes.c_void_p,ctypes.c_size_t,ctypes.c_uint32,ctypes.c_int]
-                    setter(os.fsencode(tmp),b'com.apple.quarantine',attribute,len(attribute),0,0)
+                    from received_files import mark_download
+                    mark_download(tmp)
                     for attempt in range(10000):
                         stem=Path(name).stem;suffix=Path(name).suffix
                         final=destination/(name if not attempt else f'{stem} ({attempt}){suffix}')
