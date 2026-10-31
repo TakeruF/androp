@@ -8,7 +8,7 @@
 
 anDrop 是一个常驻 macOS 菜单栏的文件共享应用，正式支持 **互传联盟** 生态与 **华为分享**。无需提前连接厂商电脑端应用，也无需在手机上额外安装应用、登录账号或连接 USB。文件通过本地网络传输。**两台设备需要开启蓝牙，并连接到同一个 Wi-Fi（同一局域网）。**
 
-**[下载 anDrop](https://github.com/TakeruF/androp/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md)
+**[下载 anDrop](https://github.com/TakeruF/androp/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md) · [隐私政策](https://takeruf.com/zh/projects/androp/privacy)
 
 **1.3.0：App Sandbox。** 主程序和传输工具在沙盒内运行，通过授权文件和保存目录完成共享；修复华为接收及 Finder 共享的沙盒兼容性。升级后，自选保存目录可能需要重新选择。详见 [1.3.0 更新说明](docs/releases/1.3.0.md)。
 

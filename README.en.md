@@ -8,7 +8,7 @@
 
 anDrop is a macOS menu bar app that officially supports the **互传联盟 (Mutual Transfer Alliance)** ecosystem and **Huawei Share**. No prior connection to a vendor desktop app, extra phone app, account or USB cable is needed. File transfers stay on the local network. **Both devices need Bluetooth enabled and must connect to the same Wi-Fi network (the same LAN).**
 
-**[Download anDrop](https://github.com/TakeruF/androp/releases/latest)** · [Usage and troubleshooting](docs/usage.en.md) · [Compatibility](docs/compatibility.en.md)
+**[Download anDrop](https://github.com/TakeruF/androp/releases/latest)** · [Usage and troubleshooting](docs/usage.en.md) · [Compatibility](docs/compatibility.en.md) · [Privacy policy](https://takeruf.com/en/projects/androp/privacy)
 
 **1.3.0: App Sandbox.** The app and transfer tools run in a sandbox with explicit file and save-folder grants. Huawei receive and Finder Share work across the sandbox boundaries. Custom receive folders may need reselection after upgrading. See the [1.3.0 release notes](docs/releases/1.3.0.en.md).
 
