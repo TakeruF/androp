@@ -17,7 +17,9 @@ No temporary filesystem exception, App Group or Photos library entitlement is us
 
 After copying provider-owned files inside its callback, the Share extension sends
 implicit URL bookmarks through `androp://share?bookmark=…`. Raw path-only handoffs
-are rejected. The host retains the granted URLs while selected or available for
+are rejected. The extension opens its own containing app explicitly rather than
+using the system's default handler for the shared URL scheme. The host retains
+the granted URLs while selected or available for
 retry. It sends fresh implicit bookmarks over the existing private JSON-lines pipe
 to the already-running engine. Each outgoing operation retains and releases its
 own grants, including cancellation. The converter receives its own input/destination
@@ -36,6 +38,12 @@ configuration. The production bundle includes a container migration manifest for
 `Library/Application Support/anDrop`, preserving the Huawei identity location.
 macOS migrates the application's preferences separately. Builds with an alternate
 Bundle ID omit that manifest so testing does not migrate installed-app data.
+
+Huawei receive control, preview and file channels use owned TCP sockets. Peer
+checks use the accepted socket's kernel source address, retaining the discovered
+peer restriction without inspecting an `nc` child through `lsof`. Receiving keeps
+macOS's automatically applied quarantine metadata; it adds quarantine when absent
+and fails publication if marking fails. It never clears or downgrades OS flags.
 
 ## Updates and artifact checks
 
@@ -69,17 +77,20 @@ Python changes require a full rebuild.
 `test-sandbox.py` builds a uniquely identified test app, uses dummy files and
 synthetic video, and launches its child before obtaining dynamic file grants.
 It checks actual kernel denial of an unselected file in host and child, bookmark
-relay, production ZIP publication into a custom folder, the built native
-converter, and persistent destination restoration in a second process. It does
+relay, production ZIP/Huawei publication and quarantine in a custom folder,
+owned TCP peer/read/write behavior, the built native converter, and persistent
+destination restoration in a second process. It does
 not access a personal Photos library or contact a phone. Temporary build/fixture
 files are removed; macOS-owned containers with unique test IDs remain untouched.
 
-Before promoting this branch, verify OPPO and Huawei send/receive with content
-hashes, actual Finder/Photos Share invocation, save-folder revocation/reselection,
+Basic OPPO/Huawei round trips with content hashes and actual Finder Share passed;
+see [physical verification](testing.en.md#app-sandbox-branch-validation-2026-10-31).
+Before promoting this branch, verify actual Photos Share invocation, save-folder revocation/reselection,
 identity/settings migration from the installed version, login-item behavior and
 a complete Sparkle install/relaunch. Synthetic checks do not prove these flows.
 
 References: [Apple file access](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox),
 [sandbox inheritance](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html),
 [container migration](https://developer.apple.com/documentation/security/migrating-your-app-s-files-to-its-app-sandbox-container),
+[automatic quarantine](https://developer.apple.com/forums/thread/811450),
 [Sparkle sandbox integration](https://sparkle-project.github.io/documentation/sandboxing/).

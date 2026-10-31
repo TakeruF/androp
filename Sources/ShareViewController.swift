@@ -88,7 +88,12 @@ import UniformTypeIdentifiers
         var components = URLComponents(); components.scheme = "androp"; components.host = "share"
         do { components.queryItems = try urls.map { URLQueryItem(name: "bookmark", value: try FileBookmarks.encode($0)) } }
         catch { titleLabel.stringValue = L("Could not grant access to the shared files. Share them again.", "无法授予共享文件的访问权限，请重新共享。"); return }
-        guard let url = components.url, NSWorkspace.shared.urlForApplication(toOpen: url) != nil,
+        let extensionBundle = Bundle(for: ShareViewController.self)
+        let application = extensionBundle.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        // Send grants only to this extension's containing app. Another installed
+        // build (or another URL-scheme handler) must not receive the bookmarks.
+        guard let url = components.url, extensionBundle.bundleURL.pathExtension == "appex",
+              application.pathExtension == "app",
               let context = extensionContext else { titleLabel.stringValue = L("Open anDrop once, then try sharing again.", "请先启动 anDrop，然后重试共享。"); return }
         // Dismissing the host's share sheet restores its focus. Finish that
         // handoff before opening our recipient window, otherwise Finder can
@@ -101,7 +106,11 @@ import UniformTypeIdentifiers
                 return
             }
             Task { @MainActor in
-                NSWorkspace.shared.open(url)
+                NSWorkspace.shared.open([url], withApplicationAt: application, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                    if error != nil {
+                        for copy in copies { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+                    }
+                }
             }
         }
     }

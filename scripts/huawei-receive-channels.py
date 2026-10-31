@@ -229,7 +229,7 @@ def receive_dfile(t, process, key, destination, result, save, expected=None):
     raise ValueError('too many DFile frames')
 
 
-def receive(t, process, device_hash, session_key, source, peer, processes, destination, result, save, expected=None, cancel_after_preview=False, publish_files=None, display_name='anDrop LAN Probe', node_id=None):
+def receive(t, process, device_hash, session_key, source, peer, processes, destination, result, save, expected=None, cancel_after_preview=False, publish_files=None, display_name='anDrop LAN Probe', node_id=None, listener_factory=None):
     expected = expected or FixtureSpec()
     a = t.auth
     def send(packet, target=process):
@@ -242,6 +242,10 @@ def receive(t, process, device_hash, session_key, source, peer, processes, desti
     def encoded(value):
         return json.dumps(value, separators=(',', ':')).encode() + b'\0'
     def listener():
+        if listener_factory is not None:
+            child = listener_factory(source)
+            processes.append(child)
+            return child, child.port
         with socket.socket() as reservation:
             reservation.bind((source, 0))
             port = reservation.getsockname()[1]
@@ -250,6 +254,10 @@ def receive(t, process, device_hash, session_key, source, peer, processes, desti
         processes.append(child)
         return child, port
     def check_peer(child):
+        if listener_factory is not None:
+            if child.peer_address() != peer:
+                raise ValueError('incoming data peer differs from selected phone')
+            return
         r = subprocess.run(['/usr/sbin/lsof', '-nP', '-a', '-p', str(child.pid), '-iTCP', '-sTCP:ESTABLISHED', '-Fn'], capture_output=True, text=True, timeout=3)
         peers = [line.split('->', 1)[1].rsplit(':', 1)[0] for line in r.stdout.splitlines() if line.startswith('n') and '->' in line]
         if peers != [peer]:

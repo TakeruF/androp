@@ -205,9 +205,8 @@ class ApprovalIntegration(unittest.IsolatedAsyncioTestCase):
         runtime.receiver = SimpleNamespace(transfer=SimpleNamespace(auth=SimpleNamespace(read_frame=lambda *a: b'')), inspect_offer=offer)
         with tempfile.TemporaryDirectory() as folder:
             engine.destination = folder
-            lsof = SimpleNamespace(stdout=f'p1\nn{LOCAL.address}:5555->{HOST}:40000\n')
-            with patch('huawei_runtime.subprocess.run', return_value=lsof), patch('engine.emit'), patch.object(runtime, 'approval', side_effect=approval):
-                await runtime.receive(SimpleNamespace(pid=1), huawei_runtime.Processes())
+            with patch('engine.emit'), patch.object(runtime, 'approval', side_effect=approval):
+                await runtime.receive(SimpleNamespace(peer_address=lambda: HOST), huawei_runtime.Processes())
         self.assertEqual(prompts, [('Apple', 'computer')])
 
     async def test_configuration_retains_only_valid_persistent_huawei_keys(self):
@@ -362,14 +361,12 @@ class ApprovalIntegration(unittest.IsolatedAsyncioTestCase):
         runtime.channels = SimpleNamespace()
         with tempfile.TemporaryDirectory() as folder:
             engine.destination = folder
-            lsof = SimpleNamespace(stdout=f'p1\nn{LOCAL.address}:5555->{HOST}:40000\n')
             ticks = []
             async def ticker():
                 while True: ticks.append(time.monotonic()); await asyncio.sleep(.05)
             tick = asyncio.create_task(ticker())
-            with patch('huawei_runtime.subprocess.run', return_value=lsof), \
-                 patch('huawei_runtime.remove_stale_staging', side_effect=lambda _: time.sleep(.5)), patch('engine.emit'):
-                await runtime.receive(SimpleNamespace(pid=1), huawei_runtime.Processes())
+            with patch('huawei_runtime.remove_stale_staging', side_effect=lambda _: time.sleep(.5)), patch('engine.emit'):
+                await runtime.receive(SimpleNamespace(peer_address=lambda: HOST), huawei_runtime.Processes())
             tick.cancel()
             self.assertGreaterEqual(len(ticks), 6)  # the loop kept running during the 0.5 s stall
             self.assertEqual(list(Path(folder).iterdir()), [])  # staging removed afterwards
@@ -441,7 +438,7 @@ class PersistentIdentity(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([p.name for p in self.path.parent.iterdir()], ['identity.pem'])
     async def listener_identity(self):
         engine = Engine(); runtime = engine.huawei; runtime.identity_path = self.path; runtime.local = LOCAL
-        with patch('huawei_runtime.subprocess.Popen'), patch('socket.socket'), patch.object(runtime, 'emit') as emitted:
+        with patch('huawei_runtime.TCPListener'), patch.object(runtime, 'emit') as emitted:
             await runtime.open_listener()
             first = (runtime.identity, runtime.node_id)
             await runtime.open_listener()  # A new listener after every session keeps the name.
@@ -605,7 +602,7 @@ class RuntimeRecovery(unittest.IsolatedAsyncioTestCase):
 
 
 class RuntimeShutdown(unittest.TestCase):
-    def test_eof_and_sigterm_reap_owned_loopback_listener(self):
+    def test_eof_and_sigterm_close_owned_loopback_listener(self):
         sources = str(Path(__file__).resolve().parents[1] / 'Sources')
         code = '''import asyncio, ipaddress, sys
 from types import SimpleNamespace
@@ -615,6 +612,12 @@ from engine import Engine
 huawei_runtime.interfaces=lambda:[SimpleNamespace(interface='en0',address='127.0.0.1',network=ipaddress.ip_network('127.0.0.0/8'))]
 from pathlib import Path
 huawei_runtime.IDENTITY=Path(sys.argv[2])
+import json
+open_listener=huawei_runtime.HuaweiRuntime.open_listener
+async def report_listener(self):
+    await open_listener(self)
+    print(json.dumps({'event':'test_listener','port':self.port}),flush=True)
+huawei_runtime.HuaweiRuntime.open_listener=report_listener
 asyncio.run(Engine().run())
 '''
         identity = tempfile.TemporaryDirectory(); self.addCleanup(identity.cleanup)
@@ -624,19 +627,24 @@ asyncio.run(Engine().run())
                 process = subprocess.Popen([sys.executable, '-u', '-c', code, sources, str(Path(identity.name) / 'id.pem')], stdin=subprocess.PIPE,
                                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 try:
-                    deadline, ready = time.monotonic() + 10, False
+                    deadline, ready, port = time.monotonic() + 10, False, None
                     while time.monotonic() < deadline:
                         if select.select([process.stdout], [], [], .5)[0]:
                             value = json.loads(process.stdout.readline())
+                            if value.get('event') == 'test_listener': port = value['port']
                             if value.get('event') == 'huawei_discovery' and value.get('enabled'):
                                 ready = True; break
                     self.assertTrue(ready)
+                    self.assertIsNotNone(port)
                     children = subprocess.run(['/usr/bin/pgrep', '-P', str(process.pid)], capture_output=True, text=True).stdout.split()
-                    self.assertTrue(children)
+                    # Receive listeners are now owned sockets, with no nc child.
                     if stop == 'host_gone': process.stdout.close(); process.stdin.close()
                     elif stop == 'eof': process.stdin.close()
                     else: process.terminate()
                     process.wait(timeout=6)
+                    import socket
+                    with self.assertRaises(ConnectionRefusedError):
+                        socket.create_connection(('127.0.0.1', port), timeout=1)
                     for child in children:
                         with self.assertRaises(ProcessLookupError): os.kill(int(child), 0)
                 finally:
