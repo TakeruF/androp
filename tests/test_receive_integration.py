@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 anDrop contributors
 """Actual TLS/WebSocket/HTTP transfers; only the BLE transport is substituted."""
-import base64,asyncio,datetime,hashlib,io,json,plistlib,socket,ssl,sys,tempfile,unittest,uuid,zipfile
+import base64,asyncio,contextlib,datetime,hashlib,io,json,plistlib,socket,ssl,sys,tempfile,unittest,uuid,zipfile
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'Sources'))
-from aiohttp import web
+from aiohttp import web,ClientSession,ClientConnectorError
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes,serialization
@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from engine import Engine,wire,parse_wire,sender_identifier,Keys
 
 class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False,auto_accept=False,binary_control=False):
+    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False,auto_accept=False,binary_control=False,unknown_connect_failure=False,delayed_close=False):
         files=files or {'日本語.txt':b'synthetic file\n','empty.bin':b''}
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);destination=root/'received';destination.mkdir()
@@ -29,6 +29,7 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
             engine.trusted_ids={sender_identifier('test-sender-unique-device')} if allowed else {sender_identifier('another-device-id')}
             session={'id':uuid.uuid4().hex,'direction':'receive','central':str(uuid.uuid4()).upper(),'count':len(files),'peer':'Same account name'};engine.session=session
             downloads=[];events=[];udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);udp.bind(('127.0.0.1',0));udp.setblocking(False);udp_port=udp.getsockname()[1]
+            completed=asyncio.Event();close_gate=asyncio.Event()
             async def websocket(request):
                 ws=web.WebSocketResponse();await ws.prepare(request)
                 async def control(value):
@@ -42,7 +43,10 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 async for msg in ws:
                     if msg.type==web.WSMsgType.TEXT:
                         kind,index,name,p=parse_wire(msg.data)
-                        if name=='status':await ws.send_str(wire('ack',index,name));break
+                        if name=='status':
+                            await ws.send_str(wire('ack',index,name))
+                            if delayed_close:await close_gate.wait()
+                            break
                 return ws
             async def download(request):
                 downloads.append(request.query.get('taskId'));return web.Response(body=zipped.getvalue(),content_type='application/zip')
@@ -56,12 +60,20 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         next(iter(engine.decisions.values())).set_result(decision);return
                     await asyncio.sleep(.01)
             approval=asyncio.create_task(accept())
+            original_connect=ClientSession.ws_connect;connect_attempts=0
+            async def connect(client,*args,**kwargs):
+                nonlocal connect_attempts
+                connect_attempts+=1
+                if connect_attempts==1:raise ClientConnectorError(None,OSError('synthetic socket failure'))
+                return await original_connect(client,*args,**kwargs)
             def observe(event,**values):
                 events.append({'event':event,**values})
+                if values.get('state')=='complete':completed.set()
                 if cancel_midstream and values.get('state')=='transferring' and values.get('completed',0)>0:
                     asyncio.current_task().cancel()
             try:
-                with patch('engine.emit',side_effect=observe):
+                with patch('engine.emit',side_effect=observe),\
+                     patch.object(ClientSession,'ws_connect',connect) if unknown_connect_failure else contextlib.nullcontext():
                     if replace_route or udp_conflict:
                         session['keys']=Keys();session['keys'].derive(Keys().public);session['lan_hint']='127.0.0.1'
                         udp.close();udp_port=port+1
@@ -83,7 +95,20 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         terminals=[e['state'] for e in events if e.get('state') in ('failed','cancelled','complete','declined')]
                         self.assertEqual(len(terminals),1,'Superseded connect attempt must not end the transfer')
                     else:
-                        await asyncio.wait_for(engine.receive(session,'127.0.0.1',port,udp),8)
+                        if delayed_close:
+                            receive=asyncio.create_task(engine.receive(session,'127.0.0.1',port,udp))
+                            await asyncio.wait_for(completed.wait(),3)
+                            self.assertFalse(receive.done(),'Fixture must hold the old close handshake open')
+                            self.assertFalse(engine.busy,'Completed receive must publish idle before close finishes')
+                            self.assertIsNone(engine.session)
+                            self.assertEqual(next(e for e in reversed(events) if e['event']=='ble_read')['value']['state'],0)
+                            next_session={'id':'new-offer','direction':'receive'}
+                            engine.session=next_session;next_keys=engine.keys
+                            close_gate.set();await asyncio.wait_for(receive,3)
+                            self.assertIs(engine.session,next_session,'Old cleanup must preserve a newer offer')
+                            self.assertIs(engine.keys,next_keys)
+                            engine.session=None
+                        else:await asyncio.wait_for(engine.receive(session,'127.0.0.1',port,udp),8)
                 auto_approved=auto_accept and allowed and sender=='test-sender-unique-device'
                 should_succeed=(not trusted or (allowed and sender=='test-sender-unique-device' and not revoked)) and (auto_approved or decision) and not disabled and not malformed_count
                 if cancel_midstream:
@@ -103,9 +128,20 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(session.get('device_identifier'),sender_identifier(sender))
                 return events
             finally:
+                close_gate.set()
                 approval.cancel();await asyncio.gather(approval,return_exceptions=True);await runner.cleanup()
 
     async def test_everyone_multiple_unicode_and_empty_files(self):await self.transfer()
+    async def test_completed_receive_is_idle_while_old_peer_delays_close(self):
+        events=await self.transfer(delayed_close=True)
+        self.assertEqual(sum(e.get('state')=='complete' for e in events),1)
+        self.assertFalse(any(e.get('state')=='failed' for e in events))
+    async def test_unknown_connection_error_recovers_before_one_download(self):
+        events=await self.transfer(unknown_connect_failure=True)
+        self.assertEqual([e['attempt'] for e in events if e.get('detail')=='receive_connect_attempt'],[1,2])
+        self.assertTrue(any(e.get('connection_issue')=='errno_unavailable' for e in events))
+        self.assertEqual(sum(e.get('detail')=='receive_download_start' for e in events),1)
+        self.assertFalse(any(e.get('state')=='failed' for e in events))
     async def test_trusted_sender_with_new_bluetooth_address(self):await self.transfer(trusted=True)
     async def test_same_name_untrusted_sender_never_downloads(self):await self.transfer(trusted=True,allowed=False)
     async def test_changed_protocol_id_does_not_inherit_trust(self):await self.transfer(trusted=True,sender='different-device-id')

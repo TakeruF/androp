@@ -11,7 +11,7 @@ from file_types import offer_mime_type
 from sandbox_files import BookmarkAccess
 from motion_photos import MotionPhotoError, prepare_send, materialize_received
 from network_routes import lan_addresses, private_ipv4, direct_local_address, interface_for_address, bind_interface, lan_socket, client_socket_factory
-from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, Fingerprint, WSMsgType, ClientConnectionError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
+from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, Fingerprint, WSMsgType, ClientConnectionError, ClientConnectorError, ClientSSLError, ServerFingerprintMismatch, WSServerHandshakeError
 from bleak import BleakClient, BleakScanner
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -133,7 +133,7 @@ def connection_error_fields(error):
 
     aiohttp wraps the original OSError in os_error, sometimes without errno.
     Inspect only bounded exception metadata and exact SDK message prefixes.
-    This classification must not affect connection retries or permission checks.
+    Never include raw messages in diagnostic output.
     """
     pending=[error];seen=set();issue=None
     prefixes=(('no matching local address with family=','local_address_family_mismatch'),
@@ -192,8 +192,16 @@ async def connect_receive_channel(operation,diagnostic):
             try:return await operation()
             except (ClientSSLError,ssl.SSLError,ServerFingerprintMismatch,WSServerHandshakeError):raise
             except OSError as error:
-                diagnostic('receive_connect_interrupted',error_type=type(error).__name__,**connection_error_fields(error))
-                if error.errno not in transient or attempt==len(delays):raise
+                fields=connection_error_fields(error)
+                diagnostic('receive_connect_interrupted',error_type=type(error).__name__,**fields)
+                # Some connector failures lose their errno. Give an otherwise
+                # unclassified, plain socket error the same bounded recovery
+                # window; known configuration/security failures remain fatal.
+                unknown_connector=(isinstance(error,ClientConnectorError)
+                                   and type(error.os_error) is OSError
+                                   and error.errno is None
+                                   and fields=={'connection_issue':'errno_unavailable'})
+                if not (error.errno in transient or unknown_connector) or attempt==len(delays):raise
                 await asyncio.sleep(delays[attempt])
 
 
@@ -492,13 +500,20 @@ class Engine:
                     except TimeoutError:pass
                     saved=await materialize_received(saved,diagnostic)
                     self.complete_received_files(s,saved,count,size)
+                    # WebSocket close may wait for the peer for ten seconds.
+                    # Saved, acknowledged files no longer reserve the receiver:
+                    # publish fresh idle GATT state before that cleanup begins.
+                    await self.reset(s)
         except asyncio.CancelledError:
             if asyncio.current_task() in s.get('superseded_tasks',()):return
+            if s.get('state')=='complete':return
             if ws and not ws.closed:
                 try:await ws.send_str(wire('action',101,'status',{'taskId':taskid,'type':3,'reason':'user interrupt'}))
                 except Exception:pass
             self.notify('cancel',s['central']);self.update(s,'cancelled')
         except Exception as e:
+            # A completed channel's cleanup must never cancel a newer offer.
+            if s.get('state')=='complete':return
             diagnostic('receive_failed',error_type=type(e).__name__,**connection_error_fields(e))
             self.notify('cancel',s['central']);self.update(s,'failed',detail=transfer_error_detail(e))
         finally:
