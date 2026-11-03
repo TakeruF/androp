@@ -65,6 +65,49 @@ class ReceiveConnectionTests(unittest.IsolatedAsyncioTestCase):
         engine.update.assert_any_call(session,'failed',detail=unittest.mock.ANY)
         engine.reset.assert_awaited_once_with(session)
 
+    async def test_unclassified_connector_failure_recovers_within_same_offer(self):
+        error=ClientConnectorError(None,OSError('private socket failure'))
+        operation=AsyncMock(side_effect=[ConnectionRefusedError(errno.ECONNREFUSED,'not ready'),error,'channel'])
+        diagnostic=Mock()
+        with patch('engine.asyncio.sleep',new_callable=AsyncMock):
+            self.assertEqual(await connect_receive_channel(operation,diagnostic),'channel')
+        self.assertEqual(operation.await_count,3)
+        diagnostic.assert_any_call('receive_connect_interrupted',error_type='ClientConnectorError',connection_issue='errno_unavailable')
+        self.assertNotIn('private',str(diagnostic.call_args_list))
+
+    async def test_persistent_unclassified_connector_failure_has_four_attempt_limit(self):
+        operation=AsyncMock(side_effect=ClientConnectorError(None,OSError('private socket failure')))
+        with patch('engine.asyncio.sleep',new_callable=AsyncMock) as sleep:
+            with self.assertRaises(ClientConnectorError):await connect_receive_channel(operation,Mock())
+        self.assertEqual(operation.await_count,4)
+        self.assertEqual([call.args[0] for call in sleep.await_args_list],[.2,.4,.8])
+
+    async def test_unknown_retry_does_not_cover_known_configuration_or_permission_failures(self):
+        failures=[PermissionError('denied'),
+                  OSError(errno.EACCES,'denied'),OSError(errno.EPERM,'denied'),
+                  OSError('no matching local address with family=30 found'),
+                  OSError('no interface with this name: private interface'),
+                  OSError('Multiple exceptions: private details'),ssl.SSLError('handshake')]
+        for cause in failures:
+            error=ClientConnectorError(None,cause)
+            operation=AsyncMock(side_effect=error)
+            with self.subTest(cause=type(cause).__name__),patch('engine.asyncio.sleep',new_callable=AsyncMock) as sleep:
+                with self.assertRaises(ClientConnectorError):await connect_receive_channel(operation,Mock())
+                self.assertEqual(operation.await_count,1);sleep.assert_not_awaited()
+
+    async def test_unknown_connector_retry_window_still_times_out(self):
+        async def stalled():await asyncio.Event().wait()
+        attempts=0
+        async def connect():
+            nonlocal attempts
+            attempts+=1
+            if attempts==1:raise ClientConnectorError(None,OSError('private failure'))
+            return await stalled()
+        original_timeout=asyncio.timeout
+        with patch('engine.asyncio.timeout',side_effect=lambda seconds:original_timeout(.03)),\
+             patch('engine.asyncio.sleep',new_callable=AsyncMock):
+            with self.assertRaises(TimeoutError):await connect_receive_channel(connect,Mock())
+
     async def test_network_offer_carries_transfer_id_and_existing_mode_only(self):
         for is_lan,mode in [(True,'lan'),(False,'direct')]:
             engine=Engine();engine.notify=Mock()

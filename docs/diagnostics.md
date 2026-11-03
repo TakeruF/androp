@@ -8,7 +8,7 @@
 
 - `appVersion`、`macOS`、`architecture`：生成报告时的应用版本、Mac 系统版本与架构。
 - `events`：时间、传输方向、状态、阶段、允许的错误代码／异常类型及 errno。未导出任意原始错误文本或协议消息。
-- 接收网络协商仅保留 `networkMode`（`lan`／`direct`）及本次传输标识；连接尝试保留有界的 `attempt`（1–4）。连接错误缺少数字 errno 时，`connectionIssue` 可区分 `local_address_family_mismatch`、`multiple_socket_errors`、`interface_unavailable` 或 `errno_unavailable`。这些是固定诊断分类，不代表已确认某个网络或应用导致失败；不记录地址、网络接口名称或原始异常文本。
+- 接收网络协商仅保留 `networkMode`（`lan`／`direct`）及本次传输标识；连接尝试保留有界的 `attempt`（1–4）。连接错误缺少数字 errno 时，`connectionIssue` 可区分 `local_address_family_mismatch`、`multiple_socket_errors`、`interface_unavailable` 或 `errno_unavailable`。这些是固定诊断分类，不代表已确认某个网络或应用导致失败；不记录地址、网络接口名称或原始异常文本。初始 WebSocket 建立前，若 `ClientConnectorError` 包装的是缺少 errno 且无法分类的普通套接字错误，也使用已有的有界重试（十秒内最多四次）。已识别的地址族／接口错误、聚合套接字错误、权限、TLS／证书错误和 HTTP 拒绝仍立即失败；不会重放已建立的传输。
 - `control_message.messageType`：只保留 WebSocket 帧的固定类型，如 `text`、`binary`、`close` 或 `error`。`control_action.protocolAction` 只保留 `wlanBandwidth`、`versionNegotiation`、`sendRequest`、`status`，其他动作归为 `other`；不保留消息正文。
 - `send_offer_fields.offerFields`、`offerKind`：只记录 BLE 网络协商中出现的允许字段名，以及 `lan_request`／`lan_accepted`／`lan_rejected`／`direct_request`／`reuse_request`／`other` 分类。字段名如 `ip`、`ssid`、`psk`、`key` 可以出现，但它们的值不会记录。未知字段名丢弃，不把远端自定义文本作为诊断字段。
 - 错误类型进一步区分 `TypeError`、`UnicodeDecodeError`、`ConnectionTimeoutError`、`SocketTimeoutError`、`ClientConnectionResetError` 等固定类型；未知类型仍为 `OtherError`。这些分类用于区分协议帧处理、连接和读取超时，不自动判定 VPN 或其他互联软件是原因。

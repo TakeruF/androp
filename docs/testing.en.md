@@ -2,6 +2,18 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-04: Release receive reservation before WebSocket cleanup
+
+Physical OPPO tablet logs showed a successful transfer at 06:51:02 JST followed by `IOS state is BUSY` and `GATT_NEGOTIATION_FAILED` at 06:51:09; the first channel finished closing at 06:51:12. Mac diagnostics contained the first successful receive and no second offer. The receiver retained its session until WebSocket context cleanup finished, so it advertised busy after reporting file completion.
+
+Local build 13002 resets the completed receive session and publishes fresh idle GATT state after saving/conversion and the completion exchange, before waiting for channel closure. Old cleanup cannot clear a newer session or send a cancellation after completion. The delayed-close TLS integration regression fails against the original source and passes after the fix; it also checks idle GATT state and preservation of a newly reserved session. All 305 Python tests, signed packaging, minimum-macOS/runtime and sandbox checks passed. Frozen receive/retry functions match source; build 13002 is installed with the previous bundle retained. Physical validation on build 13002: the user reported consecutive success, and OPPO logs recorded four successful transfers at 07:20:30, 07:20:42, 07:20:59 and 07:21:11 JST without a busy rejection in that run. An earlier first attempt on 13002 failed during download with `ClientPayloadError`; its cause remains unresolved and is separate from the completed-session busy defect. No public release was created.
+
+## 2026-11-04: Receive connector errors without errno
+
+Local build 13001 retries an unclassified plain socket error wrapped in `ClientConnectorError` without an errno, only before the initial WebSocket is established. Known configuration, permission, TLS/certificate and HTTP rejection errors remain fatal. The existing four-attempt/ten-second limit still applies; established transfers are never replayed. This recovery does not establish the underlying OPPO failure cause.
+
+Validation: 304 Python tests passed in both the development and compatible packaging environments. New regressions cover recovery after refusal followed by a no-errno error, attempt limits, deadlines and non-retryable errors. A real loopback TLS/WebSocket/HTTP transfer injects the initial failure and verifies approval, one download and exact file contents. Signed build 13001 passed minimum-macOS/runtime and sandbox checks; its frozen retry function matches source. The installed app was replaced with the original retained and settings/trusted devices preserved. Physical OPPO repeat testing remains pending. No public release was created.
+
 Initially recorded on 2026-10-16; later entries identify their dates and builds. This is a summary of observed tests, not a certification or a claim that all file sizes, devices or network configurations work.
 
 ## Notification cleanup, 1.2.3 (2026-10-31)
