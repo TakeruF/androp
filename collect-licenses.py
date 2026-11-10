@@ -10,9 +10,10 @@ import sys
 import argparse
 parser=argparse.ArgumentParser()
 parser.add_argument("--python-notices",type=Path,help="Python installer documentation license.rst.txt")
+parser.add_argument("--python-standalone-licenses",type=Path,help="licenses directory from the matching python-build-standalone archive")
 args=parser.parse_args()
 root=Path(__file__).parent/'ThirdPartyNotices';root.mkdir(exist_ok=True)
-names=['aiohttp','aiohappyeyeballs','aiosignal','attrs','frozenlist','multidict','propcache','yarl','idna','bleak','pyobjc-core','pyobjc-framework-Cocoa','pyobjc-framework-CoreBluetooth','pyobjc-framework-libdispatch','cryptography','cffi','pycparser','altgraph','packaging','macholib','pyinstaller-hooks-contrib','pyinstaller','setuptools']
+names=['stream-unzip','stream-inflate','pycryptodome','aiohttp','aiohappyeyeballs','aiosignal','attrs','frozenlist','multidict','propcache','yarl','idna','bleak','pyobjc-core','pyobjc-framework-Cocoa','pyobjc-framework-CoreBluetooth','pyobjc-framework-libdispatch','cryptography','cffi','pycparser','altgraph','packaging','macholib','pyinstaller-hooks-contrib','pyinstaller','setuptools']
 lines=['Dependency inventory from the anDrop build environment.','PyInstaller is used under its bootloader exception.','Protocol-reference licenses: mtapy-LICENSE (GPL-3.0), CatShare-LICENSE (MIT).','These two references are not bundled runtime dependencies. See NOTICE.md.','Sparkle 2.10.0: MIT and bundled third-party notices; see Sparkle-LICENSE.txt.','']
 for name in names:
  try:d=m.distribution(name)
@@ -21,7 +22,10 @@ for name in names:
  for f in d.files or []:
   if ('.dist-info/' in str(f) or '.egg-info/' in str(f)) and any(w in f.name.lower() for w in ['license','copying','notice']):
    src=Path(d.locate_file(f))
-   if src.is_file():(root/(name+'-'+f.name)).write_bytes(src.read_bytes())
+   if src.is_file():
+    # Preserve nested bundled-license names instead of overwriting LICENSE.
+    suffix=str(f).split('/licenses/',1)[1].replace('/','-') if '/licenses/' in str(f) else f.name
+    (root/(name+'-'+suffix)).write_bytes(src.read_bytes())
 missing=[]
 python_license=Path(sysconfig.get_path('stdlib'))/'LICENSE.txt'
 if python_license.is_file():(root/'Python-LICENSE.txt').write_bytes(python_license.read_bytes())
@@ -30,7 +34,13 @@ else:missing.append('Python runtime')
 # unrelated Homebrew runtime. The official Python installer statically embeds
 # liblzma and other libraries; its complete incorporated-software notices are
 # required for release collection.
-if args.python_notices:
+if args.python_standalone_licenses:
+ files=sorted(args.python_standalone_licenses.glob('LICENSE.*.txt'))
+ if not files or not (args.python_standalone_licenses/'LICENSE.cpython.txt').is_file():
+  raise SystemExit('Provide the matching python-build-standalone licenses directory.')
+ (root/'Python-build-standalone-LICENSE.txt').write_text('\n\n'.join(f.name+'\n'+f.read_text() for f in files))
+ lines.append('Python incorporated-software notices: Python-build-standalone-LICENSE.txt from the matching runtime archive.')
+elif args.python_notices:
  (root/'Python-incorporated-software-LICENSE.txt').write_bytes(args.python_notices.read_bytes())
  lines.append('Python incorporated-software notices: from the matching official Python installer documentation.')
 else:
@@ -42,7 +52,8 @@ if zstd.is_file():
  library=ctypes.CDLL(str(zstd));library.ZSTD_versionString.restype=ctypes.c_char_p
  zstd_version=library.ZSTD_versionString().decode()
 else:
- raise SystemExit('Provide the exact runtime Zstandard library for license collection.')
+ from compression import zstd
+ zstd_version=zstd.zstd_version
 for name,url in [
  ('OpenSSL',f'https://raw.githubusercontent.com/openssl/openssl/openssl-{openssl_version}/LICENSE.txt'),
  ('zstd',f'https://raw.githubusercontent.com/facebook/zstd/v{zstd_version}/LICENSE'),

@@ -16,7 +16,8 @@ FIXTURE = b'anDrop Huawei Share compatibility probe\n2026-10-17\nSynthetic test 
 # SoftBus checks the whole encrypted application preview against our advertised
 # MTU before sending it. Two photo thumbnails already exceed 64 KiB on Pura.
 # Bound both negotiation and allocation; the outer AES-GCM adds 28 bytes.
-PREVIEW_MTU = 1024 * 1024
+# Bounded advisory preview allocation for large photo selections.
+PREVIEW_MTU = 64 * 1024 * 1024
 BYTE_CRYPTO_OVERHEAD = 28
 
 
@@ -95,11 +96,11 @@ def fixture_preview(t, body, expected=None, diagnostics=None):
         issue = None
         if tags not in ([11], [11, 12], [11, 13], [11, 12, 13]):
             issue = 'field_layout'
-        elif not 1 <= len(values[11]) <= 1024:
+        elif not 1 <= len(values[11]) <= PREVIEW_MTU:
             issue = 'name_size'
         elif len(values.get(12, b'')) > PREVIEW_MTU:
             issue = 'thumbnail_size'
-        elif len(values.get(13, b'')) > 8192:
+        elif len(values.get(13, b'')) > PREVIEW_MTU:
             issue = 'metadata_size'
         if issue:
             if diagnostics is not None:
@@ -279,12 +280,15 @@ def receive(t, process, device_hash, session_key, source, peer, processes, desti
     byte_process = file_process = file_key = byte_key = dfile_reader = None
     meta_started = False
     node_id = node_id or secrets.token_hex(32).upper()
-    for _ in range(16424):
+    while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise ValueError('receive channels deadline')
         streams = [process.stdout] + [p.stdout for p in (byte_process, file_process) if p is not None]
-        ready, _, _ = select.select(streams, [], [], min(8, remaining))
+        if file_process is not None and getattr(file_process, '_dfile_read_buffer', None):
+            ready = [file_process.stdout]
+        else:
+            ready, _, _ = select.select(streams, [], [], min(8, remaining))
         if not ready:
             raise ValueError('receive channels response deadline')
         if file_process is not None and file_process.stdout in ready:
@@ -301,6 +305,7 @@ def receive(t, process, device_hash, session_key, source, peer, processes, desti
                     dfile_reader = receive_dfile(t, file_process, file_key, destination, result, save, expected)
             try:
                 next(dfile_reader)
+                deadline = time.monotonic() + 90
             except StopIteration:
                 return
             continue

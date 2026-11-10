@@ -12,6 +12,7 @@
 - [URL 与文本共享限制](link-sharing.md)
 - [兼容性](compatibility.md)
 - [架构与协议边界](architecture.md)
+- [App Sandbox 与文件访问](sandbox.md)
 - [构建、签名与发行](building.md)
 - [测试与验证记录](testing.md)
 - [诊断字段与限制](diagnostics.md)

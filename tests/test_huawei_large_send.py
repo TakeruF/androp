@@ -50,7 +50,7 @@ class HuaweiLargeSendTests(unittest.TestCase):
             too_big = root / 'oversize.bin'
             with too_big.open('wb') as output:
                 output.truncate(b.MAX_SEND_FILE + 1)
-            with self.assertRaisesRegex(ValueError, '4 GiB'):
+            with self.assertRaisesRegex(ValueError, 'DFile sequence range'):
                 b.Batch.from_paths([too_big])
             files = []
             for number in range(5):
@@ -58,13 +58,13 @@ class HuaweiLargeSendTests(unittest.TestCase):
                 with path.open('wb') as output:
                     output.truncate(b.MAX_SEND_FILE)
                 files.append(path)
-            with patch.object(b.hashlib, 'sha256', side_effect=AssertionError('hashed oversized batch')):
-                with self.assertRaisesRegex(ValueError, '16 GiB'):
+            with patch.object(b, 'MAX_SEND_TOTAL', b.MAX_SEND_FILE * 4), patch.object(b.hashlib, 'sha256', side_effect=AssertionError('hashed oversized batch')):
+                with self.assertRaisesRegex(ValueError, 'DFile size range'):
                     b.Batch.from_paths(files)
             # The maximum file size is encoded as a 64-bit count, without wrap.
             entry = b.DiskFile(files[0], files[0].stat(), '0' * 64)
             packet = next(b.headers(transfer, b.Batch([entry])))
-            self.assertEqual(struct.unpack_from('!Q', packet, 12)[0], 4 * 1024 ** 3)
+            self.assertEqual(struct.unpack_from('!Q', packet, 12)[0], b.MAX_SEND_FILE)
             stopped = threading.Event(); stopped.set()
             with self.assertRaisesRegex(ValueError, 'cancelled'):
                 b.Batch.from_paths([files[0]], stopped=stopped)

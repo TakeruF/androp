@@ -227,7 +227,13 @@ def publish_files(staging, destination, stopped=None):
                 raise ValueError('receive cancelled')
             if not path.is_file() or path.is_symlink():
                 raise ValueError('invalid staged receive file')
-            data = path.read_bytes()
+            size, digest = 0, hashlib.sha256()
+            with path.open('rb') as source:
+                while chunk := source.read(1024 * 1024):
+                    if stopped is not None and stopped.is_set():
+                        raise ValueError('receive cancelled')
+                    size += len(chunk)
+                    digest.update(chunk)
             mark_download(path)
             for attempt in range(10000):
                 if stopped is not None and stopped.is_set():
@@ -240,7 +246,7 @@ def publish_files(staging, destination, stopped=None):
                     continue
             else:
                 raise ValueError('too many filename collisions')
-            saved.append({'path': str(target), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
+            saved.append({'path': str(target), 'bytes': size, 'sha256': digest.hexdigest()})
         return saved
     except BaseException:
         for item in saved:
@@ -549,7 +555,7 @@ class HuaweiRuntime:
                     raise ValueError('Huawei transfer completion was not acknowledged')
         except asyncio.CancelledError:
             self.cancel_receive()
-            if self.engine.session is session: self.engine.update(session, 'cancelled')
+            if self.engine.session is session: self.engine.update(session, 'cancelled', files=result.get('saved_files', []))
             raise
         except Exception as error:
             self.emit('diagnostic', detail='huawei_receive_failed', error_type=type(error).__name__,
@@ -595,8 +601,8 @@ class HuaweiRuntime:
                     except Exception: pass
                     raise
                 except ValueError:
-                    raise TransferError(t('Choose up to 16 files for Huawei Share: 4 GiB per file and 16 GiB total. Folders, links and duplicate names are not supported yet.',
-                                          '华为分享最多支持 16 个文件，单个 4 GiB、合计 16 GiB。暂不支持文件夹、链接及同名文件。')) from None
+                    raise TransferError(t('Huawei Share could not prepare these files. Check file access, available disk space and DFile protocol limits. Folders, links and duplicate names are not supported yet.',
+                                          '无法准备华为分享文件。请检查文件访问权限、可用磁盘空间及 DFile 协议限制。暂不支持文件夹、链接及同名文件。')) from None
                 snapshot_paths = [entry.path for entry in batch.entries]
                 self.engine.update(session, 'preparing', count=batch.count, total=batch.size, name=batch.name.decode('utf-8'))
                 command = ([sys.executable, '--huawei-send'] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).with_name('engine.py')), '--huawei-send'])

@@ -57,3 +57,42 @@ class IncomingPeerValidationTests(unittest.IsolatedAsyncioTestCase):
                 emit.assert_called_once_with('diagnostic', detail='huawei_incoming_rejected', phase='undiscovered_peer')
             self.assertEqual(client.recv(1), b'')
         self.assertEqual(listener.fileno(), -1)
+
+class BufferedDFileTests(unittest.TestCase):
+    def test_coalesced_frames_are_drained_without_waiting_for_more_socket_data(self):
+        from test_huawei_probes import transfer
+        listener = TCPListener('127.0.0.1'); self.addCleanup(listener.close)
+        packets = [transfer.dfile_packet(4, 3, 1, b'x' * 1400), transfer.dfile_packet(7, 0, 1, b'')]
+        with socket.create_connection(('127.0.0.1', listener.port), timeout=2) as client:
+            client.sendall(b''.join(packets))
+            self.assertTrue(select.select([listener.stdout], [], [], 2)[0])
+            listener.peer_address()
+            original_read = os.read
+            with patch.object(transfer.os, 'read', wraps=original_read) as reads:
+                self.assertEqual(transfer.read_dfile_frame(listener)[1], b'x' * 1400)
+                self.assertTrue(listener._dfile_read_buffer)
+                with patch.object(transfer.select, 'select', side_effect=AssertionError('Buffered frame waited for network')):
+                    self.assertEqual(transfer.read_dfile_frame(listener), ((7, 0, 0, 1), b''))
+                self.assertEqual(reads.call_count, 1)
+            self.assertFalse(listener._dfile_read_buffer)
+
+    def test_partial_frames_bad_lengths_and_disconnect_keep_their_validation(self):
+        import struct
+        import threading
+        from test_huawei_probes import transfer
+        for packet, expected in [(transfer.dfile_packet(4, 3, 1, b'data'), None),
+                                 (struct.pack('!BBHHH', 4, 0, 0, 1, 14721), 'invalid DFile'),
+                                 (b'\x04', 'closed')]:
+            with self.subTest(expected=expected):
+                listener = TCPListener('127.0.0.1'); self.addCleanup(listener.close)
+                with socket.create_connection(('127.0.0.1', listener.port), timeout=2) as client:
+                    def send():
+                        client.sendall(packet[:1]); time.sleep(.005); client.sendall(packet[1:]); client.shutdown(socket.SHUT_WR)
+                    thread = threading.Thread(target=send); thread.start()
+                    self.assertTrue(select.select([listener.stdout], [], [], 2)[0])
+                    listener.peer_address()
+                    if expected:
+                        with self.assertRaisesRegex(ValueError, expected): transfer.read_dfile_frame(listener)
+                    else:
+                        self.assertEqual(transfer.read_dfile_frame(listener)[1], b'data')
+                    thread.join(2)

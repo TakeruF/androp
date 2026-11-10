@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from engine import Engine,wire,parse_wire,sender_identifier,Keys
 
 class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False,auto_accept=False,binary_control=False,unknown_connect_failure=False,delayed_close=False):
+    async def transfer(self,*,trusted=False,sender='test-sender-unique-device',allowed=True,decision=True,revoked=False,disabled=False,files=None,malformed_count=False,udp_probes=True,cancel_midstream=False,replace_route=False,udp_conflict=False,auto_accept=False,binary_control=False,unknown_connect_failure=False,delayed_close=False,incremental=False):
         files=files or {'日本語.txt':b'synthetic file\n','empty.bin':b''}
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);destination=root/'received';destination.mkdir()
@@ -49,7 +49,18 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                             break
                 return ws
             async def download(request):
-                downloads.append(request.query.get('taskId'));return web.Response(body=zipped.getvalue(),content_type='application/zip')
+                downloads.append(request.query.get('taskId'))
+                if incremental:
+                    response=web.StreamResponse(headers={'Content-Type':'application/zip'})
+                    await response.prepare(request)
+                    raw=zipped.getvalue();split=raw.index(b'PK\x03\x04',4)+4
+                    await response.write(raw[:split])
+                    async with asyncio.timeout(3):
+                        while not (destination/next(iter(files))).exists():await asyncio.sleep(.005)
+                    self.assertEqual((destination/next(iter(files))).read_bytes(),next(iter(files.values())))
+                    self.assertFalse((destination/list(files)[1]).exists())
+                    await response.write(raw[split:]);await response.write_eof();return response
+                return web.Response(body=zipped.getvalue(),content_type='application/zip')
             app=web.Application();app.router.add_get('/websocket',websocket);app.router.add_get('/download',download)
             runner=web.AppRunner(app);await runner.setup();site=web.TCPSite(runner,'127.0.0.1',0,ssl_context=tls);await site.start();port=site._server.sockets[0].getsockname()[1]
             async def accept():
@@ -113,7 +124,11 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 should_succeed=(not trusted or (allowed and sender=='test-sender-unique-device' and not revoked)) and (auto_approved or decision) and not disabled and not malformed_count
                 if cancel_midstream:
                     self.assertEqual(session['state'],'cancelled')
-                    self.assertEqual(list(destination.iterdir()),[])
+                    # Fully verified files may already be visible when cancellation
+                    # arrives; incomplete files and temporary names must be absent.
+                    for path in destination.iterdir():
+                        self.assertIn(path.name,files)
+                        self.assertEqual(path.read_bytes(),files[path.name])
                     self.assertIsNone(engine.session)
                     self.assertFalse(engine.decisions)
                     self.assertEqual(len(downloads),1)
@@ -130,6 +145,9 @@ class ReceiveIntegrationTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 close_gate.set()
                 approval.cancel();await asyncio.gather(approval,return_exceptions=True);await runner.cleanup()
+
+    async def test_file_is_visible_before_http_download_finishes(self):
+        await self.transfer(files={'first.txt':b'first verified content','second.txt':b'second content'},incremental=True)
 
     async def test_everyone_multiple_unicode_and_empty_files(self):await self.transfer()
     async def test_completed_receive_is_idle_while_old_peer_delays_close(self):

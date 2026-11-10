@@ -108,9 +108,9 @@ def inspect_offer(process, opening, result, save, private=None, receive=None, ex
     bounded = False
     if accept_bounded_files:
         count, size = fields.get(3, b''), fields.get(4, b'')
-        if count.isdigit() and size.isdigit() and len(count) <= 2 and len(size) <= 8:
+        if count.isdigit() and size.isdigit() and len(count) <= 5 and len(size) <= 20:
             count, size = int(count), int(size)
-            bounded = 1 <= count <= 16 and 0 <= size <= 16 * 1024 * 1024
+            bounded = 1 <= count <= transfer.batch_files.MAX_FILES and 0 <= size <= transfer.batch_files.MAX_RECEIVE_TOTAL
             if bounded:
                 result.update(accepted_file_count=count, accepted_total_bytes=size, bounded_offer_accepted=True)
     accepted_offer = bounded if accept_bounded_files else result['matches_expected_fixture_size_and_count']

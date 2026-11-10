@@ -1,23 +1,30 @@
 """Bounded explicitly selected files for the experimental Huawei LAN probes."""
 import hashlib
-from collections import deque
+from collections import deque, OrderedDict
 from contextlib import ExitStack
 import errno
 import os
 from pathlib import Path
 import select
 import stat
+import tempfile
+import shutil
 import struct
 import time
 import unicodedata
 
 MAX_FILE = 8 * 1024 * 1024
 MAX_TOTAL = 16 * 1024 * 1024
-MAX_RECEIVE_FILE = MAX_TOTAL
-MAX_FILES = 16
-MAX_SEND_FILE = 4 * 1024 ** 3
-MAX_SEND_TOTAL = 16 * 1024 ** 3
+# DFile encodes file IDs/counts in uint16 and DATA sequences in uint32.
+# These are wire-format limits, not the former product limits.
+MAX_FILES = 2 ** 16 - 1
+MAX_SEND_FILE = 1422 * 2 ** 32
+MAX_SEND_TOTAL = 2 ** 64 - 1
+MAX_RECEIVE_FILE = MAX_SEND_FILE
+MAX_RECEIVE_TOTAL = MAX_SEND_TOTAL
 COPY_CHUNK = 1024 * 1024
+OPEN_FILE_WINDOW = 40
+OPEN_FILE_STEP = 20
 
 
 def safe_name(name):
@@ -75,71 +82,72 @@ class Batch:
     def __init__(self, entries):
         self.entries = tuple(entries)
         if not 1 <= len(self.entries) <= MAX_FILES:
-            raise ValueError('select 1..16 files')
+            raise ValueError('file count exceeds DFile uint16 range')
         names = [safe_name(e.name) for e in self.entries]
         if len(set(names)) != len(names):
             raise ValueError('duplicate or filesystem-equivalent basenames')
         self.size = sum(e.size for e in self.entries)
         if self.size > MAX_SEND_TOTAL:
-            raise ValueError('send batch exceeds 16 GiB')
+            raise ValueError('send batch exceeds DFile size range')
         self.count = len(self.entries)
         self.name = self.entries[0].name
 
     @classmethod
     def from_paths(cls, paths, *, snapshot_dir=None, stopped=None):
         if not 1 <= len(paths) <= MAX_FILES:
-            raise ValueError('select 1..16 explicit paths')
+            raise ValueError('file count exceeds DFile uint16 range')
         entries, total, sources, names = [], 0, [], set()
         def check_cancelled():
             if stopped is not None and stopped.is_set():
                 raise ValueError('send cancelled')
-        with ExitStack() as stack:
-            # Check the entire selection before hashing or copying large files.
-            for raw in paths:
-                check_cancelled()
-                path = Path(raw)
-                name = safe_name(path.name.encode('utf-8'))
-                if name in names:
-                    raise ValueError('duplicate or filesystem-equivalent basenames')
-                names.add(name)
+        # Validate metadata first, then open and copy one source at a time.
+        for raw in paths:
+            check_cancelled()
+            path = Path(raw)
+            name = safe_name(path.name.encode('utf-8'))
+            if name in names:
+                raise ValueError('duplicate or filesystem-equivalent basenames')
+            names.add(name)
+            info = path.lstat()
+            if stat.S_ISLNK(info.st_mode):
+                raise OSError(errno.ELOOP, 'symlink source is not supported')
+            if not stat.S_ISREG(info.st_mode) or not 0 <= info.st_size <= MAX_SEND_FILE:
+                raise ValueError('source must be a regular file within the DFile sequence range')
+            total += info.st_size
+            if total > MAX_SEND_TOTAL:
+                raise ValueError('send batch exceeds DFile size range')
+            sources.append((path, info))
+        if snapshot_dir is not None and shutil.disk_usage(snapshot_dir).free < total:
+            raise OSError(errno.ENOSPC, 'not enough space for send snapshot')
+        for path, info in sources:
+            check_cancelled()
+            target_path = Path(snapshot_dir) / path.name if snapshot_dir is not None else path
+            digest, copied = hashlib.sha256(), 0
+            with ExitStack() as stack:
                 fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
                 stack.callback(os.close, fd)
-                info = os.fstat(fd)
-                if not stat.S_ISREG(info.st_mode) or not 0 <= info.st_size <= MAX_SEND_FILE:
-                    raise ValueError('source must be a regular file of at most 4 GiB')
-                total += info.st_size
-                if total > MAX_SEND_TOTAL:
-                    raise ValueError('send batch exceeds 16 GiB')
+                if identity(os.fstat(fd)) != identity(info):
+                    raise ValueError('source changed before snapshot')
                 source = stack.enter_context(os.fdopen(fd, 'rb', closefd=False))
-                sources.append((path, source, info))
-            if snapshot_dir is not None:
-                import shutil
-                if shutil.disk_usage(snapshot_dir).free < total:
-                    raise OSError(errno.ENOSPC, 'not enough space for send snapshot')
-            for path, source, info in sources:
-                check_cancelled()
-                target_path = Path(snapshot_dir) / path.name if snapshot_dir is not None else path
-                digest, copied = hashlib.sha256(), 0
-                with ExitStack() as target_stack:
-                    target = target_stack.enter_context(target_path.open('xb')) if snapshot_dir is not None else None
-                    while chunk := source.read(COPY_CHUNK):
-                        check_cancelled()
-                        copied += len(chunk)
-                        if copied > info.st_size:
-                            raise ValueError('source changed during snapshot')
-                        digest.update(chunk)
-                        if target is not None:
-                            target.write(chunk)
-                    if copied != info.st_size or identity(os.fstat(source.fileno())) != identity(info):
+                target = stack.enter_context(target_path.open('xb')) if snapshot_dir is not None else None
+                while chunk := source.read(COPY_CHUNK):
+                    check_cancelled()
+                    copied += len(chunk)
+                    if copied > info.st_size:
                         raise ValueError('source changed during snapshot')
-                entries.append(DiskFile(target_path, target_path.stat() if snapshot_dir is not None else info, digest.hexdigest()))
+                    digest.update(chunk)
+                    if target is not None:
+                        target.write(chunk)
+                if copied != info.st_size or identity(os.fstat(fd)) != identity(info):
+                    raise ValueError('source changed during snapshot')
+            entries.append(DiskFile(target_path, target_path.stat() if snapshot_dir is not None else info, digest.hexdigest()))
         return cls(entries)
 
 
 class IncomingBatch:
     """Metadata bounds from an explicitly accepted offer, with no local reference."""
     def __init__(self, count, size):
-        if type(count) is not int or type(size) is not int or not 1 <= count <= MAX_FILES or not 0 <= size <= MAX_TOTAL:
+        if type(count) is not int or type(size) is not int or not 1 <= count <= MAX_FILES or not 0 <= size <= MAX_RECEIVE_TOTAL:
             raise ValueError('incoming batch exceeds offer limits')
         self.count, self.size = count, size
         self.entries, self.name = (), b''
@@ -149,7 +157,7 @@ class IncomingFile:
     def __init__(self, name, size):
         safe_name(name)
         if not 0 <= size <= MAX_RECEIVE_FILE:
-            raise ValueError('incoming file exceeds 16 MiB')
+            raise ValueError('incoming file exceeds DFile sequence range')
         self.name, self.size, self.sha256 = name, size, None
 
 
@@ -235,7 +243,7 @@ def send(t, process, key, batch, result, save):
         # ACKs must be drained while sending, otherwise nc's stdout pipe can
         # fill and stop the socket while we wait for its stdin to accept DATA.
         if kind != 5 and (kind, payload) not in pending:
-            if len(pending) >= 128:
+            if len(pending) >= MAX_FILES * 2:
                 raise ValueError('too many pending batch controls')
             pending.append((kind, payload))
     def read_available():
@@ -334,35 +342,71 @@ def send(t, process, key, batch, result, save):
 
 
 def receive(t, framing, process, key, batch, destination, result, save, publish_files=None):
-    if batch.size > MAX_TOTAL or any(entry.size > MAX_RECEIVE_FILE for entry in batch.entries):
+    # Private disk staging is cleaned on cancellation, protocol failure and success.
+    with tempfile.TemporaryDirectory(prefix='.androp-huawei-', dir=destination.parent) as folder:
+        writers = OrderedDict()
+        try:
+            yield from _receive(t, framing, process, key, batch, destination, result, save, Path(folder), writers, publish_files)
+        finally:
+            for output in writers.values():
+                output.close()
+
+
+def _receive(t, framing, process, key, batch, destination, result, save, staging, writers, publish_files):
+    if batch.size > MAX_RECEIVE_TOTAL or any(entry.size > MAX_RECEIVE_FILE for entry in batch.entries):
         raise ValueError('incoming batch exceeds offer limits')
     def control(kind, transaction, payload):
         process.stdin.write(t.dfile_encrypt_control(key, t.dfile_packet(kind, 0, transaction, payload)))
         process.stdin.flush()
-    def publish():
-        # Every digest is checked before creating any destination. mkdir is exclusive.
-        digests = {i: hashlib.sha256(contents[i]).hexdigest() for i in metadata}
-        for i, entry in metadata.items():
-            if entry.sha256 is not None and digests[i] != entry.sha256:
+    if shutil.disk_usage(staging).free < batch.size * 2 + 16 * 1024 * 1024:
+        raise OSError(errno.ENOSPC, 'not enough space for incoming files')
+    def disk_digest(path):
+        with path.open('rb') as source:
+            return hashlib.file_digest(source, 'sha256').hexdigest()
+    published, records = set(), []
+    destination_created = False
+    def publish_completed():
+        nonlocal destination_created
+        # Bind every name and the aggregate size to the accepted offer before
+        # exposing anything. Each completed file can then be saved independently.
+        if len(metadata) != batch.count:
+            return
+        for i in sorted(complete - published):
+            entry = metadata[i]
+            output = writers.pop(i, None)
+            if output is not None:
+                output.close()
+            source = staging / str(i)
+            with source.open('rb') as handle:
+                os.fsync(handle.fileno())
+                digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+            if entry.sha256 is not None and digest != entry.sha256:
                 raise ValueError('batch content digest mismatch')
-        destination.mkdir(mode=0o700)
-        records = []
-        for i, entry in metadata.items():
+            if not destination_created:
+                destination.mkdir(mode=0o700)
+                destination_created = True
             path = destination / entry.name.decode('utf-8')
-            with path.open('xb') as output:
-                output.write(contents[i]); output.flush(); os.fsync(output.fileno())
-            if hashlib.sha256(path.read_bytes()).hexdigest() != digests[i]:
+            # The destination is an exclusively created private staging folder;
+            # normalized duplicate names were rejected in the metadata above.
+            source.rename(path)
+            if disk_digest(path) != digest:
                 raise ValueError('batch saved readback mismatch')
-            records.append({'file_id': i, 'bytes': entry.size, 'sha256': digests[i]})
-        if publish_files is not None:
-            result['saved_files'] = publish_files(destination, records)
-        result.update(file_received=True, saved_content_verified=True, received_files=records,
-                      reference_content_verified=not isinstance(batch, IncomingBatch))
+            record = {'file_id': i, 'bytes': entry.size, 'sha256': digest}
+            if publish_files is not None:
+                saved = publish_files(destination, [record])
+                result.setdefault('saved_files', []).extend(saved)
+            records.append(record)
+            published.add(i)
+            result['received_files'] = list(records)
+            save()
+        if len(published) == batch.count:
+            result.update(file_received=True, saved_content_verified=True,
+                          reference_content_verified=not isinstance(batch, IncomingBatch))
     deadline = time.monotonic() + 90
     settings = False
     transaction = None
     metadata, contents, sequences, complete = {}, {}, {}, set()
-    for _ in range(32768):
+    while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise ValueError('batch receive deadline')
@@ -388,7 +432,10 @@ def receive(t, framing, process, key, batch, destination, result, save, publish_
                 if any(other != i and safe_name(e.name) == safe_name(entry.name) for other, e in metadata.items()):
                     raise ValueError('duplicate batch basename')
                 metadata[i] = entry
-                contents.setdefault(i, bytearray()); sequences.setdefault(i, 0)
+                if i not in contents:
+                    (staging / str(i)).touch(mode=0o600, exist_ok=False)
+                    contents[i] = 0
+                sequences.setdefault(i, 0)
                 if entry.size == 0:
                     complete.add(i)
             total = sum(e.size for e in metadata.values())
@@ -403,15 +450,24 @@ def receive(t, framing, process, key, batch, destination, result, save, publish_
                 raise ValueError('unexpected batch DATA file ID')
             entry, content = metadata[file_id], contents[file_id]
             chunk = framing.decrypt_data_chunk(key, header, payload, sequences[file_id], file_id=file_id)
-            if not chunk or len(content) + len(chunk) > entry.size:
+            if not chunk or content + len(chunk) > entry.size:
                 raise ValueError('batch DATA size exceeded')
-            end = len(content) + len(chunk) == entry.size
+            end = content + len(chunk) == entry.size
             if flags != (3 if end else (0 if sequences[file_id] == 0 else 1)):
                 raise ValueError('batch DATA flag mismatch')
-            content.extend(chunk); sequences[file_id] += 1
+            output = writers.pop(file_id, None)
+            if output is None:
+                if len(writers) >= OPEN_FILE_WINDOW:
+                    for _ in range(OPEN_FILE_STEP):
+                        _, oldest = writers.popitem(last=False)
+                        oldest.close()
+                output = (staging / str(file_id)).open('ab')
+            writers[file_id] = output
+            output.write(chunk)
+            contents[file_id] += len(chunk); sequences[file_id] += 1
             if end:
                 complete.add(file_id)
-            result['received_progress_bytes'] = sum(len(c) for c in contents.values())
+            result['received_progress_bytes'] = sum(contents.values())
         elif result.get('file_received') and kind == 7 and trans == transaction and session == 0 and flags == 0:
             if t.dfile_decrypt_control(key, header, payload) != b'':
                 raise ValueError('invalid batch DONE ACK')
@@ -420,11 +476,16 @@ def receive(t, framing, process, key, batch, destination, result, save, publish_
             return
         else:
             raise ValueError('unsupported batch receive stage')
-        if len(complete) == batch.count and not result.get('file_received'):
-            publish()
-            control(6, transaction, struct.pack('!' + 'H' * batch.count, *sorted(complete)))
+        if not result.get('file_received'):
+            publish_completed()
+        if result.get('file_received') and not result.get('dfile_done_sent'):
+            ids = sorted(complete)
+            for offset in range(0, len(ids), 7000):
+                part = ids[offset:offset + 7000]
+                control(6, transaction, struct.pack('!' + 'H' * len(part), *part))
             result['dfile_done_sent'] = True
+        if kind in (1, 4):
+            deadline = time.monotonic() + 90
         if kind != 4 or counts.get('4', 0) % 256 == 0 or result.get('file_received'):
             save()
         yield
-    raise ValueError('too many batch receive frames')

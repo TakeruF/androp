@@ -34,6 +34,14 @@ Unlock the receiving device, enable its sharing feature and check discoverabilit
 
 This is different from the phone being unable to find the Mac because another Mac app interferes with anDrop's Bluetooth advertising. Also check the same Wi-Fi, Bluetooth, Local Network permission, and whether the network isolates clients.
 
+## Discovery works but sending fails on public Wi-Fi
+
+Bluetooth discovery does not establish that the file-transfer network is reachable. When sending from a Mac to OPPO, diagnostic events `lan_request` followed by `lan_rejected` mean the peer rejected the LAN connection offer before file transfer. This differs from the recipient declining the files and does not by itself prove router isolation.
+
+Public Wi-Fi in cafés and hotels may block communication between devices, even when they can all access the internet on the same SSID. Connect the Mac and recipient to the same personal hotspot or private network that permits communication between devices, keep Bluetooth and sharing enabled, and resend the same file. If it still fails, check macOS Local Network permission, VPN routing, and other interconnect sessions.
+
+Mac-to-OPPO sending currently uses LAN, with no automatic Wi-Fi Direct or cloud-relay fallback. The app cannot disable router isolation. A `lan_rejected` event alone does not call for modifying PDFs or granting file access again.
+
 ## 鸿蒙星河互联
 
 **We recommend quitting 鸿蒙星河互联 before sharing with anDrop.** anDrop can replace 鸿蒙星河互联's Huawei Share file-sharing function and send and receive files independently. Finish any transfers in 鸿蒙星河互联 before quitting it, then retry in anDrop.
@@ -86,6 +94,8 @@ Open Settings → **Trusted Devices…** to add devices from previous transfers 
 
 Alliance devices use a hash of the self-reported protocol sender ID. Huawei devices use a SHA-256 fingerprint of the transfer public key, checked after the peer proves possession of its private key. Neither uses account names, device names or IP addresses for authorization. To enroll Huawei after updating, receive a file in Everyone mode and add its new record; older Huawei history has no key and cannot be migrated. Receive and enroll again if the key or identifier changes. Nearby advertisements remain visible. Trusted-only mode rejects unlisted requests before showing approval or downloading files. Enrolled devices are accepted automatically when the setting is on; otherwise each transfer requires approval. Removing trust does not interrupt an already-started transfer.
 
-Mac → Huawei sends allow up to 16 files, 4 GiB each and 16 GiB total. Local large-file verification does not establish GiB-scale physical receipt. Huawei receiving currently accepts up to 16 files and 16 MiB total, including a single file up to 16 MiB. This receive limit is separate from the larger outgoing-file limits.
+Version 1.3.2 removes the former Huawei product limits (16 files; sending: 4 GiB per file / 16 GiB total; receiving: 16 MiB total), uses disk-backed receipt and opens one source file at a time during send preparation. DFile wire-format limits, available disk space and peer-device limits still apply. Large-batch Huawei-device stability remains unverified. See [validation notes](huawei-unlimited-test.md).
 
 Control Center integration is no longer included. Use the menu bar or Settings for receiving options. The former panel is preserved as an [independent UI prototype](../Prototypes/ReceivePanel/README.en.md), outside the installed app. If an old control remains after upgrading, remove that anDrop item in Edit Controls.
+
+Version 1.3.2 (13200) includes incremental receipt and one-source-at-a-time preparation. See [receipt and disk I/O](android-streaming.en.md).

@@ -12,6 +12,7 @@ All project-authored documentation is maintained in Simplified Chinese (`.md`) a
 - [URL and text sharing limits](link-sharing.en.md)
 - [Compatibility](compatibility.en.md)
 - [Architecture and protocol boundaries](architecture.en.md)
+- [App Sandbox and file access](sandbox.en.md)
 - [Building, signing and releases](building.en.md)
 - [Validation record](testing.en.md)
 - [Diagnostic fields and limits](diagnostics.en.md)

@@ -25,7 +25,7 @@ receiver_discovery = load("huawei-receiver-discovery-probe")
 
 
 class HuaweiProbeTests(unittest.TestCase):
-    def test_incoming_file_uses_the_existing_total_receive_budget(self):
+    def test_incoming_file_uses_wire_size_ranges(self):
         import struct
         b = transfer.batch_files
         for size in (10990916, b.MAX_TOTAL):
@@ -36,9 +36,9 @@ class HuaweiProbeTests(unittest.TestCase):
             self.assertEqual(parsed[1].size, size)
             self.assertEqual(parsed[1].name, name)
         with self.assertRaises(ValueError):
-            b.IncomingFile(b'oversize.pdf', b.MAX_TOTAL + 1)
+            b.IncomingFile(b'oversize.pdf', b.MAX_RECEIVE_FILE + 1)
         with self.assertRaises(ValueError):
-            b.IncomingBatch(2, b.MAX_TOTAL + 1)
+            b.IncomingBatch(2, b.MAX_RECEIVE_TOTAL + 1)
     def test_file_offer_uses_file_category_and_actual_file_count(self):
         # The category is batch-wide: even an image-first mixed batch must
         # not cause the receiver to open its documents in Gallery.
@@ -95,7 +95,7 @@ class HuaweiProbeTests(unittest.TestCase):
 
     def test_offer_rejects_incomplete_batch_metadata(self):
         for names, count in [(None, 2), ([], 1), (['first.pdf', 'second.docx'], 1),
-                             (['different.pdf'], 1), (['first.pdf'] * 17, 17)]:
+                             (['different.pdf'], 1), (['first.pdf'] * (transfer.batch_files.MAX_FILES + 1), transfer.batch_files.MAX_FILES + 1)]:
             with self.subTest(names=names, count=count), self.assertRaises(ValueError):
                 transfer.offer('first.pdf', 1234, count, filenames=names)
 
@@ -221,7 +221,7 @@ class HuaweiProbeTests(unittest.TestCase):
             with self.assertRaises(ValueError): b.Batch.from_paths([root])
             self.assertEqual(b.Batch.from_paths([root / 'real']).size, 1)
         with self.assertRaises(ValueError): b.Batch([])
-        with self.assertRaises(ValueError): b.Batch([b.File(str(i).encode(), b'') for i in range(17)])
+        with self.assertRaises(ValueError): b.Batch([b.File(str(i).encode(), b'') for i in range(b.MAX_FILES + 1)])
         with self.assertRaises(ValueError): b.File(b'big', bytes(b.MAX_FILE + 1))
 
     def test_batch_metadata_fragmentation_and_invalid_done(self):
@@ -260,7 +260,10 @@ class HuaweiProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / 'received'
             with self.assertRaisesRegex(ValueError, 'digest'): run(destination, b'bad')
-            self.assertFalse(destination.exists())
+            # The independently verified empty file is retained even when a
+            # later file fails its digest check.
+            self.assertEqual([p.name for p in destination.iterdir()], ['b.txt'])
+            (destination / 'b.txt').unlink(); destination.rmdir()
             destination.mkdir(); sentinel = destination / 'keep.txt'; sentinel.write_bytes(b'existing')
             with self.assertRaises(FileExistsError): run(destination, b'abc')
             self.assertEqual(list(destination.iterdir()), [sentinel])
@@ -316,7 +319,7 @@ class HuaweiProbeTests(unittest.TestCase):
         # names/sizes/content are still validated independently in DFile.
         preview = auth.tlv(8, fields + auth.tlv(13, b'x' * 78))
         r.fixture_preview(transfer, preview, b.IncomingBatch(1, 568811))
-        for extra in (auth.tlv(13, b'x' * 8193),
+        for extra in (auth.tlv(13, b'x' * (r.PREVIEW_MTU + 1)),
                       auth.tlv(14, b'x'), auth.tlv(13, b'x') + auth.tlv(13, b'x')):
             with self.subTest(extra_size=len(extra)), self.assertRaises(ValueError):
                 r.fixture_preview(transfer, auth.tlv(8, fields + extra), b.IncomingBatch(1, 568811))
@@ -339,11 +342,11 @@ class HuaweiProbeTests(unittest.TestCase):
     def test_batch_preview_optional_media_preserves_structure_and_bounds(self):
         r, b = load('huawei-receive-channels'), transfer.batch_files
         name = auth.tlv(11, b'photo.jpg')
-        bad_fields = [b'', auth.tlv(12, b''), auth.tlv(11, b''), auth.tlv(11, b'x' * 1025),
+        bad_fields = [b'', auth.tlv(12, b''), auth.tlv(11, b''), auth.tlv(11, b'x' * (r.PREVIEW_MTU + 1)),
                       auth.tlv(11, b'\xff'), name + name,
                       name + auth.tlv(12, b'') * 2, name + auth.tlv(13, b'') * 2,
                       name + auth.tlv(13, b'{}') + auth.tlv(12, b'x'), name + auth.tlv(14, b''),
-                      name + auth.tlv(12, b'x' * (r.PREVIEW_MTU + 1)), name + auth.tlv(13, b'x' * 8193)]
+                      name + auth.tlv(12, b'x' * (r.PREVIEW_MTU + 1)), name + auth.tlv(13, b'x' * (r.PREVIEW_MTU + 1))]
         for fields in bad_fields:
             with self.subTest(size=len(fields)), self.assertRaises(ValueError):
                 r.fixture_preview(transfer, auth.tlv(8, fields), b.IncomingBatch(1, 123))
@@ -353,7 +356,7 @@ class HuaweiProbeTests(unittest.TestCase):
         cases = [('field_layout', auth.tlv(11, b'photo.jpg') + auth.tlv(14, b'private')),
                  ('name_size', auth.tlv(11, b'')),
                  ('thumbnail_size', auth.tlv(11, b'photo.jpg') + auth.tlv(12, b'x' * (r.PREVIEW_MTU + 1))),
-                 ('metadata_size', auth.tlv(11, b'photo.jpg') + auth.tlv(13, b'x' * 8193))]
+                 ('metadata_size', auth.tlv(11, b'photo.jpg') + auth.tlv(13, b'x' * (r.PREVIEW_MTU + 1)))]
         for reason, fields in cases:
             result = {}
             with self.subTest(reason=reason), self.assertRaises(ValueError):
@@ -778,13 +781,13 @@ class HuaweiProbeTests(unittest.TestCase):
 
     def test_receiver_advertisement_has_no_account_hash(self):
         packet = receiver_discovery.advertisement("192.168.99.2", 12345, "test", 1)
-        value = json.loads(packet.split(b"\xff", 1)[1])
+        value = json.loads(packet[packet.index(b"\xff", 6) + 1:])
         self.assertEqual(value["deviceHash"], "")
 
     def test_receiver_publication_is_distinct_from_discovery_request(self):
         for mode in (1, 10):
             packet = receiver_discovery.advertisement("192.168.99.2", 12345, "A" * 64, 1, mode)
-            value = json.loads(packet.split(b"\xff", 1)[1])
+            value = json.loads(packet[packet.index(b"\xff", 6) + 1:])
             self.assertEqual(value["mode"], mode)
             self.assertEqual(value["type"], 12)
             self.assertEqual("coapUri" in value, mode == 1)

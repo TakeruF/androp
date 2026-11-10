@@ -62,7 +62,7 @@ class ReceiveConnectionTests(unittest.IsolatedAsyncioTestCase):
         events.assert_any_call('diagnostic',detail='receive_failed',transfer_id='synthetic-transfer',phase='connect',
                                error_type='ClientConnectorError',connection_issue='multiple_socket_errors')
         self.assertNotIn('private',str(events.call_args_list))
-        engine.update.assert_any_call(session,'failed',detail=unittest.mock.ANY)
+        engine.update.assert_any_call(session,'failed',detail=unittest.mock.ANY,files=[])
         engine.reset.assert_awaited_once_with(session)
 
     async def test_unclassified_connector_failure_recovers_within_same_offer(self):

@@ -4,10 +4,11 @@
 """anDrop local interoperability engine. JSON-lines IPC with its native host.
 No cloud, saved peer credentials, or USB transport. One transfer at a time.
 """
-import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, signal, socket, ssl, stat, sys, tempfile, time, uuid, zipfile
-from pathlib import Path, PurePosixPath
+import asyncio, base64, datetime, errno, hashlib, ipaddress, json, os, shutil, signal, socket, ssl, sys, tempfile, time, uuid, zipfile
+from pathlib import Path
 from peer_metadata import parse_peer_metadata, peer_identifier
 from file_types import offer_mime_type
+from android_files import safe_name, validate_archive, create_archive, receive_archive
 from sandbox_files import BookmarkAccess
 from motion_photos import MotionPhotoError, prepare_send, materialize_received
 from network_routes import lan_addresses, private_ipv4, direct_local_address, interface_for_address, bind_interface, lan_socket, client_socket_factory
@@ -204,27 +205,6 @@ async def connect_receive_channel(operation,diagnostic):
                 if not (error.errno in transient or unknown_connector) or attempt==len(delays):raise
                 await asyncio.sleep(delays[attempt])
 
-
-def safe_name(raw):
-    # Never honor a network-provided path or create a symlink.
-    name=raw.replace('\\','/'); p=PurePosixPath(name)
-    if not name or p.is_absolute() or any(x in ('','..','.') for x in name.split('/')) or '\x00' in name:
-        raise ValueError('Unsafe archive path')
-    name=p.name
-    if any(ord(c)<32 or c in ':/' for c in name) or len(name.encode())>240:
-        raise ValueError('Unsupported file name')
-    return name
-
-def validate_archive(archive, expected_count, expected_size):
-    entries=[x for x in archive.infolist() if not x.is_dir()]
-    if not 1<=expected_count<=10000 or len(entries)!=expected_count: raise ValueError('File count mismatch')
-    if sum(x.file_size for x in entries)!=expected_size: raise ValueError('File size mismatch')
-    for entry in archive.infolist():
-        safe_name(entry.filename.rstrip('/'))
-        mode=entry.external_attr>>16
-        if stat.S_ISLNK(mode) or (stat.S_IFMT(mode) not in (0,stat.S_IFREG,stat.S_IFDIR)) or entry.flag_bits&1:
-            raise ValueError('Unsupported archive entry')
-    return entries
 
 async def unpack(archive_path, destination, count, total, progress):
     destination=Path(destination).resolve(strict=True)
@@ -446,7 +426,7 @@ class Engine:
                 if addr[0]!=host:continue
                 start=start or time.monotonic();total+=len(packet)
             return total/1048576/max(time.monotonic()-start,.001)
-        bw=asyncio.create_task(bandwidth());ws=None;taskid='';phase='connect'
+        bw=asyncio.create_task(bandwidth());ws=None;taskid='';phase='connect';saved=[]
         def diagnostic(code,**fields):emit('diagnostic',detail=code,transfer_id=s['id'],phase=phase,**fields)
         try:
             self.update(s,'verifying')
@@ -485,16 +465,12 @@ class Engine:
                     await ws.send_str(wire('ack',index,name));self.update(s,'transferring',name=str(p.get('fileName',t('Files','文件')))[:240],count=count,total=size,completed=0)
                     phase='download';diagnostic('receive_download_start')
                     with tempfile.TemporaryDirectory(prefix='anDrop-',dir=self.destination) as td:
-                        archive=Path(td)/'incoming.zip';limit=size+max(1048576,count*65536);downloaded=0
+                        archive=Path(td)/'incoming.zip'
                         async with client.get(f'https://{host}:{port}/download',params={'taskId':taskid},ssl=Fingerprint(fingerprint)) as response:
                             if response.status!=200:raise TransferError(t('Could not download files from the other device.','无法从对方设备下载文件。'))
-                            with archive.open('wb') as out:
-                                async for chunk in response.content.iter_chunked(1024*1024):
-                                    downloaded+=len(chunk)
-                                    if downloaded>limit:raise ValueError('Transfer exceeds declared size')
-                                    out.write(chunk);self.progress(s,min(downloaded,size),size)
+                            await receive_archive(response.content.iter_chunked(1024*1024),archive,self.destination,count,size,
+                                                  lambda n,t:self.progress(s,n,t),saved)
                         phase='save';diagnostic('receive_save_start')
-                        saved=await unpack(archive,self.destination,count,size,lambda n,t:self.progress(s,n,t))
                     await ws.send_str(wire('action',100,'status',{'taskId':taskid,'id':taskid,'type':1,'reason':'ok'}))
                     try:await asyncio.wait_for(ws.receive(),2)
                     except TimeoutError:pass
@@ -510,12 +486,12 @@ class Engine:
             if ws and not ws.closed:
                 try:await ws.send_str(wire('action',101,'status',{'taskId':taskid,'type':3,'reason':'user interrupt'}))
                 except Exception:pass
-            self.notify('cancel',s['central']);self.update(s,'cancelled')
+            self.notify('cancel',s['central']);self.update(s,'cancelled',files=saved)
         except Exception as e:
             # A completed channel's cleanup must never cancel a newer offer.
             if s.get('state')=='complete':return
             diagnostic('receive_failed',error_type=type(e).__name__,**connection_error_fields(e))
-            self.notify('cancel',s['central']);self.update(s,'failed',detail=transfer_error_detail(e))
+            self.notify('cancel',s['central']);self.update(s,'failed',detail=transfer_error_detail(e),files=saved)
         finally:
             bw.cancel()
             if udp:udp.close()
@@ -604,11 +580,7 @@ class Engine:
             with tempfile.TemporaryDirectory(prefix='anDrop-send-') as td:
                 root=Path(td);archive=root/'files.zip'
                 if shutil.disk_usage(root).free<total+16*1024*1024:raise TransferError(t('Not enough space to prepare these files.','没有足够空间准备发送文件。'))
-                with zipfile.ZipFile(archive,'w',zipfile.ZIP_STORED,allowZip64=True) as z:
-                    for p in files:
-                        with await asyncio.to_thread(p.open,'rb') as src,z.open(p.name,'w',force_zip64=True) as out:
-                            while chunk:=src.read(1024*1024):out.write(chunk);await asyncio.sleep(0)
-                with zipfile.ZipFile(archive) as z:total=sum(e.file_size for e in z.infolist())
+                total=await create_archive(files,archive)
                 mime_type=offer_mime_type(files)
                 keys=Keys();done=asyncio.get_running_loop().create_future();queue=asyncio.Queue();allowed_ip=None;confirmed_ip=None;port=0;offered=False;downloaded=False;acknowledged=False;lan_confirmed=asyncio.Event();channel_connected=asyncio.Event()
                 certkey=ec.generate_private_key(ec.SECP256R1());name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'anDrop')]);now=datetime.datetime.now(datetime.timezone.utc)
@@ -722,7 +694,7 @@ class Engine:
                             send_offer_diagnostic(p,s['id'])
                             if 'wlan_accept' not in p:continue
                             if p['wlan_accept'] is not True:
-                                if candidate_index+1==len(candidates):raise TransferError(t('The other device could not reach this Mac over the local network. Another interconnect session or network isolation may be blocking it.','对方无法通过局域网连接此 Mac。其他设备互联连接或网络隔离可能阻止了通信。'))
+                                if candidate_index+1==len(candidates):raise TransferError(t('The other device could not reach this Mac over the local network. Public Wi-Fi may block communication between devices. Connect both devices to the same personal hotspot or private network and retry. If it still fails, check Local Network permission, VPN routing, and other interconnect sessions.','对方无法通过局域网连接此 Mac。公共 Wi-Fi 可能禁止设备之间通信。请将双方连接到同一个个人热点或私人局域网后重试；若仍失败，请检查本地网络权限、VPN 路由及其他设备互联连接。'))
                                 if ws is not None:await ws.close();ws=None
                                 await site.stop();break
                             confirmed_ip=keys.decrypt(p['ip'])

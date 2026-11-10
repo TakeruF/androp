@@ -6,3 +6,6 @@ pyobjc-core==12.2.2
 pyobjc-framework-Cocoa==12.2.2
 pyobjc-framework-CoreBluetooth==12.2.2
 pyobjc-framework-libdispatch==12.2.2
+stream-unzip==0.0.101
+stream-inflate==0.0.43
+pycryptodome==4.3.0

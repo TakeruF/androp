@@ -75,3 +75,5 @@ codesign --verify --deep --strict build/anDrop.app
 ## Huawei Share LAN适配器
 
 完整engine含1.2.0正式Huawei支持的有界协议模块和显式GCM/RSA imports，打包前无网络执行 `anDropEngine --huawei-check`。UI-only必须用这些修改之后的engine。实机／发现／认证／恢复边界见[调查](huawei-share-research.md)。可本地单独ANDROP_BUNDLE_ID隔离验证以保留安装版设置。
+
+1.3.2 使用 python-build-standalone 20260510 的 CPython 3.14.5，发行构建仍须通过最低 macOS 和本机库路径检查。使用该运行时时，以相同完整运行时归档中的 `python/licenses` 目录运行 `collect-licenses.py --python-standalone-licenses <目录>`；官方 python.org 安装包则使用 `--python-notices` 指向对应的软件许可说明。

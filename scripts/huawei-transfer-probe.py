@@ -346,6 +346,28 @@ def file_handshake(address, identity, file_key):
 
 def read_dfile_frame(process, seconds=4):
     deadline = time.monotonic() + seconds
+    if getattr(process, 'buffer_dfile_reads', False):
+        # Owned receive sockets may contain many small DFile frames per read.
+        # Bound read-ahead to 64 KiB; preserve framing and the original deadline.
+        buffer = getattr(process, '_dfile_read_buffer', None)
+        if buffer is None:
+            buffer = process._dfile_read_buffer = bytearray()
+        def fill(size):
+            while len(buffer) < size:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([process.stdout], [], [], remaining)[0]:
+                    raise ValueError("DFile response deadline")
+                chunk = os.read(process.stdout.fileno(), 65536 - len(buffer))
+                if not chunk: raise ValueError("DFile connection closed")
+                buffer.extend(chunk)
+        fill(8)
+        kind, flags, session, transaction, size = struct.unpack_from('!BBHHH', buffer)
+        if not 1 <= kind <= 14 or size > 14720:
+            raise ValueError("invalid DFile framing")
+        fill(8 + size)
+        payload = bytes(buffer[8:8 + size])
+        del buffer[:8 + size]
+        return (kind, flags, session, transaction), payload
     def exact(size):
         data = bytearray()
         while len(data) < size:
@@ -421,7 +443,7 @@ def dfile_file_data(key, content, encrypt_headers=True):
 
 def dfile_data_chunk(key, content, sequence, flags, encrypt_headers=True, file_id=1):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    if not 1 <= len(content) <= 1422 or not 0 <= sequence < 2 ** 32 or flags not in (0, 1, 3) or not 1 <= file_id <= 16:
+    if not 1 <= len(content) <= 1422 or not 0 <= sequence < 2 ** 32 or flags not in (0, 1, 3) or not 1 <= file_id <= batch_files.MAX_FILES:
         raise ValueError("invalid bounded DFile data chunk")
     nonce = secrets.token_bytes(12)
     # DFile uses ciphertext + tag + nonce, with 64 ASCII A bytes as AAD.
@@ -585,7 +607,7 @@ def main():
     parser.add_argument("--send-large-fixture", action="store_true", help="send a synthetic Japanese-named 8 MiB file")
     parser.add_argument("--cancel-after-chunks", type=int, default=0, help="cancel the large fixture before its final chunk (test only)")
     parser.add_argument("--cancel-via-bytes", action="store_true", help="test cancellation on the established byte channel")
-    parser.add_argument('--send-file', type=Path, action='append', help='explicit local file; up to 16 files, 4 GiB each / 16 GiB total, streamed from disk')
+    parser.add_argument('--send-file', type=Path, action='append', help='explicit local file; files within DFile wire ranges, streamed from disk')
     parser.add_argument('--display-name', default='anDrop LAN Probe')
     parser.add_argument('--identity-key', type=Path, help='owner-only RSA key naming this Mac across runs; created if absent')
     args = parser.parse_args()

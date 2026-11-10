@@ -10,11 +10,11 @@ anDrop is a macOS menu bar app that officially supports the **互传联盟 (Mutu
 
 **[Download anDrop](https://github.com/TakeruF/androp/releases/latest)** · [Usage and troubleshooting](docs/usage.en.md) · [Compatibility](docs/compatibility.en.md) · [Privacy policy](https://takeruf.com/en/projects/androp/privacy)
 
-**1.3.1: More reliable consecutive receives.** Completed receives immediately release the busy state, and initial connections can recover from socket errors without an error number. See the [1.3.1 release notes](docs/releases/1.3.1.en.md).
+**1.3.2: Incremental receipt and larger Huawei transfers.** Save verified files as they arrive, retain completed files after interruption and prepare outgoing files one at a time. See the [1.3.2 release notes](docs/releases/1.3.2.en.md).
 
 **1.2.2** added Live Photo conversion and improved photo sharing. Convert Apple, Android/OPPO and Huawei moving-photo formats; receive OPPO Live Photo ZIPs as `.pvt` files without automatic Photos import. Photo sharing adds alternative provider-loading methods. URL and text sharing are unsupported. See the [1.2.2 release notes](docs/releases/1.2.2.en.md) for scope and remaining device checks.
 
-Version 1.3.1 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. The 1.3.0 sandbox release passed 4 MiB round trips with matching hashes on **OPPO Pad 4 Pro** and **Huawei Pura 70 running HarmonyOS 7**. OPPO Find X9 Pro passed multi-scenario testing in earlier releases; its 1.3.0 sandbox retest remains outstanding. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
+Version 1.3.2 provides a DMG for **Apple Silicon Macs running macOS 14 or later**. Sandbox validation is complete; see below and the [validation record](docs/testing.en.md) for tested OPPO and Huawei coverage. Other brands and models remain untested. Build checks enforce the minimum OS for bundled binaries, but macOS 14 has not been tested on a physical Mac. Mock images do not establish compatibility with every brand shown.
 
 **1.2.0** adds official Huawei Share support, concurrent sends to different devices, recipient renaming/hiding from the context menu, and automatic update installation with notifications. It also improves photo receipt and trusted-device management. See the [release notes](docs/releases/1.2.0.en.md) and [test record](docs/testing.en.md). When upgrading from 1.0.0, re-enroll old trusted-device entries after successfully receiving a file; see the [1.1.0 upgrade notes](docs/releases/1.1.0.en.md).
 
@@ -27,6 +27,14 @@ Version 1.3.1 provides a DMG for **Apple Silicon Macs running macOS 14 or later*
 **We recommend quitting 鸿蒙星河互联 before using anDrop.** anDrop handles Huawei Share file transfers on its own and can replace 鸿蒙星河互联's file-sharing function, so the two apps do not need to run together. Coexistence remains experimental and may affect discovery or transfers. Finish any transfers in 鸿蒙星河互联 before quitting it. If anDrop detects 鸿蒙星河互联 running when a send or receive fails, a popup recommends quitting 鸿蒙星河互联 and trying again.
 
 Fresh installations default to **Simplified Chinese**. Choose English or System Default in Settings; an existing language choice is preserved. Receiving is enabled while anDrop is running; quit to stop receiving. No main window needs to stay open. The Dock icon normally stays hidden; it remains visible while 鸿蒙星河互联 runs to improve Bluetooth discovery.
+
+## App Sandbox and file access
+
+Release builds use **App Sandbox** starting with 1.3.0. File access by the app, Finder Share extension and bundled transfer/Live Photo tools is limited to the app container, Downloads, and files or folders you explicitly select or authorize. To change the receive folder, grant access through the folder chooser in Settings; the app restores that access after relaunch.
+
+Sandbox validation covers 4 MiB round trips with matching SHA-256 hashes on OPPO Pad 4 Pro and Huawei Pura 70 running HarmonyOS 7, actual Finder Share, custom-folder access restoration, legacy-data migration, and Sparkle update installation and relaunch. Upgrades preserve settings, trusted devices and transfer history. When upgrading from an older non-sandboxed version, reselect a custom receive folder to authorize it; the default Downloads folder needs no additional grant.
+
+See [App Sandbox](docs/sandbox.en.md) for permissions and process boundaries, and the [validation record](docs/testing.en.md) for the scope of each check.
 
 ## See how it works
 
@@ -115,14 +123,14 @@ The Mutual Transfer Alliance is a cross-brand ecosystem used by Xiaomi, HONOR, O
 | OPPO Pad 4 Pro | Physically tested across multiple scenarios, including discovery, tablet identification and same-Wi-Fi transfers in both directions. |
 | HONOR | Models supporting both Huawei Share and Android mutual transfer (安卓互传) are a priority for upcoming physical validation. We plan to test discovery and bidirectional file transfers separately through both sharing methods. Availability depends on model and OS version; physical testing remains outstanding. |
 | Xiaomi, vivo and other brands/models | Compatible devices in the target ecosystem; not physically tested yet. |
-| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.3.1. |
+| Apple Silicon Mac, macOS 27.0.1 | Tested development environment. Release targets macOS 14+. Physical macOS 14 and Intel testing remain outstanding; no Intel installer is provided in 1.3.2. |
 | 鸿蒙星河互联 coexistence | Experimental. We recommend finishing any 鸿蒙星河互联 transfers and quitting it, then using anDrop for file sharing to avoid discovery or transfer conflicts. |
 | Huawei Share | **Officially supported by anDrop on the same LAN. Test device: Huawei Pura 70 running HarmonyOS 7 (鸿蒙 7).** Three-file app transfers in both directions, Downloads receipt, duplicate-name receipt, and content verification passed. The phone is found while its screen is on, without opening its share sheet. The first transfer needs “Everyone” on the phone; afterwards “Devices shared with” also works. Transfers can be retried right after a cancel or dropped connection. Earlier physical checks passed bidirectional transfers with empty files, Japanese names and 8 MiB, including Downloads receipt and duplicate-name handling. Phone identity authentication, screen-off discovery, and Wi-Fi loss recovery remain under validation. See the [research record](docs/huawei-share-research.en.md). |
 | Wi-Fi Direct, Google Quick Share | Not implemented. |
 
 Physical transfer results come from development testing, not a fresh test after every UI or packaging change. See [compatibility](docs/compatibility.en.md) and [validation records](docs/testing.en.md). Brand/category recognition does not identify the exact model.
 
-Current source allows Mac → Huawei sends of up to 16 files, 4 GiB per file and 16 GiB total, using disk snapshots and chunked encryption. A 64 MiB transfer passed local socket integrity and memory checks; GiB-scale physical transfers remain unverified. Huawei → Mac receipt remains limited to 16 MiB per file and 16 MiB total.
+Version 1.3.2 removes the former Huawei product limits (16 files; sending: 4 GiB per file / 16 GiB total; receiving: 16 MiB total), uses disk-backed receipt and opens one source file at a time during send preparation. DFile wire-format limits, available disk space and peer-device limits still apply. Large-batch Huawei-device stability remains unverified. See [validation notes](docs/huawei-unlimited-test.md).
 
 ## Build from source
 
@@ -164,3 +172,5 @@ The repository is named **androp**; the app is named **anDrop**.
 Project-authored source, documentation and app icons use **GPL-3.0-only**. Dependencies retain their own licenses. [Official manufacturer artwork](Resources/BrandLogos/README.en.md) retains its owners’ copyright and trademark rights and is excluded from the GPL grant, including artwork visible in documentation images. See [LICENSE](LICENSE), [NOTICE.md](NOTICE.en.md) and [licensing details](docs/licensing.en.md).
 
 The project is not affiliated with, certified by or endorsed by manufacturers or Apple. Documentation images contain fictional data only. Real device logs, private screenshots, vendor APKs, decompiled vendor source, credentials and private keys are excluded. Developer ID certificates are inspectable and identify their signer; anonymous source metadata does not hide that identity.
+
+Version 1.3.2 (13200) includes incremental receipt and one-source-at-a-time preparation. See [receipt and disk I/O](docs/android-streaming.en.md).

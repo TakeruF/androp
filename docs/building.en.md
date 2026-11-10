@@ -10,7 +10,7 @@
 - The build machine must match the target CPU architecture. The published 1.0.0 DMG is arm64 only; Intel is untested.
 - Normal builds fetch official Sparkle 2.10.0 from the URL in `release.json`, verify its pinned SHA-256 and embed the framework. Build-time network access is required on the first run.
 
-The deployment target is **macOS 14.0**. A Homebrew Python built for macOS 26 cannot be made compatible by changing only Info.plist. Use a Python distribution and native wheels built for the minimum OS, such as the official python.org macOS installer. The build rejects bundled Mach-O files whose deployment target exceeds the declared minimum or whose load commands refer to build-machine libraries. This is a packaging check, not a physical test on macOS 14.
+The deployment target is **macOS 14.0**. A Homebrew Python built for macOS 26 cannot be made compatible by changing only Info.plist. Use a Python distribution and native wheels built for the minimum OS, such as the official python.org macOS installer or a compatible python-build-standalone runtime. Release 1.3.2 uses CPython 3.14.5 from python-build-standalone (20260510). The build rejects bundled Mach-O files whose deployment target exceeds the declared minimum or whose load commands refer to build-machine libraries. This is a packaging check, not a physical test on macOS 14.
 
 ```sh
 python3.14 -m venv .venv
@@ -85,7 +85,7 @@ python3 scripts/check-runtime.py build/anDrop.app --minimum 14.0 --arch arm64
 codesign --verify --deep --strict build/anDrop.app
 ```
 
-Refresh dependency notices using `collect-licenses.py` from the exact build environment and inspect native-library provenance. See [licensing](licensing.en.md), [publication privacy](publication.en.md) and [validation records](testing.en.md). The normal build excludes the archived receive-panel prototype and creates no Control Center extension, App Intents metadata or control-state App Group entitlement.
+Refresh dependency notices using `collect-licenses.py` from the exact build environment and inspect native-library provenance. For python-build-standalone, pass `--python-standalone-licenses` with the `python/licenses` directory extracted from the matching full runtime archive; for an official python.org installer, pass `--python-notices` with its incorporated-software notices. See [licensing](licensing.en.md), [publication privacy](publication.en.md) and [validation records](testing.en.md). The normal build excludes the archived receive-panel prototype and creates no Control Center extension, App Intents metadata or control-state App Group entitlement.
 
 ## Huawei Share LAN adapter
 

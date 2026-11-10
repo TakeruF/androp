@@ -10,6 +10,7 @@ import threading
 
 class TCPListener:
     pid = None
+    buffer_dfile_reads = True
 
     def __init__(self, source):
         self._lock = threading.Lock()

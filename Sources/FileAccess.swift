@@ -35,7 +35,7 @@ final class FileAccess {
     }
 
     func resolveShared(_ encoded: [String]) throws -> [URL] {
-        guard !encoded.isEmpty, encoded.count <= 1000 else { throw CocoaError(.fileReadCorruptFile) }
+        guard !encoded.isEmpty, encoded.count <= 65535 else { throw CocoaError(.fileReadCorruptFile) }
         var resolved: [URL] = []
         do { for bookmark in encoded { resolved.append(try FileBookmarks.resolve(bookmark)) } }
         catch {

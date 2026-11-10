@@ -2,6 +2,14 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-10: anDrop 1.3.2 incremental receipt and large batches
+
+The release candidate passes 322 Python tests in both development and release environments, 48 Swift tests, and 49 tests executing the packaged engine code. The packaged Huawei protocol files match source. Coverage includes 200-file encrypted Huawei socket transfers (50,519,748 bytes and 35,575 DATA frames), a 200-file Android ZIP round trip (258,998,272 bytes), SHA-256 equality, early file publication, cancellation, corruption, collisions and disk-backed bounded-memory processing.
+
+The Developer ID candidate passes deep/strict signature verification, App Sandbox configuration checks and compatibility checks for 77 arm64 Mach-O files targeting macOS 14 or earlier. Twenty actual sandbox checks pass with a host and children signed by the release identity. Native synthetic Live Photo conversion/send/receive tests also pass without modifying the Photos library. Runtime and dependency notices were refreshed against the exact CPython 3.14.5 python-build-standalone release environment.
+
+Large-batch Huawei transfers on physical devices, real Android throughput, physical macOS 14 and the experience on an 8 GB Mac remain unverified. Apple notarization and the public distribution assets are verified separately from these local test results.
+
 ## 2026-11-04: Release receive reservation before WebSocket cleanup
 
 Physical OPPO tablet logs showed a successful transfer at 06:51:02 JST followed by `IOS state is BUSY` and `GATT_NEGOTIATION_FAILED` at 06:51:09; the first channel finished closing at 06:51:12. Mac diagnostics contained the first successful receive and no second offer. The receiver retained its session until WebSocket context cleanup finished, so it advertised busy after reporting file completion.
