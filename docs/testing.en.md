@@ -2,6 +2,14 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-12: Show received files on the current desktop
+
+A sandboxed native QA host using the production `FinderReveal.swift` opened a synthetic received file while two windows for the same folder remained on Desktop 1. From Desktop 2, the action created a new, focused Finder window on Desktop 2 and selected the file. The workspace Space-change counter stayed at seven before and after the action (zero Space changes during reveal). No Mission Control preference was changed.
+
+The UI-only app build, signed sandbox configuration check, 51 Swift tests and the production AppModel UI regression passed. This used a dummy file and a QA button; the actual received-transfer notification action, multiple physical displays and fullscreen Spaces were not verified.
+
+After that QA, version 1.3.3 (13300) was built with the installed application's Developer ID identity and installed in `/Applications/anDrop.app`. Reciprocal signing requirements, the complete installed bundle's equality with the verified candidate, the running host and engine, and preservation of settings, trusted devices, all 100 history entries and the Huawei identity were verified. The previous 1.3.2 bundle and preferences were retained locally for recovery. This local build was not newly notarized or publicly released.
+
 ## 2026-11-10: anDrop 1.3.2 incremental receipt and large batches
 
 The release candidate passes 322 Python tests in both development and release environments, 48 Swift tests, and 49 tests executing the packaged engine code. The packaged Huawei protocol files match source. Coverage includes 200-file encrypted Huawei socket transfers (50,519,748 bytes and 35,575 DATA frames), a 200-file Android ZIP round trip (258,998,272 bytes), SHA-256 equality, early file publication, cancellation, corruption, collisions and disk-backed bounded-memory processing.

@@ -10,6 +10,8 @@ To send from the Mac, select files in Finder → Share → anDrop, choose the re
 
 To receive, select files in the device's built-in compatible 互传 feature, choose the Mac and approve the request in anDrop's notification or menu bar. The default destination is Downloads itself. Files are not opened automatically.
 
+Show in Finder creates a new window on the clicked display and selects the received files. On first use, allow anDrop to control Finder when macOS asks. If permission was denied, enable Finder under System Settings → Privacy & Security → Automation → anDrop, then try again.
+
 Folders should be compressed first. Send files with identical base names in separate transfers. Outgoing transfers to different devices can run concurrently. Receiving remains exclusive. Notification banners follow macOS notification and Focus settings; progress and approval remain available in the menu bar.
 
 Sent, received and failed transfer notifications are removed from Notification Center three minutes after delivery while anDrop is running. Overdue notifications are also cleared at launch and after waking from sleep. Transfer history remains in the app; approval requests and active-transfer notifications keep their actions.

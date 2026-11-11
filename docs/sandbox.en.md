@@ -4,7 +4,7 @@
 
 The native app and Finder Share extension use App Sandbox. The bundled Python
 engine and Live Photo converter inherit the native host's static sandbox. This
-limits access to the app container, Downloads and files/folders explicitly granted
+limits direct file access to the app container, Downloads and files/folders explicitly granted
 by the user. It does not authenticate nearby devices or replace protocol checks.
 
 ## Files and process boundaries
@@ -14,6 +14,14 @@ user-selected read/write and app-scoped bookmark entitlements. The Share extensi
 has only App Sandbox and user-selected read-only access. Each inherited executable
 has exactly `com.apple.security.app-sandbox` and `com.apple.security.inherit`.
 No temporary filesystem exception, App Group or Photos library entitlement is used.
+
+Show in Finder creates a new Finder window before activating Finder, rather than
+reusing a window on another Space. The host has the Apple Events automation
+entitlement and an Apple Events sandbox exception targeting only `com.apple.finder`.
+macOS asks for Finder control permission on first use. This permission allows
+Finder automation; it is not restricted by macOS to the received files. anDrop's
+script only creates windows, positions them on the clicked display and selects
+the received files. It does not change the user's Mission Control settings.
 
 After copying provider-owned files inside its callback, the Share extension sends
 implicit URL bookmarks through `androp://share?bookmark=…`. Raw path-only handoffs

@@ -30,6 +30,13 @@ for path in ['Contents/MacOS','Contents/Resources','Contents/PlugIns/anDropShare
 # Petal coexistence still opts into regular activation explicitly at runtime.
 info={'CFBundleExecutable':'anDrop','CFBundleIdentifier':BUNDLE_ID,'CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'APPL','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSBluetoothAlwaysUsageDescription':'Discover nearby devices for file sharing through the Mutual Transfer Alliance (互传联盟) ecosystem.','NSLocalNetworkUsageDescription':'Send and receive files with Android devices on the same Wi-Fi.','NSHighResolutionCapable':True,'LSUIElement':True,'CFBundleURLTypes':[{'CFBundleURLName':BUNDLE_ID+'.share','CFBundleURLSchemes':['androp']}],'CFBundleDocumentTypes':[{'CFBundleTypeName':'Files','CFBundleTypeRole':'Viewer','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','com.apple.live-photo-bundle','com.apple.private.live-photo-bundle']}],'CFBundleIconFile':'AppIconPaperplane','CFBundleIconName':'AppIconPaperplane'}
 info['LSApplicationCategoryType']='public.app-category.utilities'
+info['NSAppleEventsUsageDescription']='Show received files in a new Finder window on the desktop where you clicked Show in Finder.'
+for locale, purpose in {
+ 'en':info['NSAppleEventsUsageDescription'],
+ 'zh-Hans':'在您点击“在访达中显示”的桌面上，新建访达窗口并选中已接收的文件。',
+}.items():
+ localized=APP/'Contents/Resources'/f'{locale}.lproj';localized.mkdir(exist_ok=True)
+ (localized/'InfoPlist.strings').write_bytes(plistlib.dumps({'NSAppleEventsUsageDescription':purpose},fmt=plistlib.FMT_BINARY))
 if not APP_STORE:
  info.update({'SUFeedURL':os.environ.get('ANDROP_FEED_URL',CONFIG['feed_url']),'SUPublicEDKey':(ROOT/'Resources/UpdatePublicKey.txt').read_text().strip(),'SUEnableAutomaticChecks':True,'SUAutomaticallyUpdate':True,'SUEnableSystemProfiling':False,'SUVerifyUpdateBeforeExtraction':True,'SURequireSignedFeed':True,'SUScheduledCheckInterval':86400,'SUEnableInstallerLauncherService':True})
 (APP/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
@@ -41,7 +48,7 @@ ext=APP/'Contents/PlugIns/anDropShare.appex'
 extinfo={'CFBundleIconFile':'ShareIcon','CFBundleIconName':'AppIconPaperplane','CFBundleExecutable':'anDropShare','CFBundleIdentifier':BUNDLE_ID+'.Share','CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'XPC!','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationDictionaryVersion':2,'NSExtensionActivationSupportsFileWithMaxCount':65535,'NSExtensionActivationSupportsImageWithMaxCount':65535,'NSExtensionActivationSupportsMovieWithMaxCount':65535}}}}
 (ext/'Contents/Info.plist').write_bytes(plistlib.dumps(extinfo))
 cache=ROOT/'build/module-cache';cache.mkdir(parents=True,exist_ok=True)
-host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','FileAccess.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','Diagnostics.swift','BrandLogos.swift','HuaweiLANDiscovery.swift','main.swift']]
+host_sources=[ROOT/'Sources'/name for name in ['AppUpdates.swift','FileAccess.swift','FinderReveal.swift','Localization.swift','Peer.swift','ReceiveAccessPolicy.swift','TransferProgress.swift','Diagnostics.swift','BrandLogos.swift','HuaweiLANDiscovery.swift','main.swift']]
 framework_flags=[]
 if not APP_STORE:
  (APP/'Contents/Frameworks').mkdir()
@@ -98,6 +105,8 @@ run('xattr','-cr',APP)
 entitlements=APP.parent/'share-entitlements.plist';entitlements.write_bytes(plistlib.dumps({'com.apple.security.app-sandbox':True,'com.apple.security.files.user-selected.read-only':True}))
 host_entitlements=APP.parent/'host-entitlements.plist'
 host_rights={'com.apple.security.app-sandbox':True,'com.apple.security.device.bluetooth':True,'com.apple.security.network.client':True,'com.apple.security.network.server':True,'com.apple.security.files.downloads.read-write':True,'com.apple.security.files.user-selected.read-write':True,'com.apple.security.files.bookmarks.app-scope':True}
+host_rights['com.apple.security.automation.apple-events']=True
+host_rights['com.apple.security.temporary-exception.apple-events']=['com.apple.finder']
 if not APP_STORE:host_rights['com.apple.security.temporary-exception.mach-lookup.global-name']=[BUNDLE_ID+'-spks',BUNDLE_ID+'-spki']
 host_entitlements.write_bytes(plistlib.dumps(host_rights))
 inherit_entitlements=APP.parent/'inherit-entitlements.plist'

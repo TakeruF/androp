@@ -857,7 +857,29 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         command(["command": "decision", "id": transfer.id, "accept": accept]); UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [transfer.id])
     }
     func cancel(_ transfer: Transfer) { command(["command": "cancel", "id": transfer.id]) }
-    func reveal(_ transfer: Transfer) { NSWorkspace.shared.activateFileViewerSelecting(transfer.paths.map { URL(fileURLWithPath: $0) }) }
+    func reveal(_ transfer: Transfer) {
+        let urls = transfer.paths.map { URL(fileURLWithPath: $0) }
+        guard !urls.isEmpty else { return }
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        guard let screen else { return }
+        DispatchQueue.main.async { [weak self] in
+            FinderReveal.reveal(urls, on: screen) { [weak self] errorCode in
+                if let errorCode {
+                    if errorCode == -1743 || errorCode == -1744 {
+                        self?.error = L("Allow anDrop to control Finder in System Settings → Privacy & Security → Automation, then try again.", "请在系统设置 → 隐私与安全性 → 自动化中允许 anDrop 控制访达，然后重试。")
+                    } else {
+                        self?.error = L("Could not show the received files. They may have moved, or Finder may be unavailable.", "无法显示已接收的文件。文件可能已移动，或访达暂时不可用。")
+                    }
+                    self?.showWindow()
+                    return
+                }
+                NSApp.yieldActivation(toApplicationWithBundleIdentifier: "com.apple.finder")
+                if let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first {
+                    finder.activate(from: .current, options: [])
+                }
+            }
+        }
+    }
     @discardableResult
     func changeSharingName(_ value: String) -> Bool {
         let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
