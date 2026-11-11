@@ -10,6 +10,8 @@ The UI-only app build, signed sandbox configuration check, 51 Swift tests and th
 
 After that QA, version 1.3.3 (13300) was built with the installed application's Developer ID identity and installed in `/Applications/anDrop.app`. Reciprocal signing requirements, the complete installed bundle's equality with the verified candidate, the running host and engine, and preservation of settings, trusted devices, all 100 history entries and the Huawei identity were verified. The previous 1.3.2 bundle and preferences were retained locally for recovery. This local build was not newly notarized or publicly released.
 
+The later distribution candidate passed 322 Python tests and 20 actual sandbox checks. Its bundled engine code matches the installed 1.3.2 engine and its Huawei protocol scripts match source. Independent checks of the exact DMG passed Developer ID signatures, Apple notarization and stapling, Gatekeeper, runtime compatibility, app/engine/extension identity continuity, the signed update feed and the DMG's Ed25519 update signature. Public assets are limited to the DMG, `appcast.xml` and `SHA256SUMS.txt`.
+
 ## 2026-11-10: anDrop 1.3.2 incremental receipt and large batches
 
 The release candidate passes 322 Python tests in both development and release environments, 48 Swift tests, and 49 tests executing the packaged engine code. The packaged Huawei protocol files match source. Coverage includes 200-file encrypted Huawei socket transfers (50,519,748 bytes and 35,575 DATA frames), a 200-file Android ZIP round trip (258,998,272 bytes), SHA-256 equality, early file publication, cancellation, corruption, collisions and disk-backed bounded-memory processing.
