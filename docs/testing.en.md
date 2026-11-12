@@ -2,6 +2,12 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-13: Preserve original filenames in Finder Share
+
+Finder can export distinctly named JPEGs under the same temporary name, `JPEG image.jpeg`. Shared-file staging now prefers the original file-URL representation and retains media-export and encoded-data fallbacks. The regression test failed before the fix and passed afterward; all 53 Swift tests and the native Share extension compile/layout test passed.
+
+Local build 13301 passed Developer ID signature, sandbox and macOS 14 runtime checks and replaced the installed app with its previous bundle retained under ignored build output. Actual Finder Share handed four JPEGs to the recipient chooser with their original names and matching SHA-256 values. Production photo preparation and ZIP creation retained all four names and contents. Installed host/extension hashes matched the build; settings, trusted devices and history fingerprints were unchanged. This verifies local sharing and send preparation, not delivery to the tablet or a public release.
+
 ## 2026-11-12: Show received files on the current desktop
 
 A sandboxed native QA host using the production `FinderReveal.swift` opened a synthetic received file while two windows for the same folder remained on Desktop 1. From Desktop 2, the action created a new, focused Finder window on Desktop 2 and selected the file. The workspace Space-change counter stayed at seven before and after the action (zero Space changes during reveal). No Mission Control preference was changed.

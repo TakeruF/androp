@@ -13,6 +13,75 @@ nonisolated private final class NoExportPhotoProvider: NSItemProvider, @unchecke
     }
 }
 
+// Finder can export each JPEG as "JPEG image.jpeg", even while its file-URL
+// representation points to the original, distinctly named file.
+nonisolated private final class GenericExportPhotoProvider: NSItemProvider, @unchecked Sendable {
+    private let exportedFile: URL
+
+    init(exportedFile: URL) {
+        self.exportedFile = exportedFile
+        super.init()
+        registerDataRepresentation(forTypeIdentifier: UTType.jpeg.identifier, visibility: .all) { completion in
+            completion(nil, CocoaError(.fileReadUnknown)); return nil
+        }
+    }
+
+    override func loadFileRepresentation(forTypeIdentifier typeIdentifier: String,
+                                        completionHandler: @escaping @Sendable (URL?, (any Error)?) -> Void) -> Progress {
+        completionHandler(exportedFile, nil)
+        return Progress(totalUnitCount: 0)
+    }
+}
+
+@Test func sharedFinderBatchKeepsOriginalNamesWhenImageExportUsesGenericName() async throws {
+    let manager = FileManager.default
+    let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try manager.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? manager.removeItem(at: root) }
+    let exported = root.appendingPathComponent("JPEG image.jpeg")
+    let names = ["line_oa_chat_261113_082729.jpg", "line_oa_chat_261113_082733.jpg",
+                 "line_oa_chat_261113_082735.jpg", "line_oa_chat_261113_082737.jpg"]
+    var stagedFiles: [URL] = []
+    for (index, name) in names.enumerated() {
+        let source = root.appendingPathComponent(name)
+        let bytes = Data([0xff, 0xd8, UInt8(index), 0xff, 0xd9])
+        try bytes.write(to: source)
+        try bytes.write(to: exported)
+        let provider = GenericExportPhotoProvider(exportedFile: exported)
+        if index.isMultiple(of: 2) {
+            provider.registerItem(forTypeIdentifier: UTType.fileURL.identifier, loadHandler: { completion, _, _ in completion?(source as NSURL, nil) })
+        } else {
+            let encodedURL = source.dataRepresentation
+            provider.registerDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier, visibility: .all) { completion in
+                completion(encodedURL, nil); return nil
+            }
+        }
+        let staged = try await SharedFileStaging.loadFile(from: provider, cacheDirectory: root.appendingPathComponent("cache"))
+        try manager.removeItem(at: source)
+        #expect(staged.lastPathComponent == name)
+        #expect(try Data(contentsOf: staged) == bytes)
+        stagedFiles.append(staged)
+    }
+    #expect(Set(stagedFiles.map { $0.lastPathComponent.lowercased() }).count == names.count)
+}
+
+@Test func sharedPhotoFallsBackToImageExportWhenOriginalURLIsUnavailable() async throws {
+    let manager = FileManager.default
+    let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try manager.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? manager.removeItem(at: root) }
+    let exported = root.appendingPathComponent("exported.jpeg")
+    let bytes = Data([0xff, 0xd8, 0xff, 0xd9])
+    try bytes.write(to: exported)
+    let provider = GenericExportPhotoProvider(exportedFile: exported)
+    let unavailable = root.appendingPathComponent("unavailable.jpg")
+    provider.registerItem(forTypeIdentifier: UTType.fileURL.identifier, loadHandler: { completion, _, _ in completion?(unavailable as NSURL, nil) })
+    let staged = try await SharedFileStaging.loadFile(from: provider, cacheDirectory: root.appendingPathComponent("cache"))
+    try manager.removeItem(at: exported)
+    #expect(staged.lastPathComponent == "exported.jpeg")
+    #expect(try Data(contentsOf: staged) == bytes)
+}
+
 @Test func sharedPhotoFallsBackToLegacyURLWhenFileExportFails() async throws {
     let manager = FileManager.default
     let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -18,7 +18,13 @@ nonisolated enum SharedFileStaging {
         }.prefix(4))
         let hasFileURL = provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
         guard hasFileURL || !types.isEmpty else { throw CocoaError(.fileReadUnsupportedScheme) }
-        // Prefer an exported file, copying before the callback returns.
+        // Finder's image export can name every selected JPEG "JPEG image.jpeg".
+        // Prefer the original file URL to preserve names and bytes. Copy within
+        // the provider callback; never hand its temporary URL to the host.
+        if hasFileURL, let result = await loadItem(from: provider, type: UTType.fileURL.identifier, cacheDirectory: cacheDirectory) {
+            return result
+        }
+        // Photos and other providers may only vend an exported media file.
         for type in types {
             let result: URL? = await withCheckedContinuation { continuation in
                 provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
@@ -28,11 +34,6 @@ nonisolated enum SharedFileStaging {
                 }
             }
             if let result { return result }
-        }
-        // Photos' legacy file-URL representation can work when its modern
-        // file representation fails. Never hand that original URL to the host.
-        if hasFileURL, let result = await loadItem(from: provider, type: UTType.fileURL.identifier, cacheDirectory: cacheDirectory) {
-            return result
         }
         let suggestedName = provider.suggestedName
         for type in types {
