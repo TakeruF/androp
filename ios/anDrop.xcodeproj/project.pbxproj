@@ -1,0 +1,868 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		127E033761C0827F1F28C017 /* ReceiveRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB75F6F08EF6C2E6605603F5 /* ReceiveRouteTests.swift */; };
+		147DEE751C17BC5EE3697C35 /* SharedFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53F9190017FE638CD76BCF0 /* SharedFileTests.swift */; };
+		23BF9EFEEDBEF072DD7936E2 /* anDropProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FBA35BC4958CC8EEF9A90200 /* anDropProtocol */; };
+		35230AD82EF00C7E99CC34CE /* anDropShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8931380AA73FB9945124A3BD /* anDropShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4B23C3792D8D084D0B1E7167 /* ProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B7D7BE1625086C436D385D0 /* ProtocolTests.swift */; };
+		5085D32AABCF0AA949FC0FD9 /* SharingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C15636E954EFBA8FF3AEBC /* SharingModel.swift */; };
+		54D2F2DF84D8E1E57A1E4530 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924FD8C09C00726D11CDC2DA /* ShareViewController.swift */; };
+		575A8B487AABD628C55BFE9D /* ShareExtensionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C98A306A755FBA3C4430C57 /* ShareExtensionTests.swift */; };
+		69681547FCB034F6A3E8F685 /* HuaweiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536E93F806FFDC2C4FEBBDB0 /* HuaweiTests.swift */; };
+		6A562E2C63CCABA3835CCCBB /* BackgroundTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A840FE31F517DBA3FC27407 /* BackgroundTransfer.swift */; };
+		6CDC949ECD0B4117EE988A39 /* BackgroundTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A840FE31F517DBA3FC27407 /* BackgroundTransfer.swift */; };
+		7B1DF61815A915CB6655C1C9 /* SharingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C15636E954EFBA8FF3AEBC /* SharingModel.swift */; };
+		7BB4C73932C7DC722B61810E /* BackgroundTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742F21010E194BD4FB67C22B /* BackgroundTransferTests.swift */; };
+		8D5ECAA8A70FE124AFFDCA3E /* NetworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 543FB31DB3B20945B3DB13B8 /* NetworkTests.swift */; };
+		969E5E4FEB8056FD512B376E /* ZIPFoundation-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = E4F8943EC9F80A5AECB82443 /* ZIPFoundation-LICENSE.txt */; };
+		9D12ACE0848B78F1437DF8E1 /* BackgroundTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FB734B976147549876C1C46 /* BackgroundTransferTests.swift */; };
+		9F6CB6D4EA69EA04F8C933AE /* anDropProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 3D299452716691C487CB57C1 /* anDropProtocol */; };
+		A2E2A8742B30E84EBE7EAF4B /* FileTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6862971348DEBD5E6115AA51 /* FileTypeTests.swift */; };
+		AD8AECD2DD8D8E6C10B8F762 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FF9A99AABEAE15B8C132B9 /* AppDelegate.swift */; };
+		B4F3190C03E482DA265CF6FA /* ShareFixtureApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2785FB3815D13FCB627C3656 /* ShareFixtureApp.swift */; };
+		C38E1671F654420639F50363 /* HuaweiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F473DD5DCD8A3A4FFB27BB6B /* HuaweiTests.swift */; };
+		C6D948B9122A168BD50BFDA3 /* AppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABB3803E177D74EA09F77865 /* AppTests.swift */; };
+		D234670A7CDC9E589C993D11 /* anDropApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F685E82558484785C3E363E /* anDropApp.swift */; };
+		D2A058865793E2718E95EC71 /* anDropProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 363A98DC454B227EC7FB944C /* anDropProtocol */; };
+		F366AE2FDC04EB33870049BB /* SendRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B027284FA6AB0B82EE4DA860 /* SendRouteTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7E201A83D3081816C02FBC1C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BD4FDE80CC710DE45A79FBDA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C7032114DA382A48B01067C3;
+			remoteInfo = anDrop;
+		};
+		DB9884D5EA7CDD17E8B8540C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BD4FDE80CC710DE45A79FBDA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5DB3CFB77E149BF27D2CDB16;
+			remoteInfo = anDropShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		38650640D43B63B71D220740 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				35230AD82EF00C7E99CC34CE /* anDropShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		115B7F101CBDA4F4A1753925 /* anDropTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = anDropTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A78EBE10ADABC9E568D2460 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		2785FB3815D13FCB627C3656 /* ShareFixtureApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareFixtureApp.swift; sourceTree = "<group>"; };
+		3A840FE31F517DBA3FC27407 /* BackgroundTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTransfer.swift; sourceTree = "<group>"; };
+		3C98A306A755FBA3C4430C57 /* ShareExtensionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionTests.swift; sourceTree = "<group>"; };
+		3FB734B976147549876C1C46 /* BackgroundTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTransferTests.swift; sourceTree = "<group>"; };
+		402C330B9C544B407EAAE8A2 /* anDropUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = anDropUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4B7D7BE1625086C436D385D0 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
+		4F685E82558484785C3E363E /* anDropApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = anDropApp.swift; sourceTree = "<group>"; };
+		508840EAD858D24C669949CF /* anDropShareFixture.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = anDropShareFixture.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		536E93F806FFDC2C4FEBBDB0 /* HuaweiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuaweiTests.swift; sourceTree = "<group>"; };
+		543FB31DB3B20945B3DB13B8 /* NetworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkTests.swift; sourceTree = "<group>"; };
+		5CED2E9266A1A8C550725D81 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		67B6E2D90CBA889BD15C6597 /* anDrop.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = anDrop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6862971348DEBD5E6115AA51 /* FileTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTypeTests.swift; sourceTree = "<group>"; };
+		742F21010E194BD4FB67C22B /* BackgroundTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTransferTests.swift; sourceTree = "<group>"; };
+		8931380AA73FB9945124A3BD /* anDropShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = anDropShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		924FD8C09C00726D11CDC2DA /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		9A255A2DDB075C0FA953E108 /* anDrop.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = anDrop.entitlements; sourceTree = "<group>"; };
+		AAB214917CD961DE43C58DE2 /* androp-ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "androp-ios"; path = .; sourceTree = SOURCE_ROOT; };
+		ABB3803E177D74EA09F77865 /* AppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTests.swift; sourceTree = "<group>"; };
+		B027284FA6AB0B82EE4DA860 /* SendRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendRouteTests.swift; sourceTree = "<group>"; };
+		C53F9190017FE638CD76BCF0 /* SharedFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedFileTests.swift; sourceTree = "<group>"; };
+		CDE90B277769DCE0F4785B1A /* anDropShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = anDropShare.entitlements; sourceTree = "<group>"; };
+		E0C15636E954EFBA8FF3AEBC /* SharingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingModel.swift; sourceTree = "<group>"; };
+		E4F8943EC9F80A5AECB82443 /* ZIPFoundation-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "ZIPFoundation-LICENSE.txt"; sourceTree = "<group>"; };
+		F473DD5DCD8A3A4FFB27BB6B /* HuaweiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuaweiTests.swift; sourceTree = "<group>"; };
+		F6FF9A99AABEAE15B8C132B9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		FB75F6F08EF6C2E6605603F5 /* ReceiveRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiveRouteTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7483DC51B846775E79006E78 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D2A058865793E2718E95EC71 /* anDropProtocol in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E611D3EF28874DBB092C359C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				23BF9EFEEDBEF072DD7936E2 /* anDropProtocol in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E83A260A28BE839BC43C5666 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F6CB6D4EA69EA04F8C933AE /* anDropProtocol in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0BBE03EE571E3883FF178D23 /* ShareFixture */ = {
+			isa = PBXGroup;
+			children = (
+				2785FB3815D13FCB627C3656 /* ShareFixtureApp.swift */,
+			);
+			path = ShareFixture;
+			sourceTree = "<group>";
+		};
+		147F30C63E73C31D71BAB117 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				E4F8943EC9F80A5AECB82443 /* ZIPFoundation-LICENSE.txt */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		7D58A530E0F5D765E720AF02 = {
+			isa = PBXGroup;
+			children = (
+				9418F07C273908ABFB4C4C23 /* App */,
+				963C99DAA65D18008D012DEE /* Packages */,
+				AEE7BD284B65F2EE040DB271 /* ShareExtension */,
+				B6FB06C62FC6B21D9D87E3B4 /* Tests */,
+				9FD1D6A04DDFACFD61581D28 /* TestSupport */,
+				9145EB31719BD4B9079F796B /* UITests */,
+				E5E2930F1F7C968D9A35911A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9145EB31719BD4B9079F796B /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				ABB3803E177D74EA09F77865 /* AppTests.swift */,
+				742F21010E194BD4FB67C22B /* BackgroundTransferTests.swift */,
+				F473DD5DCD8A3A4FFB27BB6B /* HuaweiTests.swift */,
+				3C98A306A755FBA3C4430C57 /* ShareExtensionTests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+		9418F07C273908ABFB4C4C23 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				9A255A2DDB075C0FA953E108 /* anDrop.entitlements */,
+				4F685E82558484785C3E363E /* anDropApp.swift */,
+				F6FF9A99AABEAE15B8C132B9 /* AppDelegate.swift */,
+				3A840FE31F517DBA3FC27407 /* BackgroundTransfer.swift */,
+				5CED2E9266A1A8C550725D81 /* Info.plist */,
+				E0C15636E954EFBA8FF3AEBC /* SharingModel.swift */,
+				147F30C63E73C31D71BAB117 /* Resources */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		963C99DAA65D18008D012DEE /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				AAB214917CD961DE43C58DE2 /* androp-ios */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		9FD1D6A04DDFACFD61581D28 /* TestSupport */ = {
+			isa = PBXGroup;
+			children = (
+				0BBE03EE571E3883FF178D23 /* ShareFixture */,
+			);
+			path = TestSupport;
+			sourceTree = "<group>";
+		};
+		AEE7BD284B65F2EE040DB271 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				CDE90B277769DCE0F4785B1A /* anDropShare.entitlements */,
+				1A78EBE10ADABC9E568D2460 /* Info.plist */,
+				924FD8C09C00726D11CDC2DA /* ShareViewController.swift */,
+			);
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		B6FB06C62FC6B21D9D87E3B4 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				3FB734B976147549876C1C46 /* BackgroundTransferTests.swift */,
+				6862971348DEBD5E6115AA51 /* FileTypeTests.swift */,
+				536E93F806FFDC2C4FEBBDB0 /* HuaweiTests.swift */,
+				543FB31DB3B20945B3DB13B8 /* NetworkTests.swift */,
+				4B7D7BE1625086C436D385D0 /* ProtocolTests.swift */,
+				FB75F6F08EF6C2E6605603F5 /* ReceiveRouteTests.swift */,
+				B027284FA6AB0B82EE4DA860 /* SendRouteTests.swift */,
+				C53F9190017FE638CD76BCF0 /* SharedFileTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		E5E2930F1F7C968D9A35911A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				67B6E2D90CBA889BD15C6597 /* anDrop.app */,
+				8931380AA73FB9945124A3BD /* anDropShare.appex */,
+				508840EAD858D24C669949CF /* anDropShareFixture.app */,
+				115B7F101CBDA4F4A1753925 /* anDropTests.xctest */,
+				402C330B9C544B407EAAE8A2 /* anDropUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		34128ED81E0E5647947A731B /* anDropUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E2D443F72C207FF9AD268256 /* Build configuration list for PBXNativeTarget "anDropUITests" */;
+			buildPhases = (
+				CFC6A215BC32E219B3C0121B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B474CFDF51811E4677E3028A /* PBXTargetDependency */,
+			);
+			name = anDropUITests;
+			packageProductDependencies = (
+			);
+			productName = anDropUITests;
+			productReference = 402C330B9C544B407EAAE8A2 /* anDropUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		5DB3CFB77E149BF27D2CDB16 /* anDropShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F305DAD966C3B17884EBD16F /* Build configuration list for PBXNativeTarget "anDropShare" */;
+			buildPhases = (
+				0CD8376AFCE3C34F05E0BF69 /* Sources */,
+				E83A260A28BE839BC43C5666 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = anDropShare;
+			packageProductDependencies = (
+				3D299452716691C487CB57C1 /* anDropProtocol */,
+			);
+			productName = anDropShare;
+			productReference = 8931380AA73FB9945124A3BD /* anDropShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B5CFD0743C1C75F76B871256 /* anDropTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6487EB545B4FD103F9227E76 /* Build configuration list for PBXNativeTarget "anDropTests" */;
+			buildPhases = (
+				F3C116404D3D83FA43296E7C /* Sources */,
+				E611D3EF28874DBB092C359C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = anDropTests;
+			packageProductDependencies = (
+				FBA35BC4958CC8EEF9A90200 /* anDropProtocol */,
+			);
+			productName = anDropTests;
+			productReference = 115B7F101CBDA4F4A1753925 /* anDropTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		C6633DD73015D419017F33C3 /* anDropShareFixture */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 96BB5C5A80B684581B523413 /* Build configuration list for PBXNativeTarget "anDropShareFixture" */;
+			buildPhases = (
+				B458CE2B0F5FE0CD66083A6B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = anDropShareFixture;
+			packageProductDependencies = (
+			);
+			productName = anDropShareFixture;
+			productReference = 508840EAD858D24C669949CF /* anDropShareFixture.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C7032114DA382A48B01067C3 /* anDrop */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D3ADBC8FF374A1911E279C37 /* Build configuration list for PBXNativeTarget "anDrop" */;
+			buildPhases = (
+				215112E7811F1C4665EEB96F /* Sources */,
+				3F07B0AC0217812776861C05 /* Resources */,
+				7483DC51B846775E79006E78 /* Frameworks */,
+				38650640D43B63B71D220740 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				816525501957A3993FB3D68C /* PBXTargetDependency */,
+			);
+			name = anDrop;
+			packageProductDependencies = (
+				363A98DC454B227EC7FB944C /* anDropProtocol */,
+			);
+			productName = anDrop;
+			productReference = 67B6E2D90CBA889BD15C6597 /* anDrop.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BD4FDE80CC710DE45A79FBDA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					34128ED81E0E5647947A731B = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = C7032114DA382A48B01067C3;
+					};
+					5DB3CFB77E149BF27D2CDB16 = {
+						ProvisioningStyle = Automatic;
+					};
+					B5CFD0743C1C75F76B871256 = {
+						ProvisioningStyle = Automatic;
+					};
+					C6633DD73015D419017F33C3 = {
+						ProvisioningStyle = Automatic;
+					};
+					C7032114DA382A48B01067C3 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = E3825B331F7E4E106AD1B0DA /* Build configuration list for PBXProject "anDrop" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7D58A530E0F5D765E720AF02;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9EE149082B6F3C77CBA1524F /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E5E2930F1F7C968D9A35911A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C7032114DA382A48B01067C3 /* anDrop */,
+				5DB3CFB77E149BF27D2CDB16 /* anDropShare */,
+				B5CFD0743C1C75F76B871256 /* anDropTests */,
+				C6633DD73015D419017F33C3 /* anDropShareFixture */,
+				34128ED81E0E5647947A731B /* anDropUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3F07B0AC0217812776861C05 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				969E5E4FEB8056FD512B376E /* ZIPFoundation-LICENSE.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0CD8376AFCE3C34F05E0BF69 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A562E2C63CCABA3835CCCBB /* BackgroundTransfer.swift in Sources */,
+				54D2F2DF84D8E1E57A1E4530 /* ShareViewController.swift in Sources */,
+				7B1DF61815A915CB6655C1C9 /* SharingModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		215112E7811F1C4665EEB96F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AD8AECD2DD8D8E6C10B8F762 /* AppDelegate.swift in Sources */,
+				6CDC949ECD0B4117EE988A39 /* BackgroundTransfer.swift in Sources */,
+				5085D32AABCF0AA949FC0FD9 /* SharingModel.swift in Sources */,
+				D234670A7CDC9E589C993D11 /* anDropApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B458CE2B0F5FE0CD66083A6B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B4F3190C03E482DA265CF6FA /* ShareFixtureApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CFC6A215BC32E219B3C0121B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6D948B9122A168BD50BFDA3 /* AppTests.swift in Sources */,
+				7BB4C73932C7DC722B61810E /* BackgroundTransferTests.swift in Sources */,
+				C38E1671F654420639F50363 /* HuaweiTests.swift in Sources */,
+				575A8B487AABD628C55BFE9D /* ShareExtensionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F3C116404D3D83FA43296E7C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D12ACE0848B78F1437DF8E1 /* BackgroundTransferTests.swift in Sources */,
+				A2E2A8742B30E84EBE7EAF4B /* FileTypeTests.swift in Sources */,
+				69681547FCB034F6A3E8F685 /* HuaweiTests.swift in Sources */,
+				8D5ECAA8A70FE124AFFDCA3E /* NetworkTests.swift in Sources */,
+				4B23C3792D8D084D0B1E7167 /* ProtocolTests.swift in Sources */,
+				127E033761C0827F1F28C017 /* ReceiveRouteTests.swift in Sources */,
+				F366AE2FDC04EB33870049BB /* SendRouteTests.swift in Sources */,
+				147DEE751C17BC5EE3697C35 /* SharedFileTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		816525501957A3993FB3D68C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5DB3CFB77E149BF27D2CDB16 /* anDropShare */;
+			targetProxy = DB9884D5EA7CDD17E8B8540C /* PBXContainerItemProxy */;
+		};
+		B474CFDF51811E4677E3028A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C7032114DA382A48B01067C3 /* anDrop */;
+			targetProxy = 7E201A83D3081816C02FBC1C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		033A6BA95D9E69EBC8CBDE2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = anDrop;
+			};
+			name = Release;
+		};
+		19F52763A9740FF1217A6072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Share Fixture";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.sharefixture;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		701C69D96373CA0885C80D7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/anDrop.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		70FE8A1602D675856BEBA27F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Run local TLS transfer integration tests.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		725F32FCDFD4DA38E3838AFA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = anDrop;
+			};
+			name = Debug;
+		};
+		72A496322B6E21FFE4721A55 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/anDropShare.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios.share;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SHARE_EXTENSION";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		80086563B6F6577A028D483D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 9;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.5.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		8B209E1AA5B431C47DAEDC68 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 9;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.5.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A14E4D27D8F6C13F811E9CEE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/anDropShare.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios.share;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SHARE_EXTENSION";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D014B1F7C95A9E28C4834847 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/anDrop.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D122A2A85B5924F7426A3B56 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Share Fixture";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.sharefixture;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		ECD34EBC336F17C98A8A1A49 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Run local TLS transfer integration tests.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.takeruf.androp.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6487EB545B4FD103F9227E76 /* Build configuration list for PBXNativeTarget "anDropTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				70FE8A1602D675856BEBA27F /* Debug */,
+				ECD34EBC336F17C98A8A1A49 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		96BB5C5A80B684581B523413 /* Build configuration list for PBXNativeTarget "anDropShareFixture" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D122A2A85B5924F7426A3B56 /* Debug */,
+				19F52763A9740FF1217A6072 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D3ADBC8FF374A1911E279C37 /* Build configuration list for PBXNativeTarget "anDrop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D014B1F7C95A9E28C4834847 /* Debug */,
+				701C69D96373CA0885C80D7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E2D443F72C207FF9AD268256 /* Build configuration list for PBXNativeTarget "anDropUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				725F32FCDFD4DA38E3838AFA /* Debug */,
+				033A6BA95D9E69EBC8CBDE2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E3825B331F7E4E106AD1B0DA /* Build configuration list for PBXProject "anDrop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B209E1AA5B431C47DAEDC68 /* Debug */,
+				80086563B6F6577A028D483D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F305DAD966C3B17884EBD16F /* Build configuration list for PBXNativeTarget "anDropShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A14E4D27D8F6C13F811E9CEE /* Debug */,
+				72A496322B6E21FFE4721A55 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		9EE149082B6F3C77CBA1524F /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		363A98DC454B227EC7FB944C /* anDropProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = anDropProtocol;
+		};
+		3D299452716691C487CB57C1 /* anDropProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = anDropProtocol;
+		};
+		FBA35BC4958CC8EEF9A90200 /* anDropProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = anDropProtocol;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BD4FDE80CC710DE45A79FBDA /* Project object */;
+}

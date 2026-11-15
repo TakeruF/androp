@@ -10,6 +10,8 @@ anDrop is a macOS menu bar app that officially supports the **互传联盟 (Mutu
 
 **[Download anDrop](https://github.com/TakeruF/androp/releases/latest)** · [Usage and troubleshooting](docs/usage.en.md) · [Compatibility](docs/compatibility.en.md) · [Privacy policy](https://takeruf.com/en/projects/androp/privacy)
 
+**iOS / iPadOS source preview:** [Separate build, experimental features and validation scope](ios/README.en.md). This is not a released iOS app.
+
 **1.3.6: Fix highlighting received files from notifications.** Replace the old selection with the received files while reusing the save-folder window on the current desktop. See the [1.3.6 release notes](docs/releases/1.3.6.en.md).
 
 **1.2.2** added Live Photo conversion and improved photo sharing. Convert Apple, Android/OPPO and Huawei moving-photo formats; receive OPPO Live Photo ZIPs as `.pvt` files without automatic Photos import. Photo sharing adds alternative provider-loading methods. URL and text sharing are unsupported. See the [1.2.2 release notes](docs/releases/1.2.2.en.md) for scope and remaining device checks.

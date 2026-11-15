@@ -1,0 +1,146 @@
+name: anDrop
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  anDropProtocol:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    MARKETING_VERSION: "0.5.0"
+    CURRENT_PROJECT_VERSION: 9
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+targets:
+  anDrop:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: anDropProtocol
+      - target: anDropShare
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.takeruf.androp.ios
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: anDrop
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        NSBluetoothAlwaysUsageDescription: Find nearby compatible sharing devices and negotiate file transfers.
+        NSLocalNetworkUsageDescription: Transfer files directly to compatible devices on the same Wi-Fi network.
+        NSSupportsLiveActivities: true
+        UIBackgroundModes: [processing, bluetooth-central, bluetooth-peripheral]
+        BGTaskSchedulerPermittedIdentifiers: [com.takeruf.androp.ios.transfer.*]
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    entitlements:
+      path: App/anDrop.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.takeruf.androp.ios]
+  anDropShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+      - App/SharingModel.swift
+      - App/BackgroundTransfer.swift
+    dependencies:
+      - package: anDropProtocol
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.takeruf.androp.ios.share
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) SHARE_EXTENSION
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: anDrop
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSBluetoothAlwaysUsageDescription: Find the compatible device you select and send shared files over the local network.
+        BGTaskSchedulerPermittedIdentifiers: [com.takeruf.androp.ios.transfer.*]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 16
+              NSExtensionActivationSupportsImageWithMaxCount: 16
+              NSExtensionActivationSupportsMovieWithMaxCount: 16
+              NSExtensionActivationSupportsAttachmentsWithMaxCount: 16
+              NSExtensionActivationSupportsAttachmentsWithMinCount: 1
+    entitlements:
+      path: ShareExtension/anDropShare.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.takeruf.androp.ios]
+  anDropTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - package: anDropProtocol
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.takeruf.androp.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Run local TLS transfer integration tests.
+  anDropShareFixture:
+    type: application
+    platform: iOS
+    sources: [TestSupport/ShareFixture]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.takeruf.androp.sharefixture
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Share Fixture
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  anDropUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies: [{target: anDrop}]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.takeruf.androp.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  anDropShareFixture:
+    build:
+      targets:
+        anDropShareFixture: all
+  anDrop:
+    build:
+      targets:
+        anDrop: all
+    test:
+      targets: [anDropTests, anDropUITests]
+      parallelizeBuild: false

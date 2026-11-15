@@ -1,0 +1,34 @@
+.build/
+.swiftpm/
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+private/
+*.log
+*.xcresult/
+
+# Credentials, signing material and private local configuration
+.env
+.env.*
+*.key
+*.pem
+*.p8
+*.p12
+*.cer
+*.der
+*.mobileprovision
+*.provisionprofile
+Local.xcconfig
+
+# Device captures and generated artifacts
+screenshots/
+captures/
+logs/
+__pycache__/
+*.py[cod]
+*.ipa
+*.app/
+*.appex/
+*.dSYM/

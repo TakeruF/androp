@@ -7,6 +7,7 @@
 ## 指南与调查
 
 - [使用与排查](usage.md)
+- [iOS / iPadOS 源码预览](../ios/README.md)
 - [应用隐私政策](privacy.md)
 - [实况照片与动态照片](live-photos.md)
 - [URL 与文本共享限制](link-sharing.md)

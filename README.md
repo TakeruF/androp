@@ -10,6 +10,8 @@ anDrop 是一个常驻 macOS 菜单栏的文件共享应用，正式支持 **互
 
 **[下载 anDrop](https://github.com/TakeruF/androp/releases/latest)** · [使用与排查](docs/usage.md) · [兼容性记录](docs/compatibility.md) · [隐私政策](https://takeruf.com/zh/projects/androp/privacy)
 
+**iOS / iPadOS 源码预览：** [独立构建、试验功能与验证范围](ios/README.md)。这不是 iOS 正式发行。
+
 **1.3.6：修复接收通知的访达高亮。** 清除旧选择并选中本次接收文件，继续复用当前桌面的保存文件夹窗口。详见 [1.3.6 更新说明](docs/releases/1.3.6.md)。
 
 **1.2.2** 新增实况照片转换与照片共享改进。 支持 Apple、Android／OPPO、华为动态照片格式转换；OPPO 实况照片 ZIP 转为 `.pvt` 文件接收，不自动导入“照片”。照片共享新增备用读取方式。URL 与文本共享不支持。范围及仍需实机验证的项目见 [1.2.2 更新说明](docs/releases/1.2.2.md)。
