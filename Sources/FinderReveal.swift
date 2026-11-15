@@ -35,11 +35,34 @@ enum FinderReveal {
                     set matchingWindow to make new Finder window to targetFolder
                     set bounds of matchingWindow to windowBounds
                 end if
-                set index of matchingWindow to 1
-                set selection to selectedItems
+                set matchingWindowID to id of matchingWindow
+                set didSelect to false
+                repeat with selectionAttempt from 1 to 5
+                    set index of Finder window id matchingWindowID to 1
+                    if (id of front Finder window) is matchingWindowID then
+                        -- Use Finder's selection command to replace the old highlight.
+                        set selection to {}
+                        select selectedItems
+                        set actualItems to selection as alias list
+                        if my hasExactSelection(actualItems, selectedItems) then
+                            set didSelect to true
+                            exit repeat
+                        end if
+                    end if
+                    if selectionAttempt < 5 then delay 0.05
+                end repeat
+                if not didSelect then error "Finder did not select the received files." number -10000
             end tell
         end repeat
     end revealFiles
+
+    on hasExactSelection(actualItems, expectedItems)
+        if (count actualItems) is not (count expectedItems) then return false
+        repeat with expectedItem in expectedItems
+            if actualItems does not contain (contents of expectedItem) then return false
+        end repeat
+        return true
+    end hasExactSelection
     """
 
     nonisolated static func groups(for urls: [URL]) -> [[String]] {

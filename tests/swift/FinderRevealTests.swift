@@ -36,3 +36,33 @@ import Testing
     let compiled = script.compileAndReturnError(&error)
     #expect(compiled, "\(error ?? [:])")
 }
+
+@Test @MainActor func finderSelectionMustReplaceOldItemsAndMatchTheWholeBatch() throws {
+    let script = try #require(NSAppleScript(source: FinderReveal.scriptSource))
+    for (actual, expected, matches) in [
+        (["old"], ["received"], false),
+        (["old", "received"], ["received"], false),
+        ([String](), ["received"], false),
+        (["first"], ["first", "second"], false),
+        (["second", "first"], ["first", "second"], true),
+        (["received"], ["received"], true),
+    ] {
+        let arguments = NSAppleEventDescriptor.list()
+        for (index, values) in [actual, expected].enumerated() {
+            let items = NSAppleEventDescriptor.list()
+            for (index, value) in values.enumerated() {
+                items.insert(NSAppleEventDescriptor(string: value), at: index + 1)
+            }
+            arguments.insert(items, at: index + 1)
+        }
+        let event = NSAppleEventDescriptor(eventClass: AEEventClass(kASAppleScriptSuite),
+                                          eventID: AEEventID(kASSubroutineEvent), targetDescriptor: nil,
+                                          returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+        event.setParam(NSAppleEventDescriptor(string: "hasexactselection"), forKeyword: AEKeyword(keyASSubroutineName))
+        event.setParam(arguments, forKeyword: AEKeyword(keyDirectObject))
+        var error: NSDictionary?
+        let result = script.executeAppleEvent(event, error: &error)
+        #expect(error == nil, "\(error ?? [:])")
+        #expect(result.booleanValue == matches)
+    }
+}

@@ -2,6 +2,14 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-15: Replace an existing Finder selection
+
+The user reported that the completed-receive notification's Show in Finder action left previously highlighted files selected. The saved transfer record contains the correct collision-renamed receipt paths. A sandboxed QA button using the original 1.3.5 reveal code successfully selected those paths, so that button did not reproduce the notification-specific failure.
+
+The revised script clears the old selection, uses Finder's `select` command, and checks that the selected aliases match the entire received batch. It retries a mismatched selection up to five times, 50 ms apart, and reports failure instead of silently succeeding. A sandboxed QA host using the revised production source replaced two older files with the two received files, then replaced that selection with only one received file. No Space change occurred during these actions. All 55 Swift tests and the production AppModel UI regression passed.
+
+The Developer ID local build 1.3.5 (13501) passed signature, sandbox configuration and macOS 14 runtime checks and was installed on this Mac. The running host and engine, exact candidate equality, protected preferences, all 100 history entries and the Huawei identity were verified. The notification-specific user retest is pending; public 1.3.5/build 13500 was not replaced.
+
 ## 2026-11-15: Reuse the save-folder Finder window
 
 A sandboxed native QA host using the production `FinderReveal.swift` selected two synthetic received files, including a Japanese filename, in an already-open save-folder window on the current desktop. The Finder Window menu still listed only one window for that folder. With an unrelated folder in front, the action brought the save-folder window forward, selected both files and retained the unrelated window without adding a duplicate. Closing the save-folder window and invoking the action again created a new window with both files selected. The QA host recorded zero Space changes during these actions. Test windows were closed and fixtures moved out of Downloads afterward.
