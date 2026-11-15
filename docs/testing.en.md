@@ -2,6 +2,14 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-15: Public 1.3.6 hotfix and update installation
+
+Published [1.3.6](https://github.com/TakeruF/androp/releases/tag/v1.3.6), build 13600, with the Finder selection fix confirmed through the actual receive-notification action on local build 13501. The release passes 322 Python tests and 55 Swift tests, including the production AppModel UI regression. The reused engine archive matches public 1.3.5 (12 entries), and all five packaged Huawei protocol scripts match source.
+
+Independent checks of the exact DMG passed Developer ID signatures, application notarization and stapling, Gatekeeper, sandbox configuration, macOS 14 runtime checks for 77 arm64 Mach-O files, app/engine/extension signing continuity, and both update signatures. Anonymous downloads of the DMG, signed appcast and checksum manifest match the verified files. The canonical latest feed points to 1.3.6/build 13600.
+
+The installed 1.3.5/build 13501 then used Settings → Check for Updates → Install Update → Install and Relaunch to download from the public feed and restart as 1.3.6/build 13600. Settings visibly reports 1.3.6. All 267 installed file/link entries match the notarized app in the public DMG; signature, staple, Gatekeeper and host/engine startup passed. Protected preferences, trusted devices, all 100 history entries (semantic comparison) and the Huawei identity were unchanged. This validates publication and the update/install path; separate-Space, minimized-window and multiple-physical-display scenarios were not reverified for this hotfix.
+
 ## 2026-11-15: Replace an existing Finder selection
 
 The user reported that the completed-receive notification's Show in Finder action left previously highlighted files selected. The saved transfer record contains the correct collision-renamed receipt paths. A sandboxed QA button using the original 1.3.5 reveal code successfully selected those paths, so that button did not reproduce the notification-specific failure.
