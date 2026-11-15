@@ -30,10 +30,10 @@ for path in ['Contents/MacOS','Contents/Resources','Contents/PlugIns/anDropShare
 # Petal coexistence still opts into regular activation explicitly at runtime.
 info={'CFBundleExecutable':'anDrop','CFBundleIdentifier':BUNDLE_ID,'CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'APPL','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSBluetoothAlwaysUsageDescription':'Discover nearby devices for file sharing through the Mutual Transfer Alliance (互传联盟) ecosystem.','NSLocalNetworkUsageDescription':'Send and receive files with Android devices on the same Wi-Fi.','NSHighResolutionCapable':True,'LSUIElement':True,'CFBundleURLTypes':[{'CFBundleURLName':BUNDLE_ID+'.share','CFBundleURLSchemes':['androp']}],'CFBundleDocumentTypes':[{'CFBundleTypeName':'Files','CFBundleTypeRole':'Viewer','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','com.apple.live-photo-bundle','com.apple.private.live-photo-bundle']}],'CFBundleIconFile':'AppIconPaperplane','CFBundleIconName':'AppIconPaperplane'}
 info['LSApplicationCategoryType']='public.app-category.utilities'
-info['NSAppleEventsUsageDescription']='Show received files in a new Finder window on the desktop where you clicked Show in Finder.'
+info['NSAppleEventsUsageDescription']='Show and select received files in Finder on the desktop where you clicked Show in Finder.'
 for locale, purpose in {
  'en':info['NSAppleEventsUsageDescription'],
- 'zh-Hans':'在您点击“在访达中显示”的桌面上，新建访达窗口并选中已接收的文件。',
+ 'zh-Hans':'在您点击“在访达中显示”的桌面上，显示访达窗口并选中已接收的文件。',
 }.items():
  localized=APP/'Contents/Resources'/f'{locale}.lproj';localized.mkdir(exist_ok=True)
  (localized/'InfoPlist.strings').write_bytes(plistlib.dumps({'NSAppleEventsUsageDescription':purpose},fmt=plistlib.FMT_BINARY))

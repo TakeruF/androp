@@ -2,6 +2,14 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-15: Reuse the save-folder Finder window
+
+A sandboxed native QA host using the production `FinderReveal.swift` selected two synthetic received files, including a Japanese filename, in an already-open save-folder window on the current desktop. The Finder Window menu still listed only one window for that folder. With an unrelated folder in front, the action brought the save-folder window forward, selected both files and retained the unrelated window without adding a duplicate. Closing the save-folder window and invoking the action again created a new window with both files selected. The QA host recorded zero Space changes during these actions. Test windows were closed and fixtures moved out of Downloads afterward.
+
+All 54 Swift tests and the production AppModel UI regression passed. The initial local UI-only app build passed ad hoc deep/strict signature verification, sandbox configuration checks and compatibility checks for 77 arm64 Mach-O files targeting macOS 14 or earlier. The actual received-transfer notification action, reuse across physical displays, minimized windows and a separate-Space scenario were not verified in this run.
+
+Version 1.3.5 (13500) was then built with the installed app's Developer ID identity and installed on this Mac. Reciprocal signing requirements, deep/strict signatures, sandbox configuration and macOS 14 runtime checks passed. All 266 installed file/link entries match the candidate. The host and engine are running, and Settings visibly reports 1.3.5. Protected preferences, trusted devices, all 100 history entries (compared semantically) and the Huawei identity were unchanged. The previous 1.3.4 app and a private preferences backup remain under ignored build output. This local update was not newly notarized; public distribution remains at 1.3.4.
+
 ## 2026-11-13: Preserve original filenames in Finder Share
 
 Finder can export distinctly named JPEGs under the same temporary name, `JPEG image.jpeg`. Shared-file staging now prefers the original file-URL representation and retains media-export and encoded-data fallbacks. The regression test failed before the fix and passed afterward; all 53 Swift tests and the native Share extension compile/layout test passed.

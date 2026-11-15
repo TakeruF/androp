@@ -12,12 +12,22 @@ import Testing
 
 @Test func finderFileNamesArePassedAsData() throws {
     let path = "/tmp/共有/quote\" and \\ slash\nfile.txt"
-    let event = FinderReveal.makeEvent(groups: [["/tmp/共有", path]], bounds: [-900, 30, 0, 630])
+    let event = FinderReveal.makeEvent(groups: [["/tmp/共有", path]], bounds: [-900, 30, 0, 630], visibleWindowIDs: [42, 99])
     let arguments = try #require(event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject)))
     let folders = try #require(arguments.atIndex(1))
     #expect(folders.atIndex(1)?.atIndex(2)?.stringValue == path)
     #expect(arguments.atIndex(2)?.atIndex(1)?.int32Value == -900)
     #expect(arguments.atIndex(2)?.atIndex(4)?.int32Value == 630)
+    #expect(arguments.atIndex(3)?.numberOfItems == 2)
+    #expect(arguments.atIndex(3)?.atIndex(1)?.int32Value == 42)
+    #expect(arguments.atIndex(3)?.atIndex(2)?.int32Value == 99)
+}
+
+@Test func finderRevealSupportsNoWindowsOnCurrentDesktop() throws {
+    let event = FinderReveal.makeEvent(groups: [["/tmp", "/tmp/file.txt"]], bounds: [0, 0, 900, 600], visibleWindowIDs: [])
+    let arguments = try #require(event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject)))
+    #expect(arguments.atIndex(3)?.descriptorType == typeAEList)
+    #expect(arguments.atIndex(3)?.numberOfItems == 0)
 }
 
 @Test @MainActor func finderWindowScriptCompilesWithoutRunningAutomation() throws {
