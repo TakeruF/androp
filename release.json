@@ -1,6 +1,6 @@
 {
-  "version": "1.3.5",
-  "build": 13500,
+  "version": "1.3.6",
+  "build": 13600,
   "bundle_identifier": "com.takeruf.anDrop",
   "minimum_macos": "14.0",
   "repository": "TakeruF/androp",
