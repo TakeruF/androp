@@ -2,6 +2,14 @@
 
 [简体中文](testing.md) · English
 
+## 2026-11-17: Public 1.3.7 original-file batches and update installation
+
+Published [1.3.7](https://github.com/TakeruF/androp/releases/tag/v1.3.7), build 13700, from tag commit `05fc0c7`. The original-file batch implementation passes 325 Python tests, 55 Swift tests and the production AppModel regression. A complete engine rebuild was used: the bundled engine, Huawei runtime and motion-photo code match source, as do all five packaged Huawei scripts.
+
+Independent DMG checks passed Developer ID signatures, application notarization and stapling, Gatekeeper, sandbox configuration, macOS 14 runtime checks for 77 arm64 Mach-O files, signing continuity with 1.3.6, and feed/DMG update signatures. All three release assets downloaded without authentication match the verified local files, and the canonical latest feed reports 1.3.7/build 13700. The user-specified Finder Services screenshot is included unchanged in both READMEs and release notes; the public tagged image matches it byte for byte. The Simplified Chinese ServicesMenu lookup resolves to “通过 anDrop 发送原始文件”; the system/Finder language was not changed for this check.
+
+The installed 1.3.6/build 13601 used Settings → Check for Updates → Install Update → Install and Relaunch from the public feed. Settings visibly reports 1.3.7; all 269 installed file/link entries match the public notarized app, and host/engine startup, signatures, staple and Gatekeeper pass. Protected preferences, trusted devices, all 100 history entries and the Huawei identity were retained. The original-file handoff and local byte-equality scope are recorded below; physical OPPO receipt and gallery indexing were not reverified for this release.
+
 ## 2026-11-15: Public 1.3.6 hotfix and update installation
 
 Published [1.3.6](https://github.com/TakeruF/androp/releases/tag/v1.3.6), build 13600, with the Finder selection fix confirmed through the actual receive-notification action on local build 13501. The release passes 322 Python tests and 55 Swift tests, including the production AppModel UI regression. The reused engine archive matches public 1.3.5 (12 entries), and all five packaged Huawei protocol scripts match source.
