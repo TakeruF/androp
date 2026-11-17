@@ -37,4 +37,5 @@ struct OutgoingPresentation {
     let id: String
     let peer: Peer
     let files: [URL]
+    var preserveOriginals = false
 }

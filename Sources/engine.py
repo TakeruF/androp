@@ -549,11 +549,11 @@ class Engine:
             except Exception as e:
                 self.scan_token=None;self.clear_peers()
                 emit('scan_status',detail=t(f'Check Bluetooth: {e}',f'请检查蓝牙：{e}'));await asyncio.sleep(5)
-    async def send(self,peer_id,paths,peer_label=None,request_id=None):
+    async def send(self,peer_id,paths,peer_label=None,request_id=None,*,preserve_originals=False):
         if request_id and uuid.UUID(request_id).hex in self.outgoing:
             return  # Repeated delivery of one command must not corrupt its result.
         if isinstance(peer_id,str) and peer_id.startswith('huawei:'):
-            await self.huawei.send(peer_id,paths,peer_label,request_id);return
+            await self.huawei.send(peer_id,paths,peer_label,request_id,preserve_originals=preserve_originals);return
         identifier=uuid.UUID(request_id).hex if request_id else uuid.uuid4().hex
         label=peer_label[:200] if isinstance(peer_label,str) and peer_label else self.peers.get(peer_id,{}).get('name','Android')
         s={'id':identifier,'direction':'send','peer':label}
@@ -569,7 +569,7 @@ class Engine:
             self.update(s,'preparing',name=Path(paths[0]).name if paths else '',count=len(paths))
             if not 1<=len(paths)<=10000:raise TransferError(t('Choose files to send.','请选择要发送的文件。'))
             photo_workspace=tempfile.TemporaryDirectory(prefix='anDrop-LivePhoto-send-')
-            paths=await prepare_send(paths,photo_workspace.name)
+            if not preserve_originals:paths=await prepare_send(paths,photo_workspace.name)
             files=[];names=set();total=0
             for raw in paths:
                 p=Path(raw).resolve(strict=True)
@@ -770,13 +770,15 @@ class Engine:
                     emit('error',detail=t('URL and text sharing are not supported. Choose files to send.','不支持 URL 或文本共享，请选择文件发送。'))
                     return
                 paths=obj.get('paths',[])
+                preserve_originals=obj.get('preserve_originals',False)
+                if not isinstance(preserve_originals,bool):raise ValueError('Invalid file preparation mode')
                 if 'bookmarks' in obj:
                     with BookmarkAccess(obj['bookmarks'], paths):
-                        await self.send(obj['peer'],paths,obj.get('peer_label'),obj.get('request_id'))
+                        await self.send(obj['peer'],paths,obj.get('peer_label'),obj.get('request_id'),preserve_originals=preserve_originals)
                 elif os.environ.get('ANDROP_SANDBOXED') == '1':
                     raise ValueError('File access is unavailable')
                 else:
-                    await self.send(obj['peer'],paths,obj.get('peer_label'),obj.get('request_id'))
+                    await self.send(obj['peer'],paths,obj.get('peer_label'),obj.get('request_id'),preserve_originals=preserve_originals)
             elif command=='cancel' and obj.get('id') in self.outgoing:
                 s=self.outgoing[obj['id']];s['cancel_requested']=True
                 task=s.get('task')

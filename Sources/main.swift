@@ -129,6 +129,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         return candidates + outgoing.map(\.peer).filter { !visibleIDs.contains($0.id) }
     }
     @Published var selectedFiles: [URL] = []
+    private var selectedPreserveOriginals = false
     func canSend(to peer: Peer) -> Bool {
         receiving && engineReady && !recipientFiles.isEmpty
             && !transfers.contains { $0.direction == "receive" && $0.active }
@@ -212,6 +213,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
         if Bundle.main.object(forInfoDictionaryKey: "anDropShowSettingsOnLaunch") as? Bool == true { showSettings() }
+        NSApp.servicesProvider = self
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { updates.installing && busy ? .terminateCancel : .terminateNow }
@@ -244,6 +246,17 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         addFiles(filenames.map { URL(fileURLWithPath: $0) }); showRecipients(); sender.reply(toOpenOrPrint: .success)
+    }
+    // Finder Services supplies the selected file URLs directly, before the
+    // Share menu's Automatic format can render HEIC photos as metadata-free PNGs.
+    @objc func sendOriginalFiles(_ pasteboard: NSPasteboard, userData: String?, error serviceError: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+              !urls.isEmpty, urls.count <= 10_000 else {
+            serviceError.pointee = L("Choose files to send.", "请选择要发送的文件。") as NSString
+            return
+        }
+        addFiles(urls, preserveOriginals: true)
+        showRecipients()
     }
     @objc func woke() { clearExpiredTransferNotifications(); clearPeers(); refreshEnvironment(); advertise() }
     private func setupMenus() {
@@ -769,9 +782,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if let data = try? JSONEncoder().encode(history) { UserDefaults.standard.set(data, forKey: "history") }
     }
     func clearHistory() { transfers.removeAll { !$0.active }; saveHistory() }
-    func addFiles(_ urls: [URL]) {
+    func addFiles(_ urls: [URL], preserveOriginals: Bool = false) {
         cancelOutgoingRetry()
         if !outgoingActive { outgoing = [] }
+        selectedPreserveOriginals = selectedFiles.isEmpty ? preserveOriginals : selectedPreserveOriginals || preserveOriginals
         for url in urls where url.isFileURL { fileAccess.retain(url) }
         selectedFiles = Array(Set(selectedFiles + urls.filter(\.isFileURL))).sorted { $0.lastPathComponent < $1.lastPathComponent }; tab = 0
         fileAccess.releaseFiles(except: selectedFiles + outgoing.flatMap(\.files))
@@ -795,17 +809,18 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         guard canSend(to: requestedPeer),
               let peer = candidatePeers.first(where: { $0.id == requestedPeer.id }) else { return }
         let files = recipientFiles
+        let preserveOriginals = outgoing.first?.preserveOriginals ?? selectedPreserveOriginals
         // The first click owns the batch. Later clicks send that same batch,
         // even if Finder has queued different files in the meantime.
-        if outgoing.isEmpty { selectedFiles = [] }
-        beginSend(to: peer, files: files)
+        if outgoing.isEmpty { selectedFiles = []; selectedPreserveOriginals = false }
+        beginSend(to: peer, files: files, preserveOriginals: preserveOriginals)
         updateCompletedRecipientDismissal()
     }
-    private func beginSend(to peer: Peer, files: [URL], replacing previousID: String? = nil) {
+    private func beginSend(to peer: Peer, files: [URL], preserveOriginals: Bool = false, replacing previousID: String? = nil) {
         var label = [peerTitle(peer), peer.deviceLabel(chinese: appLanguage() == "zh")].filter { !$0.isEmpty }.joined(separator: " · ")
         if peerIsAmbiguous(peer) { label += " · " + peer.distinguishingCode(among: peers) }
         let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let item = OutgoingPresentation(id: id, peer: peer, files: files)
+        let item = OutgoingPresentation(id: id, peer: peer, files: files, preserveOriginals: preserveOriginals)
         if let previousID, let index = outgoing.firstIndex(where: { $0.id == previousID }) { outgoing[index] = item }
         else { outgoing.append(item) }
         transfers.insert(Transfer(id: id, direction: "send", peer: label, state: "preparing", name: files[0].lastPathComponent, count: files.count, deviceKind: peer.kind.rawValue, deviceBrand: peer.brand), at: 0)
@@ -815,7 +830,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         catch {
             updateTransfer(["id": id, "state": "failed", "detail": L("Choose the files again to allow access.", "请重新选择文件，以允许访问。")]); return
         }
-        if !command(["command": "send", "request_id": id, "peer": peer.id, "peer_label": label, "paths": files.map(\.path), "bookmarks": bookmarks]) {
+        if !command(["command": "send", "request_id": id, "peer": peer.id, "peer_label": label, "paths": files.map(\.path), "bookmarks": bookmarks, "preserve_originals": preserveOriginals]) {
             updateTransfer(["id": id, "state": "failed", "detail": L("Could not connect to the sharing service.", "无法连接到共享服务。")])
         }
     }
@@ -849,7 +864,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             guard let transfer = transfers.first(where: { $0.id == item.id }), canRetry(transfer),
                   let peer = candidatePeers.first(where: { $0.id == item.peer.id }) else { continue }
             cancelOutgoingRetry(item.id)
-            beginSend(to: peer, files: item.files, replacing: item.id)
+            beginSend(to: peer, files: item.files, preserveOriginals: item.preserveOriginals, replacing: item.id)
         }
         updateCompletedRecipientDismissal()
     }

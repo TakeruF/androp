@@ -567,7 +567,7 @@ class HuaweiRuntime:
             children.close(); self.active = None
             await self.engine.reset(session)
 
-    async def send(self, peer_id, paths, label, request_id):
+    async def send(self, peer_id, paths, label, request_id, *, preserve_originals=False):
         from engine import transfer_error_detail, t, TransferError
         session = {'id': uuid.UUID(request_id).hex if request_id else uuid.uuid4().hex, 'direction': 'send',
                    'peer': label or 'Huawei', 'brand': 'Huawei', 'protocol': 'huawei'}
@@ -585,7 +585,8 @@ class HuaweiRuntime:
         try:
             self.engine.update(session, 'preparing', count=len(paths))
             with tempfile.TemporaryDirectory(prefix='anDrop-Huawei-send-') as folder:
-                paths = await prepare_send(paths, Path(folder) / 'live-photos', target='huawei')
+                if not preserve_originals:
+                    paths = await prepare_send(paths, Path(folder) / 'live-photos', target='huawei')
                 output = Path(folder) / 'state.json'
                 snapshots = Path(folder) / 'files'
                 snapshots.mkdir(mode=0o700)

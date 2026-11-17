@@ -28,6 +28,10 @@ Version 1.3.6 provides a DMG for **Apple Silicon Macs running macOS 14 or later*
 
 Fresh installations default to **Simplified Chinese**. Choose English or System Default in Settings; an existing language choice is preserved. Receiving is enabled while anDrop is running; quit to stop receiving. No main window needs to stay open. The Dock icon normally stays hidden; it remains visible while 鸿蒙星河互联 runs to improve Bluetooth discovery.
 
+To send original photos, select one or more files in Finder, then choose **Services → Send Originals with anDrop** from the contextual menu. This passes the original files directly, preserving their encoded photo metadata and keeping paired images and videos as separate files. Choose a recipient in anDrop to start sending.
+
+Finder's ordinary Share menu can convert HEIC files before anDrop receives them. When using Share, choose **Options → Format → Current** to retain the format. See [Apple's Share menu guide](https://support.apple.com/guide/mac-help/mh40614/mac).
+
 ## App Sandbox and file access
 
 Release builds use **App Sandbox** starting with 1.3.0. File access by the app, Finder Share extension and bundled transfer/Live Photo tools is limited to the app container, Downloads, and files or folders you explicitly select or authorize. To change the receive folder, grant access through the folder chooser in Settings; the app restores that access after relaunch.

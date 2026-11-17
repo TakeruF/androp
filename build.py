@@ -30,6 +30,7 @@ for path in ['Contents/MacOS','Contents/Resources','Contents/PlugIns/anDropShare
 # Petal coexistence still opts into regular activation explicitly at runtime.
 info={'CFBundleExecutable':'anDrop','CFBundleIdentifier':BUNDLE_ID,'CFBundleName':'anDrop','CFBundleDisplayName':'anDrop','CFBundlePackageType':'APPL','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD,'CFBundleDevelopmentRegion':'zh-Hans','CFBundleLocalizations':['en','zh-Hans'],'LSMinimumSystemVersion':MIN_OS,'NSBluetoothAlwaysUsageDescription':'Discover nearby devices for file sharing through the Mutual Transfer Alliance (互传联盟) ecosystem.','NSLocalNetworkUsageDescription':'Send and receive files with Android devices on the same Wi-Fi.','NSHighResolutionCapable':True,'LSUIElement':True,'CFBundleURLTypes':[{'CFBundleURLName':BUNDLE_ID+'.share','CFBundleURLSchemes':['androp']}],'CFBundleDocumentTypes':[{'CFBundleTypeName':'Files','CFBundleTypeRole':'Viewer','LSHandlerRank':'Alternate','LSItemContentTypes':['public.data','com.apple.live-photo-bundle','com.apple.private.live-photo-bundle']}],'CFBundleIconFile':'AppIconPaperplane','CFBundleIconName':'AppIconPaperplane'}
 info['LSApplicationCategoryType']='public.app-category.utilities'
+info['NSServices']=[{'NSMenuItem':{'default':'Send Originals with anDrop'},'NSMessage':'sendOriginalFiles','NSPortName':'anDrop','NSSendFileTypes':['public.data'],'NSRequiredContext':{}}]
 info['NSAppleEventsUsageDescription']='Show and select received files in Finder on the desktop where you clicked Show in Finder.'
 for locale, purpose in {
  'en':info['NSAppleEventsUsageDescription'],
@@ -37,6 +38,7 @@ for locale, purpose in {
 }.items():
  localized=APP/'Contents/Resources'/f'{locale}.lproj';localized.mkdir(exist_ok=True)
  (localized/'InfoPlist.strings').write_bytes(plistlib.dumps({'NSAppleEventsUsageDescription':purpose},fmt=plistlib.FMT_BINARY))
+ (localized/'ServicesMenu.strings').write_bytes(plistlib.dumps({'Send Originals with anDrop':'通过 anDrop 发送原始文件' if locale=='zh-Hans' else 'Send Originals with anDrop'},fmt=plistlib.FMT_BINARY))
 if not APP_STORE:
  info.update({'SUFeedURL':os.environ.get('ANDROP_FEED_URL',CONFIG['feed_url']),'SUPublicEDKey':(ROOT/'Resources/UpdatePublicKey.txt').read_text().strip(),'SUEnableAutomaticChecks':True,'SUAutomaticallyUpdate':True,'SUEnableSystemProfiling':False,'SUVerifyUpdateBeforeExtraction':True,'SURequireSignedFeed':True,'SUScheduledCheckInterval':86400,'SUEnableInstallerLauncherService':True})
 (APP/'Contents/Info.plist').write_bytes(plistlib.dumps(info))

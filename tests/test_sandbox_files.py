@@ -47,13 +47,14 @@ class FileGrantTests(unittest.TestCase):
                 source = Path(folder) / 'source'; source.write_text('fixture')
                 engine = Engine()
                 started = asyncio.Event()
-                async def send(*_):
+                async def send(*_, **options):
+                    self.assertIs(options['preserve_originals'], True)
                     started.set()
                     await asyncio.Event().wait()
                 access = BookmarkAccess(bookmarks_for([source]), [source])
                 with patch('engine.BookmarkAccess', return_value=access), patch.object(engine, 'send', side_effect=send):
-                    task = asyncio.create_task(engine.command({'command': 'send', 'peer': 'fixture', 'paths': [str(source)], 'bookmarks': ['fixture']}))
-                    await started.wait()
+                    task = asyncio.create_task(engine.command({'command': 'send', 'peer': 'fixture', 'paths': [str(source)], 'bookmarks': ['fixture'], 'preserve_originals': True}))
+                    await asyncio.wait_for(started.wait(), 3)
                     self.assertEqual(len(access.urls), 1)
                     task.cancel()
                     await asyncio.gather(task, return_exceptions=True)

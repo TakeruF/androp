@@ -27,6 +27,40 @@ extension AppModel {
         }
 
         let other = Peer(id: "mock-huawei", name: "Other phone", brand: "Huawei", kind: .phone)
+        // A real Services pasteboard carries every selected original URL. The
+        // policy belongs to the batch, including later recipients and retries.
+        let originals = NSPasteboard.withUniqueName()
+        defer { originals.releaseGlobally() }
+        precondition(originals.writeObjects([first, second].map { $0 as NSURL }))
+        var serviceError: NSString?
+        input = FileHandle.nullDevice
+        sendOriginalFiles(originals, userData: nil, error: &serviceError)
+        precondition(serviceError == nil && Set(selectedFiles) == Set([first, second]))
+        peers = [peer, other]; engineReady = true; lastPeerUpdate = .now
+        let originalsPipe = Pipe(); input = originalsPipe.fileHandleForWriting
+        send(to: peer)
+        let originalID = outgoing[0].id
+        addFiles([third])
+        send(to: other)
+        updateTransfer(["id": originalID, "state": "failed"])
+        retryOutgoing(originalID)
+        peers = [peer, other]; lastPeerUpdate = .now
+        attemptOutgoingRetry()
+        let originalCommands = try readCommands(originalsPipe).filter { $0["command"] as? String == "send" }
+        precondition(originalCommands.count == 3)
+        for command in originalCommands {
+            precondition(command["preserve_originals"] as? Bool == true)
+            precondition(Set(command["paths"] as? [String] ?? []) == Set([first.path, second.path]))
+        }
+        outgoing = []; transfers = []; selectedFiles = []
+        addFiles([third])
+        let normalPipe = Pipe(); input = normalPipe.fileHandleForWriting
+        send(to: peer)
+        let normalCommands = try readCommands(normalPipe).filter { $0["command"] as? String == "send" }
+        precondition(normalCommands[0]["preserve_originals"] as? Bool == false)
+        closeRecipients()
+        outgoing = []; transfers = []; selectedFiles = []
+
         peers = [peer, other]; engineReady = true; input = FileHandle.nullDevice
         addFiles([first])
         let batchPipe = Pipe(); input = batchPipe.fileHandleForWriting

@@ -10,7 +10,7 @@ from aiohttp import ClientSession
 from engine import Engine,Keys,wire,parse_wire,bu
 
 class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self,ack_first=False,reject=False,wrong_peer=False,multiple=False,declined=False,fixtures=None,expected_mime='file/*',binary_control=False):
+    async def transfer(self,ack_first=False,reject=False,wrong_peer=False,multiple=False,declined=False,fixtures=None,expected_mime='file/*',binary_control=False,preserve_originals=False):
         jobs=[];downloads=[];events=[];keys=Keys();callback=None;attempts=[];offers=[];content_types=[];initial_offers=[]
         if fixtures is None:fixtures=[('日本語.txt',b'fixture'),('empty.bin',b'')]
         async def peer(host,port):
@@ -63,7 +63,7 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
             addresses=['127.0.0.1','127.0.0.1'] if multiple else ['127.0.0.1']
             try:
                 with patch('engine.BleakClient',BLE),patch('engine.lan_addresses',return_value=addresses),patch('engine.private_ipv4',side_effect=lambda x:x=='127.0.0.1' or x=='192.168.99.2'),patch('engine.emit',side_effect=lambda event,**kw:events.append({'event':event,**kw})):
-                    await asyncio.wait_for(engine.send('peer',paths),5)
+                    await asyncio.wait_for(engine.send('peer',paths,preserve_originals=preserve_originals),5)
                 terminals=[e for e in events if e.get('state') in ['complete','failed','declined']]
                 self.assertEqual(terminals[-1]['state'],'declined' if declined else 'failed' if reject or wrong_peer else 'complete')
                 self.assertEqual(len(downloads),0 if declined or reject or wrong_peer else 1)
@@ -105,6 +105,24 @@ class SendIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_pdf_type_reaches_approval_even_when_recipient_declines(self):
         await self.transfer(fixtures=[('document.pdf',b'%PDF fixture')],expected_mime='application/pdf',declined=True)
+
+    async def test_original_batch_bypasses_live_photo_conversion_and_preserves_every_byte(self):
+        from unittest.mock import AsyncMock
+        fixtures=[('photo.heic',b'HEIC original with Exif and GPS'),
+                  ('photo.mov',b'paired movie original'),('other.jpg',b'JPEG original metadata')]
+        with patch('engine.prepare_send',new=AsyncMock(side_effect=AssertionError('Originals must not be converted'))) as convert:
+            await self.transfer(fixtures=fixtures,preserve_originals=True)
+            convert.assert_not_awaited()
+
+    async def test_original_mode_reaches_command_and_huawei_dispatch(self):
+        from unittest.mock import AsyncMock
+        engine=Engine()
+        with patch.object(engine,'send',new_callable=AsyncMock) as send:
+            await engine.command({'command':'send','peer':'peer','paths':['photo.heic'],'preserve_originals':True})
+            send.assert_awaited_once_with('peer',['photo.heic'],None,None,preserve_originals=True)
+        with patch.object(engine.huawei,'send',new_callable=AsyncMock) as send:
+            await engine.send('huawei:peer',['photo.heic'],preserve_originals=True)
+            send.assert_awaited_once_with('huawei:peer',['photo.heic'],None,None,preserve_originals=True)
 
     async def test_udp_failure_does_not_abort_working_control_channel(self):
         from unittest.mock import AsyncMock

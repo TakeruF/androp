@@ -175,6 +175,27 @@ class DiscoveryValidation(unittest.TestCase):
 
 
 class ApprovalIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_original_batch_keeps_sources_without_live_photo_conversion(self):
+        from unittest.mock import AsyncMock
+        engine = Engine(); engine.discovering = True
+        peer = decode_advertisement(advertisement(HOST, 33651, 'mac-test', 'Office'), HOST, LOCAL)[0]
+        engine.huawei.peers[peer['id']] = peer
+        with tempfile.TemporaryDirectory() as folder:
+            sources = [Path(folder) / 'photo.heic', Path(folder) / 'photo.mov']
+            expected = [b'original image metadata', b'original paired movie']
+            for source, data in zip(sources, expected): source.write_bytes(data)
+            def launch(command, **kwargs):
+                snapshots = [Path(command[index + 1]) for index, value in enumerate(command) if value == '--send-file']
+                self.assertEqual([path.name for path in snapshots], [path.name for path in sources])
+                self.assertEqual([path.read_bytes() for path in snapshots], expected)
+                Path(command[command.index('--output') + 1]).write_text(json.dumps({'dfile_transfer_done_received': True}))
+                return SimpleNamespace(pid=99999999, stdin=None, stdout=None, poll=lambda: 0, wait=lambda timeout: 0)
+            with patch('huawei_runtime.prepare_send', new=AsyncMock(side_effect=AssertionError('No conversion'))) as convert, \
+                 patch('huawei_runtime.subprocess.Popen', side_effect=launch), patch('engine.emit') as events:
+                await engine.send(peer['id'], [str(path) for path in sources], peer['name'], None, preserve_originals=True)
+                convert.assert_not_awaited()
+            self.assertTrue(any(call.kwargs.get('state') == 'complete' for call in events.call_args_list))
+
     async def test_mac_send_retains_apple_metadata_through_completion(self):
         engine = Engine(); engine.discovering = True
         peer = decode_advertisement(advertisement(HOST, 33651, 'mac-test', 'Office'), HOST, LOCAL)[0]
