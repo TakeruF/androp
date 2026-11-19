@@ -52,15 +52,18 @@ class OutgoingSelectionTests(unittest.TestCase):
             source = ('let selectionTestDefaults = UserDefaults(suiteName: CommandLine.arguments[2])!\n'
                       'var petalTestRunning = false\nvar petalTestAlerts: [NSAlert] = []\n'
                       'var selectionTestNotifications: [(String, String)] = []\n'
+                      'var selectionTestNotificationRequests: [UNNotificationRequest] = []\n'
                       'func selectionTestPostNotification(_ request: UNNotificationRequest, '
                       'completionHandler: @escaping @Sendable ((any Error)?) -> Void) {\n'
                       '    selectionTestNotifications.append((request.identifier, request.content.categoryIdentifier))\n'
+                      '    selectionTestNotificationRequests.append(request)\n'
                       '    completionHandler(nil)\n}\n'
                       + source)
             source += '\n' + (ROOT / 'tests/ui/OutgoingSelectionTests.swift').read_text()
             source += '\n' + (ROOT / 'tests/ui/TrustedHuaweiTests.swift').read_text()
             source += '\n' + (ROOT / 'tests/ui/PetalCoexistenceTests.swift').read_text()
             source += '\n' + (ROOT / 'tests/ui/NotificationExpiryTests.swift').read_text()
+            source += '\n' + (ROOT / 'tests/ui/NotificationProgressTests.swift').read_text()
             source += '\n' + (ROOT / 'tests/ui/PhotosImportTests.swift').read_text()
             generated = stage / 'main.swift'
             generated.write_text(source)
@@ -88,6 +91,7 @@ class OutgoingSelectionTests(unittest.TestCase):
             self.assertIn('Huawei trust regression scenarios passed', executed.stdout)
             self.assertIn('Petal coexistence regression scenarios passed', executed.stdout)
             self.assertIn('Notification expiry regression scenarios passed', executed.stdout)
+            self.assertIn('Notification progress integration scenarios passed', executed.stdout)
             self.assertIn('Photos import integration scenarios passed', executed.stdout)
 
 

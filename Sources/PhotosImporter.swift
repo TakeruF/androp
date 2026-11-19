@@ -37,12 +37,41 @@ enum PhotosImporter {
     struct Result: Equatable {
         var importedCount = 0
         var failedCount = 0
+        var remainingCount = 0
+        var wasStopped = false
+    }
+
+    struct Progress: Codable, Equatable, Sendable {
+        enum Phase: String, Codable, Sendable { case queued, importing, finished, stopped, permissionDenied }
+        var phase: Phase = .queued
+        var importedCount = 0
+        var failedCount = 0
+        var totalCount = 0
+        var processedCount: Int { importedCount + failedCount }
+        var active: Bool { phase == .queued || phase == .importing }
+        var fraction: Double? { totalCount > 0 ? min(1, Double(processedCount) / Double(totalCount)) : nil }
+
+        func label(chinese: Bool) -> String {
+            switch phase {
+            case .queued: chinese ? "等待导入“照片” · \(totalCount) 项" : "Waiting to add to Photos · \(totalCount) items"
+            case .importing: chinese ? "正在导入“照片” · \(processedCount)/\(totalCount)" : "Adding to Photos · \(processedCount)/\(totalCount)"
+            case .stopped: chinese ? "照片导入已停止 · 已添加 \(importedCount)，失败 \(failedCount)，剩余 \(max(0, totalCount - processedCount))" : "Photos import stopped · \(importedCount) added, \(failedCount) failed, \(max(0, totalCount - processedCount)) remaining"
+            case .permissionDenied: chinese ? "照片导入已停止 · 需要照片图库许可" : "Photos import stopped · Photos permission required"
+            case .finished:
+                if failedCount > 0 {
+                    chinese ? "照片导入结果 · 已添加 \(importedCount)，失败 \(failedCount)" : "Photos · \(importedCount) added, \(failedCount) failed"
+                } else {
+                    chinese ? "已添加到“照片” · \(importedCount) 项" : "Added to Photos · \(importedCount) items"
+                }
+            }
+        }
     }
 
     // Tests replace only the OS boundary, without changing a personal library.
     struct Dependencies {
         var authorize: @MainActor () async -> PHAuthorizationStatus
         var create: @MainActor (Plan) async throws -> Void
+        var status: @MainActor () -> PHAuthorizationStatus = { PHPhotoLibrary.authorizationStatus(for: .addOnly) }
 
         static var system: Self {
             Self(authorize: {
@@ -67,22 +96,44 @@ enum PhotosImporter {
         }
     }
 
+    static func isAuthorized(_ status: PHAuthorizationStatus) -> Bool { status == .authorized || status == .limited }
+
     static func importReceived(files: [[String: Any]], enabled: Bool,
-                               using dependencies: Dependencies = .system) async throws -> Result {
+                               using dependencies: Dependencies = .system,
+                               shouldContinue: @MainActor () -> Bool = { true },
+                               progress: @MainActor (Progress) -> Void = { _ in }) async throws -> Result {
         guard enabled else { return Result() }
         let selection = selection(for: files)
         var result = Result(failedCount: selection.failedCount)
-        guard !selection.plans.isEmpty else { return result }
+        let total = selection.plans.count + selection.failedCount
+        func report(_ phase: Progress.Phase) {
+            progress(Progress(phase: phase, importedCount: result.importedCount, failedCount: result.failedCount, totalCount: total))
+        }
+        func stop() -> Result {
+            result.remainingCount = max(0, total - result.importedCount - result.failedCount)
+            result.wasStopped = true
+            report(.stopped)
+            return result
+        }
+        guard !selection.plans.isEmpty else { report(.finished); return result }
+        guard shouldContinue() else { return stop() }
         let status = await dependencies.authorize()
-        guard status == .authorized || status == .limited else { throw Failure.permissionDenied }
+        guard shouldContinue() else { return stop() }
+        guard isAuthorized(status) else { throw Failure.permissionDenied }
+        report(.importing)
         for plan in selection.plans {
+            // Finish an in-flight PhotoKit transaction, then honor OFF/Stop
+            // before starting another asset. Never roll back imported assets.
+            guard shouldContinue() else { return stop() }
             do {
                 try await dependencies.create(plan)
                 result.importedCount += 1
             } catch {
                 result.failedCount += 1
             }
+            report(.importing)
         }
+        report(.finished)
         return result
     }
 

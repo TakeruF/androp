@@ -26,6 +26,7 @@ struct Transfer: Identifiable, Codable {
     var deviceKind: String?
     var deviceBrand: String?
     var date = Date()
+    var photosImport: PhotosImporter.Progress?
     var active: Bool { !["complete", "failed", "declined", "cancelled"].contains(state) }
     var progress: TransferProgress { TransferProgress(state: state, completed: completed, total: total) }
     var historyName: String {
@@ -154,6 +155,11 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @Published var notificationsAllowed = false
     @Published var destination = UserDefaults.standard.string(forKey: "destination") ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
     @Published private(set) var autoImportToPhotos = UserDefaults.standard.bool(forKey: "autoImportToPhotos")
+    @Published private(set) var authorizingPhotosImport = false
+    @Published private(set) var photosImportError = ""
+    private var photosAuthorizationTask: Task<Void, Never>?
+    private var photosImportGeneration = UUID()
+    private var stoppedPhotosImports = Set<String>()
     private var photosImportTask: Task<Void, Never>?
     private var photosImportDependencies = PhotosImporter.Dependencies.system
     @Published private var pendingPhotosImports = 0
@@ -176,6 +182,8 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private var lastPeerUpdate: ContinuousClock.Instant?
     private var timer: Timer?
     private var notificationCleanupTimer: Timer?
+    private var progressNotificationGate = ProgressNotificationGate()
+    private var dismissedProgressNotifications = Set<String>()
     private var serviceReady = false
     private var terminating = false
     private var restartCount = 0
@@ -195,13 +203,16 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         return name.isEmpty ? "Mac" : name
     }
-    var busy: Bool { pendingPhotosImports > 0 || transfers.contains(where: \.active) }
+    var busy: Bool { authorizingPhotosImport || pendingPhotosImports > 0 || transfers.contains(where: \.active) }
+    var recentPhotosImports: [Transfer] { Array(transfers.filter { $0.photosImport != nil }.prefix(3)) }
     var byteFormat: ByteCountFormatter { let f = ByteCountFormatter(); f.countStyle = .file; return f }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do { destination = try fileAccess.restoreDestination().path; destinationReady = true }
         catch { self.error = L("Choose the save folder again to allow receiving files.", "请重新选择保存文件夹，以允许接收文件。") }
         if let data = UserDefaults.standard.data(forKey: "history"), let history = try? JSONDecoder().decode([Transfer].self, from: data) { transfers = history }
+        stopInterruptedPhotosImports()
+        refreshPhotosAuthorization()
         removeLegacyHistoryOnce()
         setupMenus()
         setupNotifications()
@@ -220,6 +231,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         NSApp.servicesProvider = self
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return false }
+    func applicationDidBecomeActive(_ notification: Notification) { refreshPhotosAuthorization() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { updates.installing && busy ? .terminateCancel : .terminateNow }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
@@ -304,7 +316,50 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         autoAcceptTrusted = value; UserDefaults.standard.set(value, forKey: "autoAcceptTrusted"); configureEngine()
     }
     func changeAutoImportToPhotos(_ value: Bool) {
-        autoImportToPhotos = value; UserDefaults.standard.set(value, forKey: "autoImportToPhotos")
+        photosImportError = ""
+        if !value {
+            photosImportGeneration = UUID()
+            photosAuthorizationTask?.cancel()
+            authorizingPhotosImport = false
+            autoImportToPhotos = false
+            UserDefaults.standard.set(false, forKey: "autoImportToPhotos")
+            updates.transferStateDidChange()
+            return
+        }
+        guard !autoImportToPhotos, !authorizingPhotosImport else { return }
+        let generation = photosImportGeneration
+        authorizingPhotosImport = true
+        photosAuthorizationTask = Task { [weak self] in
+            guard let self else { return }
+            let status = await self.photosImportDependencies.authorize()
+            guard !Task.isCancelled, generation == self.photosImportGeneration else { return }
+            self.authorizingPhotosImport = false
+            self.autoImportToPhotos = PhotosImporter.isAuthorized(status)
+            UserDefaults.standard.set(self.autoImportToPhotos, forKey: "autoImportToPhotos")
+            if !self.autoImportToPhotos { self.photosImportError = self.photosPermissionMessage }
+            self.updates.transferStateDidChange()
+        }
+    }
+    private var photosPermissionMessage: String {
+        L("Allow anDrop to add photos and videos in System Settings → Privacy & Security → Photos to enable automatic import.",
+          "请在“系统设置 → 隐私与安全性 → 照片”中允许 anDrop 添加照片和视频，再开启自动导入。")
+    }
+    private func refreshPhotosAuthorization() {
+        guard autoImportToPhotos, !PhotosImporter.isAuthorized(photosImportDependencies.status()) else { return }
+        changeAutoImportToPhotos(false)
+        photosImportError = photosPermissionMessage
+    }
+    private func stopInterruptedPhotosImports() {
+        var changed = false
+        for index in transfers.indices where transfers[index].photosImport?.active == true {
+            transfers[index].photosImport?.phase = .stopped
+            changed = true
+        }
+        if changed { saveHistory() }
+    }
+    func stopPhotosImport(_ transfer: Transfer) {
+        guard transfer.photosImport?.active == true else { return }
+        stoppedPhotosImports.insert(transfer.id)
     }
     var knownDevices: [RememberedDevice] {
         var seen = Set<String>()
@@ -363,12 +418,18 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             if t.state == "request" { add(L("Accept \(fileCountLabel(t.count))", "接收 \(t.count) 个文件"), #selector(acceptMenu(_:)), id: t.id); add(L("Decline", "拒绝"), #selector(declineMenu(_:)), id: t.id) }
             else { add(L("Cancel This Transfer", "取消此次传输"), #selector(cancelMenu(_:)), id: t.id) }
         }
-        let recent = transfers.filter { !$0.active }.prefix(8)
+        for t in transfers {
+            guard let progress = t.photosImport, progress.active else { continue }
+            menu.addItem(.separator())
+            add("\(t.peer) — \(progress.label(chinese: appLanguage() == "zh"))")
+            add(L("Stop Photos Import", "停止导入照片"), #selector(stopPhotosImportMenu(_:)), id: t.id)
+        }
+        let recent = transfers.filter { !$0.active && $0.photosImport?.active != true }.prefix(8)
         if !recent.isEmpty {
             menu.addItem(.separator())
             let row = NSMenuItem(title: L("Recent Transfers", "最近传输"), action: nil, keyEquivalent: ""); let submenu = NSMenu(); row.submenu = submenu
             for t in recent {
-                let label = "\(t.historyName) — \(t.label)"
+                let label = "\(t.historyName) — \(t.label)" + (t.photosImport.map { " · " + $0.label(chinese: appLanguage() == "zh") } ?? "")
                 let entry = NSMenuItem(title: label, action: t.state == "failed" ? #selector(diagnosticsMenu(_:)) : (t.paths.isEmpty ? nil : #selector(revealMenu(_:))), keyEquivalent: ""); entry.target = self; entry.representedObject = t.id
                 entry.image = NSImage(systemSymbolName: t.historySymbol, accessibilityDescription: t.direction == "send" ? L("Sent", "已发送") : L("Received", "已接收"))
                 entry.image?.size = NSSize(width: 18, height: 18)
@@ -728,16 +789,23 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
                 }
             } else if t.state == "complete" {
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
-                sendNotification(t, category: "complete", title: t.label, body: L("\(t.peer) · \(fileCountLabel(t.count))", "\(t.peer) · \(t.count) 个文件"))
+                if t.direction == "receive" { refreshPhotosAuthorization() }
+                let importing: Bool
                 if t.direction == "receive", autoImportToPhotos, let files = obj["files"] as? [[String: Any]] {
-                    importReceivedMedia(files, transfer: t)
+                    importing = importReceivedMedia(files, transfer: t)
+                } else { importing = false }
+                if !importing {
+                    sendNotification(t, category: "complete", title: t.label, body: L("\(t.peer) · \(fileCountLabel(t.count))", "\(t.peer) · \(t.count) 个文件"))
                 }
             } else if t.state == "failed" {
                 sendNotification(t, category: "failed", title: t.label, body: t.detail)
                 recommendQuittingPetal()
-            } else if t.state == "transferring" {
-                sendNotification(t, category: "manage", title: t.label, body: L("\(t.peer) · View progress in the menu bar", "\(t.peer) · 在菜单栏查看进度"))
             } else if !t.active { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id]) }
+        }
+        if t.state == "transferring" || t.state == "confirming" { updateTransferProgressNotification(t) }
+        if !t.active, t.state != "complete", t.state != "failed" {
+            progressNotificationGate.remove(t.id)
+            dismissedProgressNotifications.remove(t.id)
         }
         updateCompletedRecipientDismissal()
         if outgoing.contains(where: { $0.id == t.id }), outgoingCanRetry, recipientPanel?.isVisible == true {
@@ -747,8 +815,13 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         updates.transferStateDidChange()
         rebuildMenu()
     }
-    private func importReceivedMedia(_ files: [[String: Any]], transfer: Transfer) {
+    private func importReceivedMedia(_ files: [[String: Any]], transfer: Transfer) -> Bool {
+        let selection = PhotosImporter.selection(for: files)
+        let total = selection.plans.count + selection.failedCount
+        guard total > 0 else { return false }
+        let generation = photosImportGeneration
         pendingPhotosImports += 1
+        updatePhotosImport(transfer.id, progress: .init(totalCount: total))
         let previousImport = photosImportTask
         photosImportTask = Task { [weak self] in
             // Serialize completion events so permission prompts and library writes
@@ -757,17 +830,59 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             guard let self else { return }
             defer {
                 self.pendingPhotosImports -= 1
+                self.stoppedPhotosImports.remove(transfer.id)
                 self.updates.transferStateDidChange()
             }
+            let shouldContinue: @MainActor () -> Bool = {
+                self.refreshPhotosAuthorization()
+                return self.autoImportToPhotos && generation == self.photosImportGeneration && !self.stoppedPhotosImports.contains(transfer.id)
+            }
+            guard shouldContinue() else {
+                self.updatePhotosImport(transfer.id, progress: .init(phase: .stopped, totalCount: total))
+                return
+            }
             do {
-                let result = try await PhotosImporter.importReceived(files: files, enabled: self.autoImportToPhotos,
-                                                                     using: self.photosImportDependencies)
-                if result.failedCount > 0 { throw PhotosImporter.Failure.importFailed }
+                _ = try await PhotosImporter.importReceived(files: files, enabled: true, using: self.photosImportDependencies,
+                    shouldContinue: shouldContinue, progress: { self.updatePhotosImport(transfer.id, progress: $0) })
             } catch {
-                self.sendNotification(transfer, category: "photos-import-failed",
-                    title: L("Could not add files to Photos", "无法添加到“照片”"), body: PhotosImporter.message(for: error))
+                self.changeAutoImportToPhotos(false)
+                self.photosImportError = self.photosPermissionMessage
+                self.updatePhotosImport(transfer.id, progress: .init(phase: .permissionDenied, totalCount: total))
             }
         }
+        return true
+    }
+    private func updatePhotosImport(_ id: String, progress: PhotosImporter.Progress) {
+        guard let index = transfers.firstIndex(where: { $0.id == id }) else { return }
+        transfers[index].photosImport = progress
+        let transfer = transfers[index]
+        let body = "\(transfer.peer) · \(fileCountLabel(transfer.count))\n" + progress.label(chinese: appLanguage() == "zh")
+        if progress.active {
+            let percent = progress.fraction.map { " \(Int(($0 * 100).rounded(.down)))%" } ?? ""
+            let title = (progress.phase == .queued ? L("Waiting to add to Photos", "等待导入照片") : L("Adding to Photos", "正在导入照片")) + percent
+            guard !dismissedProgressNotifications.contains(id),
+                  let quiet = progressNotificationGate.update(id: id, phase: "photos-" + progress.phase.rawValue,
+                                                              value: title, now: ProcessInfo.processInfo.systemUptime) else {
+                saveHistory(); rebuildMenu(); return
+            }
+            sendNotification(transfer, category: "photos-importing", title: title,
+                             body: "\(transfer.peer) · \(fileCountLabel(transfer.count))", quiet: quiet)
+        } else {
+            let failure = progress.phase == .permissionDenied || progress.failedCount > 0
+            sendNotification(transfer, category: failure ? "photos-import-failed" : "complete", title: transfer.label,
+                             body: body, quiet: progress.phase == .stopped)
+        }
+        saveHistory()
+        rebuildMenu()
+    }
+    private func updateTransferProgressNotification(_ transfer: Transfer, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard !dismissedProgressNotifications.contains(transfer.id) else { return }
+        let percent = transfer.state == "transferring" ? transfer.progress.percent.map { " \($0)%" } ?? "" : ""
+        let title = transfer.label + percent
+        let body = "\(transfer.peer) · \(fileCountLabel(transfer.count))"
+        guard let quiet = progressNotificationGate.update(id: transfer.id, phase: transfer.state,
+                                                          value: title, now: now) else { return }
+        sendNotification(transfer, category: "manage", title: title, body: body, quiet: quiet)
     }
     private func recommendQuittingPetal() {
         guard !petalRecommendationPending, petalIsRunning else { return }
@@ -813,7 +928,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         let history = Array(transfers.filter { !$0.active }.prefix(100))
         if let data = try? JSONEncoder().encode(history) { UserDefaults.standard.set(data, forKey: "history") }
     }
-    func clearHistory() { transfers.removeAll { !$0.active }; saveHistory() }
+    func clearHistory() { transfers.removeAll { !$0.active && $0.photosImport?.active != true }; saveHistory() }
+    @objc private func stopPhotosImportMenu(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? String, let transfer = transfers.first(where: { $0.id == id }) { stopPhotosImport(transfer) }
+    }
     func addFiles(_ urls: [URL], preserveOriginals: Bool = false) {
         cancelOutgoingRetry()
         if !outgoingActive { outgoing = [] }
@@ -953,6 +1071,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         catch { self.error = L("Could not change login settings: \(error.localizedDescription)", "无法更改登录设置：\(error.localizedDescription)") }
     }
     private func refreshEnvironment() {
+        refreshPhotosAuthorization()
         refreshRadioAvailability()
         expirePeerUpdates()
         if configuredName != sharingName && !busy { configureEngine(); advertise() }
@@ -1093,14 +1212,20 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             UNNotificationCategory(identifier: "complete", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: []),
             UNNotificationCategory(identifier: "reveal-failed", actions: [], intentIdentifiers: []),
             UNNotificationCategory(identifier: "photos-import-failed", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: []),
-            UNNotificationCategory(identifier: "manage", actions: [UNNotificationAction(identifier: "manage", title: L("Show Transfers", "查看传输"), options: [.foreground]), UNNotificationAction(identifier: "cancel", title: L("Cancel", "取消"))], intentIdentifiers: [])
+            UNNotificationCategory(identifier: "photos-importing", actions: [UNNotificationAction(identifier: "stop-photos-import", title: L("Stop Import", "停止导入")), UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: [], options: [.customDismissAction]),
+            UNNotificationCategory(identifier: "manage", actions: [UNNotificationAction(identifier: "manage", title: L("Show Transfers", "查看传输"), options: [.foreground]), UNNotificationAction(identifier: "cancel", title: L("Cancel", "取消"))], intentIdentifiers: [], options: [.customDismissAction])
         ])
         center.requestAuthorization(options: [.alert, .sound]) { [weak self] allowed, _ in Task { @MainActor [weak self] in self?.notificationsAllowed = allowed } }
     }
-    private func sendNotification(_ transfer: Transfer, category: String, title: String, body: String) {
+    private func sendNotification(_ transfer: Transfer, category: String, title: String, body: String, quiet: Bool = false) {
         let content = UNMutableNotificationContent(); content.title = title; content.body = body; content.categoryIdentifier = category; content.threadIdentifier = transfer.id
-        content.userInfo = ["direction": transfer.direction]
-        if transfer.state != "transferring" { content.sound = .default }
+        content.userInfo = ["direction": transfer.direction, "progressUpdate": quiet]
+        if quiet { content.interruptionLevel = .passive }
+        if category != "manage", category != "photos-importing", !quiet { content.sound = .default }
+        if category != "manage", category != "photos-importing" {
+            progressNotificationGate.remove(transfer.id)
+            dismissedProgressNotifications.remove(transfer.id)
+        }
         let request = UNNotificationRequest(identifier: transfer.id, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { [weak self] error in
             guard error == nil else { return }
@@ -1153,13 +1278,18 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             }
         }
     }
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) { completionHandler([.banner, .sound]) }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler(notification.request.content.userInfo["progressUpdate"] as? Bool == true ? [.list] : [.banner, .sound])
+    }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping @Sendable () -> Void) {
         let id = response.notification.request.identifier
         let action = response.actionIdentifier
         let category = response.notification.request.content.categoryIdentifier
         Task { @MainActor in
-        guard action != UNNotificationDismissActionIdentifier else { completionHandler(); return }
+        guard action != UNNotificationDismissActionIdentifier else {
+            if category == "manage" || category == "photos-importing" { self.dismissedProgressNotifications.insert(id) }
+            completionHandler(); return
+        }
         if id == AppUpdates.notificationID { self.updates.notificationClicked(); completionHandler(); return }
         if action == "logs" || (action != UNNotificationDismissActionIdentifier &&
             (category == "failed" || self.transfers.first(where: { $0.id == id })?.state == "failed")) {
@@ -1169,6 +1299,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             case "accept": decide(t, accept: true)
             case "decline": decide(t, accept: false)
             case "cancel": cancel(t)
+            case "stop-photos-import": stopPhotosImport(t)
             case "reveal": if !t.paths.isEmpty { reveal(t) } else { showWindow() }
             default: tab = 0; showWindow()
             }
@@ -1465,8 +1596,28 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 8) { Text(L("Save received files to", "接收文件保存位置")).font(.headline); HStack { Text(model.destination).font(.callout).lineLimit(1).truncationMode(.middle); Spacer(); Button(L("Change…", "更改…"), action: model.chooseDestination).disabled(model.busy) }; Text(L("Existing files are never overwritten.", "同名文件不会被覆盖。")).font(.caption).foregroundStyle(.secondary) }
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(L("Automatically import pictures and videos to Photos", "自动将照片和视频导入“照片”"), isOn: Binding(get: { model.autoImportToPhotos }, set: model.changeAutoImportToPhotos))
-                Text(L("Off by default. Adds received pictures, videos and Live Photos to Photos. PDFs and other files stay in the save folder. All originals are kept. Photos permission is requested when media first arrives.", "默认关闭。将收到的照片、视频和实况照片添加到“照片”。PDF 等其他文件仅保存在接收文件夹，所有原始文件都会保留。首次收到媒体时会请求照片图库权限。"))
+                    .disabled(model.authorizingPhotosImport)
+                if model.authorizingPhotosImport {
+                    ProgressView(L("Requesting Photos permission…", "正在请求照片图库许可…")).controlSize(.small)
+                }
+                Text(L("Off by default. Requires permission to add to Photos. Pictures, videos and Live Photos are imported; PDFs and other files stay in the save folder. All originals are kept. Turning this off stops after the current item.", "默认关闭，需先允许添加到照片图库。照片、视频和实况照片会导入“照片”；PDF 等其他文件保存在接收文件夹，所有原始文件均保留。关闭后，完成当前一项即停止。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if !model.photosImportError.isEmpty {
+                    Text(model.photosImportError).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(model.recentPhotosImports) { transfer in
+                    if let progress = transfer.photosImport {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(transfer.historyName).font(.caption.bold()).lineLimit(1)
+                            Text(progress.label(chinese: appLanguage() == "zh")).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if progress.active {
+                                ProgressView(value: progress.fraction).controlSize(.small)
+                                Button(L("Stop Import", "停止导入")) { model.stopPhotosImport(transfer) }.font(.caption)
+                            }
+                        }
+                    }
+                }
             }
             VStack(alignment: .leading, spacing: 8) {
                 Picker(L("Allow Requests From", "接收范围"), selection: Binding(get: { model.trustedOnly }, set: model.changeTrustedOnly)) {

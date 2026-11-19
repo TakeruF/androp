@@ -39,3 +39,26 @@ struct OutgoingPresentation {
     let files: [URL]
     var preserveOriginals = false
 }
+
+/// Progress updates share one notification and are throttled per transfer.
+/// A phase change is immediate; byte/count changes are posted at most every
+/// two seconds. Terminal notifications bypass this gate entirely.
+struct ProgressNotificationGate {
+    private struct Stamp {
+        let phase: String
+        let value: String
+        let time: TimeInterval
+    }
+    private var stamps: [String: Stamp] = [:]
+
+    mutating func update(id: String, phase: String, value: String, now: TimeInterval) -> Bool? {
+        let previous = stamps[id]
+        if let previous, previous.phase == phase {
+            guard previous.value != value, now - previous.time >= 2 else { return nil }
+        }
+        stamps[id] = Stamp(phase: phase, value: value, time: now)
+        return previous != nil // true means a quiet replacement, not a new alert.
+    }
+
+    mutating func remove(_ id: String) { stamps.removeValue(forKey: id) }
+}

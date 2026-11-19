@@ -171,6 +171,56 @@ private struct ReceivedMediaFixture {
     #expect(calls == 0)
 }
 
+@Test @MainActor func switchingOffFinishesTheCurrentAssetAndStopsTheRemainingBatch() async throws {
+    let fixture = try ReceivedMediaFixture()
+    defer { fixture.remove() }
+    var enabled = true
+    var writes: [URL] = []
+    var states: [PhotosImporter.Progress] = []
+    let dependencies = PhotosImporter.Dependencies(authorize: { .authorized }, create: { plan in
+        writes.append(plan.source)
+        enabled = false
+    })
+    let result = try await PhotosImporter.importReceived(files: fixture.entries, enabled: true, using: dependencies,
+        shouldContinue: { enabled }, progress: { states.append($0) })
+    #expect(result == PhotosImporter.Result(importedCount: 1, remainingCount: 1, wasStopped: true))
+    #expect(writes == [fixture.image.resolvingSymlinksInPath()])
+    let stopped = try #require(states.last)
+    #expect(stopped.phase == .stopped && stopped.importedCount == 1 && stopped.totalCount == 2)
+    #expect(stopped.fraction == 0.5)
+    #expect(FileManager.default.fileExists(atPath: fixture.video.path))
+}
+
+@Test @MainActor func stoppingWhileAuthorizationIsPendingNeverStartsAnAsset() async throws {
+    let fixture = try ReceivedMediaFixture()
+    defer { fixture.remove() }
+    var enabled = true
+    var writes = 0
+    let dependencies = PhotosImporter.Dependencies(authorize: { enabled = false; return .authorized },
+        create: { _ in writes += 1 })
+    let result = try await PhotosImporter.importReceived(files: fixture.entries, enabled: true, using: dependencies,
+                                                         shouldContinue: { enabled })
+    #expect(result == PhotosImporter.Result(remainingCount: 2, wasStopped: true))
+    #expect(writes == 0)
+}
+
+@Test @MainActor func importProgressCountsFailuresWithoutClaimingThatEveryAssetWasAdded() async throws {
+    let fixture = try ReceivedMediaFixture()
+    defer { fixture.remove() }
+    var states: [PhotosImporter.Progress] = []
+    let dependencies = PhotosImporter.Dependencies(authorize: { .authorized }, create: { plan in
+        if plan.resources.first?.kind == .photo { throw CocoaError(.fileReadCorruptFile) }
+    })
+    let result = try await PhotosImporter.importReceived(files: fixture.entries, enabled: true, using: dependencies,
+                                                         progress: { states.append($0) })
+    #expect(result == PhotosImporter.Result(importedCount: 1, failedCount: 1))
+    #expect(states.map(\.processedCount) == [0, 1, 2, 2])
+    let final = try #require(states.last)
+    #expect(final.phase == .finished && !final.active && final.fraction == 1)
+    #expect(final.label(chinese: false) == "Photos · 1 added, 1 failed")
+    #expect(try JSONDecoder().decode(PhotosImporter.Progress.self, from: JSONEncoder().encode(final)) == final)
+}
+
 private enum InvalidLivePhotoResource: CaseIterable {
     case missingVideo, extraFile, unrelatedStem, nonGeneratedBasename, resourceSymlink, packageSymlink, invalidMetadata
 }

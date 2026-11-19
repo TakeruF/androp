@@ -10,7 +10,9 @@ To send from the Mac, select files in Finder → Share → anDrop, choose the re
 
 To receive, select files in the device's built-in compatible 互传 feature, choose the Mac and approve the request in anDrop's notification or menu bar. The default destination is Downloads itself. Files are not opened automatically.
 
-Enable Settings → **Automatically import pictures and videos to Photos** to add newly received pictures, videos and Live Photos to Photos. This defaults to off and requests Photos add-only permission on the first media receive. PDFs, archives and other files remain ordinary downloads; all originals are kept in the save folder. Import runs in the background without opening Photos. Permission or format failures leave the received files intact and show a notification; other eligible media continue importing.
+Enable Settings → **Automatically import pictures and videos to Photos** to add newly received pictures, videos and Live Photos to Photos. This defaults to off and requests Photos add-only permission when you enable it; the switch stays off if permission is denied. PDFs, archives and other files remain ordinary downloads; all originals are kept in the save folder. Import runs in the background without opening Photos. Permission or format failures leave the received files intact and show a notification; other eligible media continue importing.
+
+Transfer notifications display percentages directly. Progress updates reuse the same notification quietly in Notification Center. Photos import progress and added/failed/remaining counts are shown in Settings and Recent Transfers. Turn automatic import off, or choose Stop Import, to finish the current item and leave the rest in the save folder.
 
 Show in Finder brings an existing window for the save folder on the current desktop to the front and selects the received files, preserving its size and position. If that folder is not open on the current desktop, it creates a new window on the clicked display. On first use, allow anDrop to control Finder when macOS asks. If permission was denied, enable Finder under System Settings → Privacy & Security → Automation → anDrop, then try again.
 

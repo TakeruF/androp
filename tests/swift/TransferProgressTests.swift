@@ -40,3 +40,15 @@ import Testing
         #expect(p.percent == nil)
     }
 }
+
+@Test func progressNotificationsCoalesceAndKeepTransfersIndependent() {
+    var gate = ProgressNotificationGate()
+    #expect(gate.update(id: "one", phase: "transferring", value: "42%", now: 100) == false)
+    #expect(gate.update(id: "one", phase: "transferring", value: "43%", now: 101) == nil)
+    #expect(gate.update(id: "one", phase: "transferring", value: "43%", now: 102) == true)
+    #expect(gate.update(id: "one", phase: "transferring", value: "43%", now: 110) == nil)
+    #expect(gate.update(id: "two", phase: "transferring", value: "10%", now: 102) == false)
+    #expect(gate.update(id: "one", phase: "confirming", value: "Finishing", now: 102.1) == true)
+    gate.remove("one")
+    #expect(gate.update(id: "one", phase: "transferring", value: "0%", now: 103) == false)
+}
