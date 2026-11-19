@@ -912,12 +912,13 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         DispatchQueue.main.async { [weak self] in
             FinderReveal.reveal(urls, on: screen) { [weak self] errorCode in
                 if let errorCode {
+                    let message: String
                     if errorCode == -1743 || errorCode == -1744 {
-                        self?.error = L("Allow anDrop to control Finder in System Settings → Privacy & Security → Automation, then try again.", "请在系统设置 → 隐私与安全性 → 自动化中允许 anDrop 控制访达，然后重试。")
+                        message = L("Allow anDrop to control Finder in System Settings → Privacy & Security → Automation, then try again.", "请在系统设置 → 隐私与安全性 → 自动化中允许 anDrop 控制访达，然后重试。")
                     } else {
-                        self?.error = L("Could not show the received files. They may have moved, or Finder may be unavailable.", "无法显示已接收的文件。文件可能已移动，或访达暂时不可用。")
+                        message = L("Could not show the received files. They may have moved, or Finder may be unavailable.", "无法显示已接收的文件。文件可能已移动，或访达暂时不可用。")
                     }
-                    self?.showWindow()
+                    self?.sendNotification(transfer, category: "reveal-failed", title: L("Could not show files in Finder", "无法在访达中显示文件"), body: message)
                     return
                 }
                 NSApp.yieldActivation(toApplicationWithBundleIdentifier: "com.apple.finder")
@@ -1090,6 +1091,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             // Finder owns the foreground for this action. Activating anDrop as
             // well can trigger applicationShouldHandleReopen and show Settings.
             UNNotificationCategory(identifier: "complete", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "reveal-failed", actions: [], intentIdentifiers: []),
             UNNotificationCategory(identifier: "photos-import-failed", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: []),
             UNNotificationCategory(identifier: "manage", actions: [UNNotificationAction(identifier: "manage", title: L("Show Transfers", "查看传输"), options: [.foreground]), UNNotificationAction(identifier: "cancel", title: L("Cancel", "取消"))], intentIdentifiers: [])
         ])
@@ -1111,7 +1113,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private static func transferNotificationExpiration(category: String, deliveredAt: Date) -> Date? {
         // Both directions expire, including notifications from older versions
         // without userInfo. Requests and active transfers still need their actions.
-        guard category == "complete" || category == "failed" || category == "photos-import-failed" else { return nil }
+        guard category == "complete" || category == "failed" || category == "reveal-failed" || category == "photos-import-failed" else { return nil }
         return deliveredAt.addingTimeInterval(3 * 60)
     }
     private func scheduleNotificationCleanup(at deadline: Date) {
