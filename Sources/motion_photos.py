@@ -609,7 +609,7 @@ async def materialize_received(saved, diagnostic=None):
                 else:
                     raise MotionPhotoError('live_photo_name_collision')
                 result.append({'path': str(package), 'bytes': sum(p.stat().st_size for p in package.iterdir()),
-                               'kind': 'live_photo'})
+                               'kind': 'live_photo', 'original_path': str(source)})
                 if diagnostic:
                     diagnostic('live_photo_converted')
                 if archive:

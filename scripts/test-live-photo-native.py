@@ -80,6 +80,7 @@ async def application_roundtrip(helper, fixture, work, apple, source_tracks):
             assert sent[0].read_bytes() == expected
             package = Path(received[1]['path'])
             assert received[1].get('kind') == 'live_photo'
+            assert received[1]['original_path'] == str(sent[0])
             assert invoke(fixture, 'plan-import', package, received[1]['kind']) == {
                 'asset_count': 1, 'resources': ['photo', 'pairedVideo']}
             assert invoke(fixture, 'plan-import', sent[0], 'ordinary') == {
@@ -132,7 +133,7 @@ def main():
             assert helper.is_file(), 'The app does not contain the Live Photo helper'
         else:
             run("xcrun", "swiftc", *flags, ROOT / "Sources/FileAccess.swift", ROOT / "Sources/LivePhotoConverter.swift", "-o", helper)
-        run("xcrun", "swiftc", *flags, ROOT / "Sources/Localization.swift", ROOT / "Sources/LivePhotoImporter.swift",
+        run("xcrun", "swiftc", *flags, ROOT / "Sources/Localization.swift", ROOT / "Sources/PhotosImporter.swift",
             ROOT / "scripts/LivePhotoFixture.swift", "-o", fixture)
         invoke(fixture, "generate", work)
         source_image = work / "source.jpg"

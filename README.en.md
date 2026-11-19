@@ -10,6 +10,8 @@ anDrop is a macOS menu bar app that officially supports the **互传联盟 (Mutu
 
 **[Download anDrop](https://github.com/TakeruF/androp/releases/latest)** · [Usage and troubleshooting](docs/usage.en.md) · [Compatibility](docs/compatibility.en.md) · [Privacy policy](https://takeruf.com/en/projects/androp/privacy)
 
+**Next version: 1.3.8 (unreleased).** Adds optional automatic import of received pictures, videos and Live Photos into Photos. PDFs and other files are saved normally, and all originals are kept. See the [planned release notes](docs/releases/1.3.8.en.md).
+
 **1.3.7: Send original file batches from Finder.** Choose Services → Send Originals with anDrop to send original photos, videos and other files, preserving their embedded capture dates and location metadata. See the [1.3.7 release notes](docs/releases/1.3.7.en.md).
 
 **1.2.2** added Live Photo conversion and improved photo sharing. Convert Apple, Android/OPPO and Huawei moving-photo formats; receive OPPO Live Photo ZIPs as `.pvt` files without automatic Photos import. Photo sharing adds alternative provider-loading methods. URL and text sharing are unsupported. See the [1.2.2 release notes](docs/releases/1.2.2.en.md) for scope and remaining device checks.
@@ -70,7 +72,7 @@ Sends to different devices can run concurrently. Receiving remains exclusive. Co
 
 ### Settings
 
-Change the destination folder, sharing name, language, Open at Login, receiving scope and update settings. License and GitHub links are at the bottom.
+Change the destination folder, sharing name, language, Open at Login, receiving scope and update settings. **Automatically import pictures and videos to Photos** is off by default. Enable it to add newly received pictures, videos and Live Photos to Photos after granting permission. All originals stay in the save folder; PDFs and other files are saved normally. License and GitHub links are at the bottom.
 
 <details>
 <summary>View Settings (mock data)</summary>

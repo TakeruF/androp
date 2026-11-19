@@ -1,6 +1,6 @@
 # anDrop Privacy Policy
 
-Last updated: November 1, 2026
+Last updated: November 19, 2026
 
 anDrop is developed and provided by **TakeruF**. This policy covers the macOS app and its Finder Share extension, including the GitHub distribution and any Mac App Store distribution. Their update mechanisms differ as described below.
 
@@ -15,6 +15,8 @@ Your sharing name, which defaults to the Mac's Computer Name, is visible to near
 anDrop stores settings, selected-folder access bookmarks, device aliases, hidden-device preferences, remembered devices and trust records locally. Trust records use protocol sender-ID or transfer-public-key digests. The app also stores local cryptographic identity material used for compatible transfers. These records are not an Apple, Android or manufacturer account pairing.
 
 Local transfer history can contain device names, file names, local file paths, dates, transfer sizes and results. Received files remain in Downloads or the save folder you select. Temporary copies may be created inside the app's storage to stage shared files or convert Live Photos; converted files are saved or sent as part of the operation you request. The app does not scan your Photos library to build a profile of you.
+
+Automatic import into Photos is optional and off by default. If enabled, anDrop requests add-only permission when eligible media first arrives, then copies newly received pictures, videos and Live Photos into your system Photos library. It does not read existing library assets. PDFs and other non-media files are excluded, and saved originals remain in the receive folder. You can disable automatic import in anDrop Settings or revoke Photos permission in macOS. Photos manages its own copies and may sync them through iCloud Photos according to your Apple settings.
 
 ## Diagnostics and support
 

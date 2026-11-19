@@ -11,7 +11,7 @@
 主程序声明蓝牙、网络收发、下载目录读写、用户选择文件读写及 app-scoped bookmark
 权限。共享扩展仅声明沙盒和用户选择文件只读权限。两个继承沙盒的可执行程序仅声明
 `com.apple.security.app-sandbox` 与 `com.apple.security.inherit`。
-不使用临时文件系统例外、App Group 或照片图库权限。
+不使用临时文件系统例外或 App Group。主程序另声明照片图库权限及本地化的添加用途说明。自动导入媒体默认关闭，仅在开启后请求“仅添加”授权，不读取图库中已有的资源。
 
 “在访达中显示”先新建访达窗口，再激活访达，避免复用另一个空间中的现有窗口。
 主程序声明 Apple Events 自动化权限和仅针对 `com.apple.finder` 的 Apple Events 沙盒例外。

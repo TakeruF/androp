@@ -153,6 +153,10 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     @Published var engineReady = false
     @Published var notificationsAllowed = false
     @Published var destination = UserDefaults.standard.string(forKey: "destination") ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
+    @Published private(set) var autoImportToPhotos = UserDefaults.standard.bool(forKey: "autoImportToPhotos")
+    private var photosImportTask: Task<Void, Never>?
+    private var photosImportDependencies = PhotosImporter.Dependencies.system
+    @Published private var pendingPhotosImports = 0
     @Published var startAtLogin = false
     private var window: NSWindow?
     private var item: NSStatusItem?
@@ -191,7 +195,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         }
         return name.isEmpty ? "Mac" : name
     }
-    var busy: Bool { transfers.contains(where: \.active) }
+    var busy: Bool { pendingPhotosImports > 0 || transfers.contains(where: \.active) }
     var byteFormat: ByteCountFormatter { let f = ByteCountFormatter(); f.countStyle = .file; return f }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -298,6 +302,9 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     }
     func changeAutoAcceptTrusted(_ value: Bool) {
         autoAcceptTrusted = value; UserDefaults.standard.set(value, forKey: "autoAcceptTrusted"); configureEngine()
+    }
+    func changeAutoImportToPhotos(_ value: Bool) {
+        autoImportToPhotos = value; UserDefaults.standard.set(value, forKey: "autoImportToPhotos")
     }
     var knownDevices: [RememberedDevice] {
         var seen = Set<String>()
@@ -722,6 +729,9 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             } else if t.state == "complete" {
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
                 sendNotification(t, category: "complete", title: t.label, body: L("\(t.peer) · \(fileCountLabel(t.count))", "\(t.peer) · \(t.count) 个文件"))
+                if t.direction == "receive", autoImportToPhotos, let files = obj["files"] as? [[String: Any]] {
+                    importReceivedMedia(files, transfer: t)
+                }
             } else if t.state == "failed" {
                 sendNotification(t, category: "failed", title: t.label, body: t.detail)
                 recommendQuittingPetal()
@@ -736,6 +746,28 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
         if !t.active { saveHistory() }
         updates.transferStateDidChange()
         rebuildMenu()
+    }
+    private func importReceivedMedia(_ files: [[String: Any]], transfer: Transfer) {
+        pendingPhotosImports += 1
+        let previousImport = photosImportTask
+        photosImportTask = Task { [weak self] in
+            // Serialize completion events so permission prompts and library writes
+            // cannot race. Recheck the setting after any queued import finishes.
+            await previousImport?.value
+            guard let self else { return }
+            defer {
+                self.pendingPhotosImports -= 1
+                self.updates.transferStateDidChange()
+            }
+            do {
+                let result = try await PhotosImporter.importReceived(files: files, enabled: self.autoImportToPhotos,
+                                                                     using: self.photosImportDependencies)
+                if result.failedCount > 0 { throw PhotosImporter.Failure.importFailed }
+            } catch {
+                self.sendNotification(transfer, category: "photos-import-failed",
+                    title: L("Could not add files to Photos", "无法添加到“照片”"), body: PhotosImporter.message(for: error))
+            }
+        }
     }
     private func recommendQuittingPetal() {
         guard !petalRecommendationPending, petalIsRunning else { return }
@@ -1058,6 +1090,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
             // Finder owns the foreground for this action. Activating anDrop as
             // well can trigger applicationShouldHandleReopen and show Settings.
             UNNotificationCategory(identifier: "complete", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "photos-import-failed", actions: [UNNotificationAction(identifier: "reveal", title: L("Show in Finder", "在访达中显示"))], intentIdentifiers: []),
             UNNotificationCategory(identifier: "manage", actions: [UNNotificationAction(identifier: "manage", title: L("Show Transfers", "查看传输"), options: [.foreground]), UNNotificationAction(identifier: "cancel", title: L("Cancel", "取消"))], intentIdentifiers: [])
         ])
         center.requestAuthorization(options: [.alert, .sound]) { [weak self] allowed, _ in Task { @MainActor [weak self] in self?.notificationsAllowed = allowed } }
@@ -1078,7 +1111,7 @@ final class AppModel: NSObject, ObservableObject, NSApplicationDelegate, @precon
     private static func transferNotificationExpiration(category: String, deliveredAt: Date) -> Date? {
         // Both directions expire, including notifications from older versions
         // without userInfo. Requests and active transfers still need their actions.
-        guard category == "complete" || category == "failed" else { return nil }
+        guard category == "complete" || category == "failed" || category == "photos-import-failed" else { return nil }
         return deliveredAt.addingTimeInterval(3 * 60)
     }
     private func scheduleNotificationCleanup(at deadline: Date) {
@@ -1428,6 +1461,11 @@ struct SettingsView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 8) { Text(L("Save received files to", "接收文件保存位置")).font(.headline); HStack { Text(model.destination).font(.callout).lineLimit(1).truncationMode(.middle); Spacer(); Button(L("Change…", "更改…"), action: model.chooseDestination).disabled(model.busy) }; Text(L("Existing files are never overwritten.", "同名文件不会被覆盖。")).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(L("Automatically import pictures and videos to Photos", "自动将照片和视频导入“照片”"), isOn: Binding(get: { model.autoImportToPhotos }, set: model.changeAutoImportToPhotos))
+                Text(L("Off by default. Adds received pictures, videos and Live Photos to Photos. PDFs and other files stay in the save folder. All originals are kept. Photos permission is requested when media first arrives.", "默认关闭。将收到的照片、视频和实况照片添加到“照片”。PDF 等其他文件仅保存在接收文件夹，所有原始文件都会保留。首次收到媒体时会请求照片图库权限。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 Picker(L("Allow Requests From", "接收范围"), selection: Binding(get: { model.trustedOnly }, set: model.changeTrustedOnly)) {
                     Text(L("Trusted Devices Only", "仅限受信任的设备")).tag(true)

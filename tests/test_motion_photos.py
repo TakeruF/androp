@@ -253,6 +253,7 @@ class MotionPhotoTests(unittest.IsolatedAsyncioTestCase):
             result = await motion.materialize_received([record])
         self.assertEqual(result[1]['kind'], 'live_photo')
         self.assertNotIn('kind', result[0])
+        self.assertEqual(result[1]['original_path'], str(target))
         package = Path(result[1]['path'])
         self.assertEqual(package.name, 'received (1).pvt')
         self.assertEqual(plistlib.loads((package / 'metadata.plist').read_bytes()), {'PFVideoComplementMetadataVersionKey': '1'})

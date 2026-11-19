@@ -188,7 +188,7 @@ private enum LivePhotoFixture {
             let plans = try await MainActor.run {
                 var file: [String: Any] = ["path": args[1]]
                 if args[2] == "live_photo" { file["kind"] = "live_photo" }
-                return try LivePhotoImporter.plans(for: [file])
+                return try PhotosImporter.livePhotoPlans(for: [file])
             }
             let result: [String: Any] = ["asset_count": plans.count,
                 "resources": plans.flatMap { $0.resources.map { $0.kind == .photo ? "photo" : "pairedVideo" } }]

@@ -34,12 +34,14 @@ def check(app):
                 'com.apple.security.files.downloads.read-write',
                 'com.apple.security.files.user-selected.read-write',
                 'com.apple.security.files.bookmarks.app-scope',
-                'com.apple.security.automation.apple-events'}
+                'com.apple.security.automation.apple-events',
+                'com.apple.security.personal-information.photos-library'}
     require(all(host.get(key) is True for key in required), 'Missing host sandbox entitlement')
     exceptions = 'com.apple.security.temporary-exception.mach-lookup.global-name'
     finder_events = 'com.apple.security.temporary-exception.apple-events'
     require(host.get(finder_events) == ['com.apple.finder'], 'Finder automation must target Finder only')
     require(bool(info.get('NSAppleEventsUsageDescription')), 'Finder automation purpose missing')
+    require(bool(info.get('NSPhotoLibraryAddUsageDescription')), 'Photos additions purpose missing')
     require(set(host) == required | {finder_events} | ({exceptions} if 'SUFeedURL' in info else set()), 'Unexpected host entitlements')
     inherited = {'com.apple.security.app-sandbox': True, 'com.apple.security.inherit': True}
     for relative in ['Contents/Resources/Engine/anDropEngine', 'Contents/MacOS/anDropLivePhoto']:

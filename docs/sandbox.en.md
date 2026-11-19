@@ -13,7 +13,7 @@ The host requests Bluetooth, incoming/outgoing network, Downloads read/write,
 user-selected read/write and app-scoped bookmark entitlements. The Share extension
 has only App Sandbox and user-selected read-only access. Each inherited executable
 has exactly `com.apple.security.app-sandbox` and `com.apple.security.inherit`.
-No temporary filesystem exception, App Group or Photos library entitlement is used.
+No temporary filesystem exception or App Group is used. The host also declares the Photos library entitlement and a localized additions purpose string. Only the optional automatic media import requests add-only authorization; it defaults to off and never reads existing library assets.
 
 Show in Finder creates a new Finder window before activating Finder, rather than
 reusing a window on another Space. The host has the Apple Events automation

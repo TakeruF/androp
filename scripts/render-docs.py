@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='androp-docs-') as temp:
         'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
         '-module-cache-path', str(stage / 'module-cache'),
         *[str(ROOT / 'Sources' / name) for name in
-          ['AppUpdates.swift', 'Localization.swift', 'Peer.swift', 'ReceiveAccessPolicy.swift', 'TransferProgress.swift', 'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift']],
+          ['AppUpdates.swift', 'FileAccess.swift', 'FinderReveal.swift', 'PhotosImporter.swift', 'Localization.swift', 'Peer.swift', 'ReceiveAccessPolicy.swift', 'TransferProgress.swift', 'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift']],
         str(generated), '-o', str(executable),
     ], check=True)
     # This renders views to PNGs without starting the app delegate, Bluetooth,

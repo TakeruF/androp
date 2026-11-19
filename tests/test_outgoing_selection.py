@@ -61,6 +61,7 @@ class OutgoingSelectionTests(unittest.TestCase):
             source += '\n' + (ROOT / 'tests/ui/TrustedHuaweiTests.swift').read_text()
             source += '\n' + (ROOT / 'tests/ui/PetalCoexistenceTests.swift').read_text()
             source += '\n' + (ROOT / 'tests/ui/NotificationExpiryTests.swift').read_text()
+            source += '\n' + (ROOT / 'tests/ui/PhotosImportTests.swift').read_text()
             generated = stage / 'main.swift'
             generated.write_text(source)
             localization = stage / 'Localization.swift'
@@ -69,7 +70,7 @@ class OutgoingSelectionTests(unittest.TestCase):
             sources = ['AppUpdates.swift', 'FileAccess.swift', 'FinderReveal.swift', 'Localization.swift', 'Peer.swift',
                        'ReceiveAccessPolicy.swift', 'TransferProgress.swift',
                        'Diagnostics.swift', 'HuaweiLANDiscovery.swift', 'BrandLogos.swift',
-                       'LivePhotoImporter.swift']
+                       'PhotosImporter.swift']
             compiled = subprocess.run([
                 'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
                 '-module-cache-path', str(stage / 'module-cache'),
@@ -87,6 +88,7 @@ class OutgoingSelectionTests(unittest.TestCase):
             self.assertIn('Huawei trust regression scenarios passed', executed.stdout)
             self.assertIn('Petal coexistence regression scenarios passed', executed.stdout)
             self.assertIn('Notification expiry regression scenarios passed', executed.stdout)
+            self.assertIn('Photos import integration scenarios passed', executed.stdout)
 
 
 if __name__ == '__main__':

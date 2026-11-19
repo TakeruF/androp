@@ -78,7 +78,7 @@ def main():
         run('codesign', '--verify', '--deep', '--strict', app)
         fixture = root / 'LivePhotoFixture'
         run('swiftc', '-swift-version', '6', '-suppress-warnings', '-parse-as-library', ROOT / 'Sources/Localization.swift',
-            ROOT / 'Sources/LivePhotoImporter.swift', ROOT / 'scripts/LivePhotoFixture.swift', '-o', fixture)
+            ROOT / 'Sources/PhotosImporter.swift', ROOT / 'scripts/LivePhotoFixture.swift', '-o', fixture)
         media = root / 'media'; media.mkdir()
         run(fixture, 'generate', media, stdout=subprocess.DEVNULL)
         selected = root / 'selected.txt'; selected.write_text('sandbox fixture')

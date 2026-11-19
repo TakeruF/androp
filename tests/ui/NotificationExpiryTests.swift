@@ -5,7 +5,7 @@
 extension AppModel {
     func exerciseNotificationExpiry() {
         let deliveredAt = Date(timeIntervalSince1970: 1_000)
-        for category in ["complete", "failed"] {
+        for category in ["complete", "failed", "photos-import-failed"] {
             let deadline = Self.transferNotificationExpiration(category: category, deliveredAt: deliveredAt)!
             precondition(deadline.timeIntervalSince(deliveredAt) == 180)
             precondition(deadline > deliveredAt.addingTimeInterval(179.999), "Keep notifications for the full three minutes")
